@@ -1,0 +1,26 @@
+# Environments
+.venv/
+.venv_hpc/
+
+# Cloned / built externally (recreated by `make verl` / `make mathlib`)
+repos/
+
+# Downloaded weights + HF cache (recreated by `make model` / `make dataset`)
+models/
+
+# Training outputs (large, regenerable)
+checkpoints/
+outputs/
+logs/
+data/*.parquet
+data/smoke/
+
+# Lean / lean-interact caches
+.lean_interact_cache/
+
+# Python
+__pycache__/
+*.pyc
+
+# Editor/OS
+.DS_Store
