@@ -56,8 +56,21 @@ Selected per run via `REWARD_FN_NAME`; all live in `reward/reward_fn.py`.
 |---|---|---|
 | `compute_score_typecheck_only` | `1.0` iff the statement elaborates | the exploitable baseline |
 | `compute_score_composite` | `0.1·typecheck + 0.9·BEq+` | the paper's composite formulation |
-| `compute_score_shaped` | `0.15 typecheck + 0.35 one-direction + 0.50 both` | graded — but see the measurement below |
-| `compute_score_guided` | `0.20·similarity + 0.15 typecheck + 0.20 one-dir + 0.45 both` | **continuous**; grades the buckets the others collapse |
+| `compute_score_shaped` | `0.10 typecheck + 0.20 one-direction + 0.70 both` | graded — but see the measurement below |
+| `compute_score_guided` | `0.10·similarity + 0.10 typecheck + 0.15 one-dir + 0.65 both` | continuous; grades the buckets the others collapse |
+| **`compute_score_gated`** | `0.25 one-direction + 0.75 both`, **flat 0 otherwise** | **default.** Pays *nothing* for type-check or similarity — see [Why SFT→RL regressed](#why-sftrl-regressed-and-what-changed) |
+
+Every reward returns a **dict**, not a float: `{"score": …}` plus per-sample
+diagnostics that verl forwards into `reward_extra_info`. Two consequences worth
+knowing:
+
+- `acc` is emitted as the BEq+ indicator, and verl promotes an `acc` key to the
+  run's core validation variable — so `val-core/<data_source>/acc/mean@1` is now
+  **literally the BEq+ rate**, not the reward mean. (The warning further down
+  about not comparing arms with that metric applied to the old float-returning
+  version.)
+- `semantic_signal` ∈ {0,1,2} is what `algorithm.filter_groups.metric` keys off
+  when group filtering is enabled.
 
 ### Why the shaped reward wasn't enough (measured)
 
@@ -140,6 +153,83 @@ Concretely (`python -m reward.reward_fn`):
 
 A near-miss gets 5× the gradient it would under the strict composite, while the hack
 still bottoms out — shaping without opening a new exploit.
+
+### Why SFT→RL regressed, and what changed
+
+Scaling the SFT→RL run to 200 steps and the eval set to 400 examples turned the
+earlier null result into a **statistically significant regression**
+(`results/compare.txt`):
+
+| checkpoint | type-check % | BEq+ % | vs SFT (McNemar, n=400) |
+|---|---|---|---|
+| SFT @ 390 | 76.2% | **38.8%** | — |
+| SFT→RL guided @ 25 | 77.2% | 35.5% | −27/+14, p=0.060 |
+| SFT→RL guided @ 100 | 78.8% | 35.8% | −31/+19, p=0.119 |
+| SFT→RL guided @ 125 | 80.8% | 29.5% | −53/+16, **p<1e-4** |
+| SFT→RL guided @ 200 | 84.2% | 29.0% | −56/+17, **p<1e-4** |
+
+Type-check goes **up** while BEq+ goes **down**, and of the 56 examples lost at
+step 200, **48 still type-check** — the policy is producing valid Lean that no
+longer means the right thing. Meanwhile the training reward never trended up at
+all (0.84 at step 10, 0.50 at step 200, pure oscillation) while KL from the SFT
+reference climbed 0.05 → 0.5 and entropy fell to 0.015. The run paid a large KL
+toll to go nowhere.
+
+**Root cause: GRPO's advantage is computed within a rollout group, and in a group
+where nothing proves equivalent the only terms that can rank the samples are
+`typecheck` and `similarity`.** For a policy at ~35% BEq+ that is the majority of
+groups, so the *dominant* gradient over a run says "emit valid Lean that
+resembles the gold" rather than "be equivalent to the gold". The similarity term
+was capped so it could never *outscore* proven equivalence — but that cap does
+nothing in groups where no sample proves anything, which is precisely where the
+term did its damage.
+
+Five contributing factors, all now addressed:
+
+| # | Problem | Fix |
+|---|---|---|
+| 1 | Non-semantic terms are the only differentiator in no-signal groups | `compute_score_gated`: flat floor ⇒ zero advantage ⇒ **no gradient** from those groups. `FILTER_GROUPS=1` additionally *replaces* them (stronger, ~3× generation cost) |
+| 2 | `norm_adv_by_std_in_grpo` rescales near-tie groups back to full gradient, amplifying scorer noise | `NORM_ADV_BY_STD=False` (Dr. GRPO) |
+| 3 | Entropy → 0.015 with `rollout_n=4`: rollouts in a group are near-duplicates | `ROLLOUT_N=8`, `ENTROPY_COEFF=0.005`, `ROLLOUT_TEMPERATURE` exposed |
+| 4 | `kl_loss_coef=0.001` let the policy drift to KL 0.5 from the best BEq+ policy available | `KL_LOSS_COEF=0.01` (watch `actor/kl_loss`, target ≲0.05) |
+| 5 | Checkpoints were selected on a reward that can rise while BEq+ falls | rewards emit `acc` = BEq+ (see above); `make select` applies the paired test offline |
+
+**Two latent bugs surfaced while fixing the above, both of which affected the
+measured run:**
+
+- **`zss` was never installed, and `structural_similarity` swallowed the
+  ImportError.** The GTED-style tree-edit term — the guided reward's headline
+  continuous signal — returned `0.0` for *every* pair throughout training. The
+  "continuous" reward was in fact `0.4 × library-constant Jaccard`, i.e. credit
+  for name-dropping the right Mathlib constants. `zss` is now a declared
+  dependency and the missing-import path warns loudly instead of scoring 0.
+
+- **BEq+'s one-direction rung can only ever fire for *weaker* statements.** The
+  vendored cascade proves `gold ⇒ pred` first and `break`s if it fails, so
+  `n_directions == 1` always means "prediction is strictly weaker than the gold",
+  and a strictly *stronger* prediction is scored identically to garbage. Partial
+  credit was therefore paid exclusively for weakening — the direction that trends
+  toward vacuity. The rung's weight is reduced accordingly, per-direction results
+  are logged separately, and `BEQ_PROBE_STRONGER=1` makes the signal symmetric at
+  the cost of one extra Lean cascade per non-equivalent rollout. See the
+  DIRECTION SEMANTICS note at the top of `reward/beq_plus.py`.
+
+Lean scorer failures (timeouts, dead REPLs) are also now counted and reported per
+sample as `scorer_error`. They still score 0 — verl gives a reward function no
+way to abstain — but a correct rollout lost to a timeout is a gradient pointing
+away from correctness, so the rate is worth watching rather than leaving
+invisible.
+
+**Running the corrected pipeline:**
+
+```bash
+make train-gated INIT=checkpoints/merged/sft-step390     # ~100 steps
+make eval-sweep RUN=checkpoints/beqplus_rl_poc/rl_from_sft-step390_compute_score_gated
+make select                                              # best ckpt + paired test
+```
+
+`DRY_RUN=1` in front of any training command prints the fully-resolved verl
+invocation and exits without touching the GPU.
 
 ### Curriculum
 

@@ -122,6 +122,14 @@ def main() -> None:
     ap.add_argument("--max-new-tokens", type=int, default=128)
     ap.add_argument("--gpu-frac", type=float, default=0.35)
     ap.add_argument("--out", default=str(PROJECT_ROOT / "results" / "ablation_comparison.json"))
+    # Generations were previously produced, scored, and thrown away, which left
+    # every "why did this checkpoint get worse?" question unanswerable without a
+    # full re-run. They are small; keep them.
+    ap.add_argument("--no-save-generations", dest="save_generations", action="store_false",
+                    help="skip writing results/gen_<label>_n<N>.jsonl")
+    ap.add_argument("--probe-stronger", action="store_true",
+                    help="also test pred=>gold on its own when gold=>pred fails "
+                         "(see reward/beq_plus.py DIRECTION SEMANTICS); slower")
     args = ap.parse_args()
 
     if not args.checkpoints:
@@ -157,26 +165,59 @@ def main() -> None:
         scorer = BEqPlusScorer()
         n_tc = n_beq = 0
         per_example = []
+        generations = []
         for i, (comp, gold) in enumerate(zip(completions, golds)):
             pred = _clean_solution(comp)
-            r = scorer.score(gold, pred)
+            r = scorer.score(gold, pred, probe_stronger=args.probe_stronger)
             n_tc += bool(r["typecheck"])
             n_beq += bool(r["beq_plus"])
-            per_example.append({"i": i, "typecheck": bool(r["typecheck"]),
-                                "beq_plus": bool(r["beq_plus"]), "error": r["error"]})
+            # Per-direction flags are recorded because the aggregate rates cannot
+            # distinguish "drifted toward weaker statements" from "drifted toward
+            # unrelated ones" -- and the two call for opposite fixes.
+            per_example.append({
+                "i": i,
+                "typecheck": bool(r["typecheck"]),
+                "beq_plus": bool(r["beq_plus"]),
+                "gold_implies_pred": bool(r.get("gold_implies_pred", False)),
+                "pred_implies_gold": bool(r.get("pred_implies_gold", False)),
+                "semantic_signal": int(r.get("semantic_signal", 0)),
+                "error": r["error"],
+                "error_kind": r.get("error_kind"),
+            })
+            if args.save_generations:
+                generations.append({"i": i, "prompt": prompts[i], "gold": gold,
+                                    "completion": comp, "pred": pred,
+                                    **per_example[-1]})
             if (i + 1) % 10 == 0:
                 print(f"  [{i+1}/{len(completions)}] typecheck={n_tc} beq+={n_beq}", flush=True)
 
         n = len(completions)
+        n_err = sum(1 for e in per_example if e["error_kind"])
         results[label] = {
             "model_dir": model_dir,
             "n": n,
             "typecheck_rate": n_tc / n if n else 0.0,
             "beq_plus_rate": n_beq / n if n else 0.0,
+            "weaker_only_rate": sum(
+                1 for e in per_example if e["gold_implies_pred"] and not e["beq_plus"]
+            ) / n if n else 0.0,
+            "scorer_error_rate": n_err / n if n else 0.0,
             "per_example": per_example,
         }
         print(f"[eval] {label}: typecheck {n_tc}/{n} ({100*n_tc/n:.1f}%)  "
               f"beq_plus {n_beq}/{n} ({100*n_beq/n:.1f}%)")
+        if n_err:
+            # These are scored as failures but are not verdicts about the model.
+            print(f"[eval] WARNING: {n_err}/{n} examples hit a Lean scorer failure "
+                  f"(timeout or dead REPL) and are counted as wrong.")
+
+        if args.save_generations:
+            gen_path = Path(args.out).parent / f"gen_{label}_n{n}.jsonl"
+            gen_path.parent.mkdir(parents=True, exist_ok=True)
+            with gen_path.open("w") as fh:
+                for rec in generations:
+                    fh.write(json.dumps(rec, ensure_ascii=False) + "\n")
+            print(f"[eval] generations -> {gen_path}")
 
     out_path = Path(args.out)
     out_path.parent.mkdir(parents=True, exist_ok=True)

@@ -117,6 +117,15 @@ pip install "TransferQueue==0.1.8"
 echo "[setup] Installing lean-interact..."
 pip install "lean-interact==0.11.5"
 
+# zss provides the tree-edit distance behind reward/similarity.py's GTED-style
+# structural term. It was missing from every dependency list until now, and
+# `structural_similarity` swallows the ImportError in a broad `except Exception:
+# return 0.0` -- so on this cluster that term silently contributed NOTHING to the
+# guided reward for the whole 200-step run, leaving library-constant Jaccard as
+# the only continuous signal. Install it explicitly; similarity.py now also warns
+# rather than failing silently.
+pip install zss
+
 # =============================================================
 # Phase 3: patch the flashinfer bug (see README's Hardware notes)
 # =============================================================

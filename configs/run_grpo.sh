@@ -2,9 +2,32 @@
 # GRPO (full-parameter) | vLLM rollout | FSDP training | single RTX 5070 Ti (16GB)
 # BEq+ RL PoC for Lean 4 autoformalization (Qwen2.5-Coder-0.5B-Instruct, Lean-Workbook).
 #
-# Select the reward function (the whole point of the PoC -- compare these two):
-#   REWARD_FN_NAME=compute_score_typecheck_only  (ablation baseline: type-check-only, exploitable)
-#   REWARD_FN_NAME=compute_score_composite        (default: type-check + BEq+ semantic reward)
+# Select the reward function (see reward/reward_fn.py for the full argument):
+#   REWARD_FN_NAME=compute_score_gated           (DEFAULT: semantic signal only)
+#   REWARD_FN_NAME=compute_score_guided          (similarity-shaped; the arm that regressed)
+#   REWARD_FN_NAME=compute_score_shaped          (graded BEq+ ladder, no similarity)
+#   REWARD_FN_NAME=compute_score_composite       (the paper's 0.1*tc + 0.9*BEq+)
+#   REWARD_FN_NAME=compute_score_typecheck_only  (ablation baseline: exploitable)
+#
+# WHY THESE DEFAULTS (all measured -- results/compare.txt, 400 val examples)
+# --------------------------------------------------------------------------
+# 200 GRPO steps from the SFT policy with the guided reward moved BEq+ from
+# 38.8% DOWN to 29.0% while type-check went 76.2% UP to 84.2% (McNemar p<1e-4).
+# Four things in this file were responsible, and all four defaults changed:
+#
+#   1. The reward paid type-check + similarity, which are the only terms that can
+#      rank rollouts inside a group where nothing proves equivalent -- i.e. most
+#      groups. Fixed in reward/reward_fn.py (compute_score_gated is now default);
+#      FILTER_GROUPS=1 here is the stronger, more expensive version.
+#   2. norm_adv_by_std_in_grpo renormalised near-tie groups back to full gradient
+#      scale, amplifying scorer noise.        -> NORM_ADV_BY_STD=False
+#   3. entropy fell to 0.015 with rollout_n=4, so groups held near-duplicates and
+#      there was nothing to learn from.       -> ENTROPY_COEFF=0.005, ROLLOUT_N=8
+#   4. kl_loss_coef=0.001 let the policy drift to KL 0.5 from the SFT reference,
+#      which is the best BEq+ policy available. -> KL_LOSS_COEF=0.01
+#
+# Cost note: rollout_n 4 -> 8 roughly doubles wall-clock per step (~100s -> ~200s
+# at train_batch_size=8), because Lean scoring is serialised and dominates.
 #
 # Adapted from repos/verl/examples/tuning/lora/run_qwen3_8b_fsdp.sh, scaled down to a
 # single 16GB GPU. Two things this hardware could NOT run, ruled out empirically (see
@@ -38,9 +61,18 @@ if [ -z "${VIRTUAL_ENV:-}" ]; then
     fi
   done
 fi
+# DRY_RUN=1 prints the fully-resolved launch command and exits without touching
+# the GPU. Worth using before every real submission: a Hydra typo otherwise
+# surfaces minutes into a job, after Ray and vLLM have already started.
+DRY_RUN=${DRY_RUN:-0}
+
 python3 -c "import verl" 2>/dev/null || {
-  echo "ERROR: 'verl' is not importable with $(command -v python3). Run 'make env'."
-  exit 1
+  if [ "$DRY_RUN" = "1" ]; then
+    echo "WARNING: 'verl' is not importable here; continuing because DRY_RUN=1."
+  else
+    echo "ERROR: 'verl' is not importable with $(command -v python3). Run 'make env'."
+    exit 1
+  fi
 }
 
 # ---- user-adjustable ----
@@ -54,21 +86,64 @@ max_response_length=${MAX_RESPONSE_LENGTH:-128}
 ppo_max_token_len_per_gpu=${PPO_MAX_TOKEN_LEN_PER_GPU:-1024}
 
 actor_lr=${ACTOR_LR:-1e-5}
-kl_loss_coef=${KL_LOSS_COEF:-0.001}
-entropy_coeff=${ENTROPY_COEFF:-0}
+
+# ---- the anti-drift settings (see "Why these defaults" below) ----
+# KL anchor. Was 0.001, which let measured actor/kl_loss reach 0.5 over 200
+# steps -- i.e. the policy wandered a long way from the SFT reference, which is
+# the best BEq+ policy we have. 0.01 is chosen to hold measured KL around or
+# below 0.05; WATCH `actor/kl_loss` in the log and raise this if it climbs.
+kl_loss_coef=${KL_LOSS_COEF:-0.01}
+# Exploration. Was 0: entropy fell monotonically to 0.015 by step 100, at which
+# point the rollouts in a group are near-duplicates and GRPO has nothing to
+# compare. If entropy climbs past ~0.5 or generations degenerate, lower this.
+entropy_coeff=${ENTROPY_COEFF:-0.005}
+# GRPO advantage normalisation. verl's default divides each group's advantage by
+# that group's reward std, so a group whose rewards differ by 0.02 produces the
+# SAME gradient magnitude as one whose rewards differ by 0.5. With a noisy
+# external scorer that turns near-ties (often just Lean timeout jitter) into
+# full-scale updates. Turning it off is the Dr. GRPO correction and is what makes
+# the reward re-weighting in reward/reward_fn.py actually bite.
+norm_adv_by_std=${NORM_ADV_BY_STD:-False}
 
 lora_rank=${LORA_RANK:-0}
 lora_alpha=${LORA_ALPHA:-16}
 
 rollout_gpu_mem_util=${ROLLOUT_GPU_MEM_UTIL:-0.3}
-rollout_n=${ROLLOUT_N:-4}
+# Was 4. Raising this is the single most effective exploration lever here: a
+# group only produces a gradient if its samples DIFFER in reward, and for a
+# prompt the policy solves ~15% of the time, P(mixed group) goes 0.48 -> 0.73
+# from n=4 to n=8. It is also the main cost knob -- Lean scoring is serialised,
+# so wall-clock per step scales roughly linearly with train_batch_size*n.
+rollout_n=${ROLLOUT_N:-8}
+# verl already divides logits by this when computing log-probs, so sampling
+# above 1.0 stays consistent with the policy gradient. 1.0 is verl's default and
+# is kept; raise it if entropy_coeff alone does not restore rollout diversity.
+rollout_temperature=${ROLLOUT_TEMPERATURE:-1.0}
 
 total_epochs=${TOTAL_EPOCHS:-3}
 save_freq=${SAVE_FREQ:--1}
 test_freq=${TEST_FREQ:-5}
 
-reward_fn_name=${REWARD_FN_NAME:-compute_score_composite}
+reward_fn_name=${REWARD_FN_NAME:-compute_score_gated}
 reward_num_workers=${REWARD_NUM_WORKERS:-2}
+
+# DAPO-style group filtering: DISCARD rollout groups whose samples all share the
+# same `semantic_signal` (all failed, or all fully equivalent) and generate
+# replacements, so every training group is one the policy can actually learn
+# from. This is the strongest form of "train on the learnable window only".
+#
+# It is OFF by default purely on cost: replacements are generated one prompt at a
+# time until the train batch refills, so generation cost scales as 1/keep_rate,
+# measured/estimated at ~3x here. `compute_score_gated` already zeroes the
+# advantage for those same groups at no extra cost -- it just doesn't reclaim
+# their slot in the batch. Turn this on when compute allows; it strictly
+# dominates the reward-side gate.
+filter_groups=${FILTER_GROUPS:-0}
+filter_groups_metric=${FILTER_GROUPS_METRIC:-semantic_signal}
+# Where verl dumps validation generations (prompt, output, gold, and every
+# reward_extra_info field). Off unless set -- these are what you read to see
+# HOW a checkpoint changed, not just that its score moved.
+validation_data_dir=${VALIDATION_DATA_DIR:-}
 
 # THE memory knob for this project. The reward runs inside each AgentLoopWorker,
 # and each of those processes builds its own BEqPlusScorer -> its own Lean REPL
@@ -88,6 +163,7 @@ experiment_name=${EXPERIMENT_NAME:-qwen25_coder_0_5b_${reward_fn_name}}
 DATA=(
     algorithm.adv_estimator=grpo
     algorithm.use_kl_in_reward=False
+    algorithm.norm_adv_by_std_in_grpo=${norm_adv_by_std}
     data.train_files=$REPO_ROOT/data/train.parquet
     data.val_files=$REPO_ROOT/data/val.parquet
     data.train_batch_size=${train_batch_size}
@@ -128,6 +204,7 @@ ROLLOUT=(
     actor_rollout_ref.rollout.max_model_len=$((max_prompt_length + max_response_length))
     actor_rollout_ref.rollout.enforce_eager=True
     actor_rollout_ref.rollout.n=${rollout_n}
+    actor_rollout_ref.rollout.temperature=${rollout_temperature}
     actor_rollout_ref.rollout.load_format=safetensors
     actor_rollout_ref.rollout.layered_summon=True
     actor_rollout_ref.rollout.log_prob_use_dynamic_bsz=True
@@ -175,7 +252,36 @@ TRAINER=(
 EXTRA=(
 )
 
+# Group filtering needs the metric to exist in reward_extra_info at SAMPLING
+# time, which is why every reward function in reward/reward_fn.py returns a dict
+# rather than a bare float. verl raises at startup if the key is ever missing, so
+# a typo here fails loudly instead of silently training on unfiltered batches.
+if [ "${filter_groups}" != "0" ]; then
+  EXTRA+=(
+    algorithm.filter_groups.enable=True
+    algorithm.filter_groups.metric=${filter_groups_metric}
+    algorithm.filter_groups.max_inflight_gen_batches=${FILTER_MAX_INFLIGHT:-2}
+  )
+fi
+
+if [ -n "${validation_data_dir}" ]; then
+  mkdir -p "${validation_data_dir}"
+  EXTRA+=( trainer.validation_data_dir="${validation_data_dir}" )
+fi
+
 ########################### launch ###########################
+if [ "$DRY_RUN" = "1" ]; then
+  set +x
+  echo ""
+  echo "=== DRY RUN: reward=${reward_fn_name} rollout_n=${rollout_n} "\
+"batch=${train_batch_size} kl=${kl_loss_coef} entropy=${entropy_coeff} "\
+"norm_adv_by_std=${norm_adv_by_std} filter_groups=${filter_groups} ==="
+  printf '%s\n' python3 -m verl.trainer.main_ppo \
+    "${DATA[@]}" "${MODEL[@]}" "${ACTOR[@]}" "${ROLLOUT[@]}" \
+    "${REF[@]}" "${REWARD[@]}" "${TRAINER[@]}" "${EXTRA[@]}" "$@"
+  exit 0
+fi
+
 python3 -m verl.trainer.main_ppo \
     "${DATA[@]}" \
     "${MODEL[@]}" \
