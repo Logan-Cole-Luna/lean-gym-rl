@@ -43,6 +43,29 @@ MATHLIB_ROOT = os.environ.get("MATHLIB_ROOT", str(PROJECT_ROOT / "repos" / "math
 LEAN_INTERACT_CACHE_DIR = os.environ.get("LEAN_INTERACT_CACHE_DIR", str(Path.home() / ".cache" / "lean_interact"))
 BASE_IMPORT = "import Mathlib\nset_option maxRecDepth 10000"
 
+# Per-Lean-process memory cap, in MB. See BEqPlusScorer.__init__ for why this is
+# not optional. Set BEQ_MEMORY_LIMIT_MB=0 to disable (matching the upstream
+# batch-scoring script's behaviour, only safe when nothing else shares the box).
+#
+# HARD FLOOR: `import Mathlib` alone costs ~4.3GB resident, before any tactic
+# search runs. Capping below that kills the REPL during startup and every reward
+# call then fails with "ConnectionAbortedError: The Lean server closed
+# unexpectedly" -- which reads like a memory problem elsewhere and is easy to
+# misdiagnose. The cap must sit ABOVE Mathlib's baseline and below the ~11GB a
+# runaway `exact?` search can reach.
+BEQ_MATHLIB_BASELINE_MB = 4500
+BEQ_MEMORY_LIMIT_MB = int(os.environ.get("BEQ_MEMORY_LIMIT_MB", "8000")) or None
+if BEQ_MEMORY_LIMIT_MB is not None and BEQ_MEMORY_LIMIT_MB < BEQ_MATHLIB_BASELINE_MB:
+    raise ValueError(
+        f"BEQ_MEMORY_LIMIT_MB={BEQ_MEMORY_LIMIT_MB} is below the ~{BEQ_MATHLIB_BASELINE_MB}MB "
+        "that `import Mathlib` needs; the Lean REPL would die on startup. "
+        "Use a larger value, or 0 to disable the cap."
+    )
+# Per-proof-attempt timeout. The cascade makes up to ~18 Lean calls per pair
+# (9 tactic attempts x 2 directions), so this multiplies out; 60s is the
+# upstream default and is far too generous for an online reward loop.
+BEQ_TIMEOUT_PER_PROOF = int(os.environ.get("BEQ_TIMEOUT_PER_PROOF", "30"))
+
 
 # ─────────────────────────────────────────────────────────────────────────────
 # VENDORED VERBATIM from augustepoiroux/RLMEval src/rlm_eval/metrics/beq_plus.py
@@ -212,17 +235,36 @@ class BEqPlusScorer:
         self,
         mathlib_root: str = MATHLIB_ROOT,
         cache_dir: str = LEAN_INTERACT_CACHE_DIR,
-        timeout_per_proof: int = 60,
+        timeout_per_proof: int = BEQ_TIMEOUT_PER_PROOF,
         env_timeout: int = 600,
+        memory_hard_limit_mb: int | None = BEQ_MEMORY_LIMIT_MB,
     ):
         self.timeout_per_proof = timeout_per_proof
         self.env_timeout = env_timeout
         config = LeanREPLConfig(
             project=LocalProject(directory=mathlib_root, auto_build=False),
             cache_dir=cache_dir,
+            memory_hard_limit_mb=memory_hard_limit_mb,
             verbose=False,
         )
-        self.server = AutoLeanServer(config=config, max_total_memory=1.5, max_process_memory=None)
+        # max_total_memory=1.5 disables lean-interact's SYSTEM-wide guard, which
+        # would otherwise trip constantly on a shared box (it fires at 80% of
+        # total RAM regardless of who is using it).
+        #
+        # The PER-PROCESS guard is the one that matters here and is deliberately
+        # enabled: BEq+'s cascade runs `exact?` (a whole-Mathlib search) plus
+        # `simp_all_arith!`/`apply_rules`/`convert`, and on statements that
+        # actually elaborate those searches can balloon a single Lean REPL past
+        # 10GB -- measured, and enough to get every Ray worker OOM-killed. It
+        # only shows up once the policy is good enough to type-check, so it is
+        # invisible early in training and then takes the run down later.
+        # memory_hard_limit_mb caps the REPL; max_process_memory makes
+        # AutoLeanServer recycle it before it gets there.
+        self.server = AutoLeanServer(
+            config=config,
+            max_total_memory=1.5,
+            max_process_memory=0.8 if memory_hard_limit_mb else None,
+        )
         base_out = self.server.run(Command(cmd=BASE_IMPORT), timeout=env_timeout, add_to_session_cache=True)
         base_env = getattr(base_out, "env", None)
         if base_env is None:
@@ -265,10 +307,22 @@ class BEqPlusScorer:
         surrounding imports/namespace needed -- the gold record's context is
         reused for both sides, matching how BEq+ is meant to be run).
 
-        Returns {"typecheck": bool, "beql": bool, "beq_plus": bool, "error": str|None}.
+        Returns {"typecheck", "beql", "beq_plus", "beq_plus_fwd", "beq_plus_bwd",
+                 "n_directions", "error"}.
+
+        `beq_plus` is the strict published metric: BOTH directions must prove.
+        The per-direction flags are surfaced because `check_theorem_equivalence`
+        already computes them internally, and one-direction-proves is a genuine
+        intermediate state (the prediction implies the gold, or vice versa, but
+        not both -- e.g. a strictly stronger or strictly weaker statement). That
+        gives a graded "how close is this" signal instead of BEq+'s hard binary,
+        which is what `reward_fn.compute_score_shaped` uses to fight reward
+        sparsity. `n_directions` in {0,1,2} is the convenient scalar form.
         """
         context, gold_theorem_text = split_header_and_theorem(gold_full_snippet)
-        out = {"typecheck": False, "beql": False, "beq_plus": False, "error": None}
+        out = {"typecheck": False, "beql": False, "beq_plus": False,
+               "beq_plus_fwd": False, "beq_plus_bwd": False, "n_directions": 0,
+               "error": None}
         env = self.get_env(context)
         if env is None:
             out["error"] = "header_env_failed"
@@ -278,6 +332,9 @@ class BEqPlusScorer:
             res = check_theorem_equivalence(gold_theorem_text, pred_theorem_text, self.server, env, self.timeout_per_proof)
             out["beql"] = res.beql()
             out["beq_plus"] = res.beq_plus()
+            out["beq_plus_fwd"] = res.beq_plus_unidirections[0] is not None
+            out["beq_plus_bwd"] = res.beq_plus_unidirections[1] is not None
+            out["n_directions"] = int(out["beq_plus_fwd"]) + int(out["beq_plus_bwd"])
         except Exception as e:  # keep the server alive on a single bad record
             out["error"] = f"{type(e).__name__}: {e}"[:200]
         return out

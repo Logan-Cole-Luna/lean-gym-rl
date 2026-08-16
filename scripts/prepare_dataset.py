@@ -62,10 +62,34 @@ def main():
 
     random.seed(args.seed)
     random.shuffle(recs)
-    n_train = min(args.n_train, max(0, len(recs) - args.n_val))
-    train_recs = recs[:n_train]
-    val_recs = recs[n_train : n_train + args.n_val]
+
+    # The validation slice is pinned to a FIXED OFFSET so that growing the
+    # training set never changes which examples are evaluated. Earlier this was
+    # `val = recs[n_train : n_train + n_val]`, which silently swapped the whole
+    # eval set the moment n_train changed -- every cached result would have been
+    # measured on different problems while looking comparable.
+    #
+    # With the offset fixed, enlarging --n-val only APPENDS: the first 80 val
+    # rows are the same 80 used by every result already in results/, so old
+    # per-example records stay valid and comparable.
+    VAL_OFFSET = 400
+    val_recs = recs[VAL_OFFSET : VAL_OFFSET + args.n_val]
+    pool = recs[:VAL_OFFSET] + recs[VAL_OFFSET + args.n_val :]
+
+    # Excluding the val SLICE is not enough. Lean-Workbook contains the same
+    # natural_language_statement at multiple indices (400 val rows correspond to
+    # 1550 records repo-wide), so slicing by position leaves duplicates of the
+    # eval prompts sitting in the training pool. Measured at n_train=400: 20 of
+    # the 400 val prompts leaked in; at n_train=4000 that grows toward half the
+    # eval set. Filter on prompt CONTENT, which is what the model actually sees.
+    val_prompts = {INSTRUCTION.format(informal=r["natural_language_statement"]) for r in val_recs}
+    before = len(pool)
+    pool = [r for r in pool
+            if INSTRUCTION.format(informal=r["natural_language_statement"]) not in val_prompts]
+    train_recs = pool[: args.n_train]
     print(f"PoC subset: {len(train_recs)} train, {len(val_recs)} val (of {len(recs)} available)")
+    print(f"  val pinned at offset {VAL_OFFSET}; "
+          f"dropped {before - len(pool)} duplicate-prompt records from the train pool")
 
     train_rows = [to_verl_row(r, "train", i) for i, r in enumerate(train_recs)]
     val_rows = [to_verl_row(r, "val", i) for i, r in enumerate(val_recs)]

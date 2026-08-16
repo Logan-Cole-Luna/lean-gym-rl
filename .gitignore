@@ -12,8 +12,11 @@ models/
 checkpoints/
 outputs/
 logs/
+data/
 data/*.parquet
 data/smoke/
+# results/*.json
+results/archive_n80
 
 # Lean / lean-interact caches
 .lean_interact_cache/

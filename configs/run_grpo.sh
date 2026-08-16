@@ -25,6 +25,24 @@ set -xeuo pipefail
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$REPO_ROOT"
 
+# Activate the project venv unless one is already active (hpc/cc_env.sh activates
+# .venv_hpc before this runs on a cluster). Without this, invoking the script
+# directly rather than via `make` silently falls back to the system python and
+# dies with "No module named 'verl'".
+if [ -z "${VIRTUAL_ENV:-}" ]; then
+  for _venv in "$REPO_ROOT/.venv_hpc" "$REPO_ROOT/.venv"; do
+    if [ -f "$_venv/bin/activate" ]; then
+      # shellcheck disable=SC1091
+      source "$_venv/bin/activate"
+      break
+    fi
+  done
+fi
+python3 -c "import verl" 2>/dev/null || {
+  echo "ERROR: 'verl' is not importable with $(command -v python3). Run 'make env'."
+  exit 1
+}
+
 # ---- user-adjustable ----
 MODEL_PATH=${MODEL_PATH:-$REPO_ROOT/models/qwen2.5-coder-0.5b-instruct}
 NGPUS_PER_NODE=${NGPUS_PER_NODE:-1}
@@ -51,6 +69,16 @@ test_freq=${TEST_FREQ:-5}
 
 reward_fn_name=${REWARD_FN_NAME:-compute_score_composite}
 reward_num_workers=${REWARD_NUM_WORKERS:-2}
+
+# THE memory knob for this project. The reward runs inside each AgentLoopWorker,
+# and each of those processes builds its own BEqPlusScorer -> its own Lean REPL
+# with Mathlib resident (~4.3GB each). verl's default of 8 therefore costs ~34GB
+# of host RAM in Lean alone, which is what exhausted a 59GB box (measured: 30+
+# Lean processes, 56/59GB used). Note that `reward.num_workers` does NOT control
+# this -- tuning that knob has no effect on the number of Lean servers.
+# Generation is bottlenecked on the single vLLM server anyway, so extra
+# agent-loop workers buy little here while costing a full Mathlib each.
+agent_loop_workers=${AGENT_LOOP_WORKERS:-2}
 
 project_name=${PROJECT_NAME:-beqplus_rl_poc}
 experiment_name=${EXPERIMENT_NAME:-qwen25_coder_0_5b_${reward_fn_name}}
@@ -104,6 +132,7 @@ ROLLOUT=(
     actor_rollout_ref.rollout.layered_summon=True
     actor_rollout_ref.rollout.log_prob_use_dynamic_bsz=True
     actor_rollout_ref.rollout.log_prob_max_token_len_per_gpu=${ppo_max_token_len_per_gpu}
+    actor_rollout_ref.rollout.agent.num_workers=${agent_loop_workers}
 )
 
 REF=(
@@ -119,6 +148,12 @@ REWARD=(
 )
 
 TRAINER=(
+    # A rollout group whose samples all fail (Lean scoring error, generation
+    # error, ...) leaves the sync replay buffer with nothing to materialise and
+    # aborts the run with "no materializable trajectories". That is a real risk
+    # here because the reward depends on an external Lean process. Refilling
+    # replaces such groups instead of crashing.
+    trainer.v1.sampler.sync_refill_failed_groups=True
     trainer.balance_batch=True
     trainer.logger='["console"]'
     trainer.project_name=${project_name}
@@ -127,6 +162,12 @@ TRAINER=(
     trainer.nnodes=1
     trainer.val_before_train=False
     trainer.save_freq=${save_freq}
+    # Each checkpoint is ~6.1GB (FSDP shards + optimizer state), so a 100-step
+    # run saving every 10 steps writes 61GB. An earlier set of runs filled the
+    # disk to 100% this way. Keep only the most recent few -- the merged HF
+    # weights under checkpoints/merged/ (954MB) are what evaluation reads, and
+    # those are produced explicitly by `make eval-ckpt`/`merge-sft`.
+    trainer.max_actor_ckpt_to_keep=${MAX_CKPT_KEEP:-2}
     trainer.test_freq=${test_freq}
     trainer.total_epochs=${total_epochs}
 )

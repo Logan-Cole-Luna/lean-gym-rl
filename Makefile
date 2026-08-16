@@ -169,11 +169,27 @@ $(MODEL_DIR)/config.json:
 	@HF_HOME=$(PROJECT)/models/.hf_cache $(PYTHON) -c \
 	  "from huggingface_hub import snapshot_download; snapshot_download('$(MODEL_ID)', local_dir='$(MODEL_DIR)')"
 
-.PHONY: dataset
-dataset: data/train.parquet
+# Dataset sizes are STAMPED, not plain file targets. A file target compares
+# mtimes only, so `make dataset RL_N_TRAIN=4000` would see an up-to-date
+# data/train.parquet and silently keep the 400-row one -- you would then run a
+# "longer" training that quietly re-walked the same tiny set.
+# Regenerating with the same sizes is a no-op in content: prepare_dataset.py
+# seeds its shuffle and pins the val slice to a fixed offset, so val.parquet is
+# byte-stable and already-cached eval results stay comparable.
+# Defaults MUST match what is on disk, or `make train-sft` (which depends on
+# these) would see a stamp mismatch and quietly rebuild a smaller dataset.
+RL_N_TRAIN ?= 4000
+RL_N_VAL   ?= 400
 
-data/train.parquet: scripts/prepare_dataset.py
-	@HF_HOME=$(PROJECT)/models/.hf_cache $(PYTHON) scripts/prepare_dataset.py
+.PHONY: dataset
+dataset:
+	@want="n_train=$(RL_N_TRAIN) n_val=$(RL_N_VAL)"; \
+	 if [ -f data/train.parquet ] && [ "$$(cat data/.stamp 2>/dev/null)" = "$$want" ]; then \
+	   echo "[dataset] up to date ($$want)"; \
+	 else \
+	   HF_HOME=$(PROJECT)/models/.hf_cache $(PYTHON) scripts/prepare_dataset.py \
+	     --n-train $(RL_N_TRAIN) --n-val $(RL_N_VAL) && echo "$$want" > data/.stamp; \
+	 fi
 
 # ── Run ───────────────────────────────────────────────────────────────────────
 
@@ -210,6 +226,229 @@ train-typecheck:
 .PHONY: train
 train: train-composite train-typecheck
 
+# ── Curriculum ────────────────────────────────────────────────────────────────
+# Trains FROM SCRATCH in two phases: first half on the cheap dense type-check
+# ("pass@") reward to learn Lean syntax, second half on BEq+ for semantics.
+# Implemented as a checkpoint handoff because verl does not expose the global
+# step to reward functions -- see scripts/run_curriculum.sh for the full
+# rationale, including why phase 1 stops at the midpoint rather than converging.
+#
+#   TOTAL_STEPS=30                          total across both phases (default)
+#   SWITCH_AT=15                            steps of phase 1 (default TOTAL/2)
+#   PHASE2_REWARD=compute_score_shaped      graded ladder (default)
+#   PHASE2_REWARD=compute_score_composite   strict 0.1*typecheck + 0.9*BEq+
+.PHONY: train-curriculum
+train-curriculum:
+	@source "$(VENV)/bin/activate" && bash scripts/run_curriculum.sh
+
+# ── SFT → RL (the pipeline that actually works) ───────────────────────────────
+# Measured: SFT alone reaches 33.8% BEq+ vs 3.8% for the best from-scratch RL arm.
+# BEq+ as a *reward* only informs the policy when it fires (almost never, early);
+# the same signal as a *supervised target* is dense. SFT then gives RL a policy
+# where BEq+ fires ~1/3 of the time, which removes the starvation that made
+# from-scratch RL fail and lets RL run with a small rollout_n.
+# NOTE: MERGED is defined further down (Evaluation section) and `:=` is
+# simply-expanded, so referencing it here would silently yield an empty prefix.
+# Derive from $(PROJECT) instead.
+# SFT_RUN names the checkpoint directory. It defaults to the warm-start tag, so
+# a from-scratch SFT lands in checkpoints/sft/scratch and `make merge-sft` finds
+# it without being told where -- previously SFT_CKPT was hardcoded to one run's
+# name while train-sft wrote to another, so merge-sft looked in the wrong place.
+# Recursive (`?=`/`=`) assignment, not `:=`, because _INIT_TAG is defined below.
+SFT_RUN    ?= $(_INIT_TAG)
+SFT_CKPT   ?= $(PROJECT)/checkpoints/sft/$(SFT_RUN)
+SFT_MERGED ?= $(PROJECT)/checkpoints/merged/sft-step30
+
+# Stamped for the same reason as `dataset` above. Depends on `dataset` because
+# prepare_sft_dataset.py reads data/val.parquet to exclude the eval set from SFT
+# training -- without it the filter silently no-ops and SFT trains on the test set.
+SFT_N_TRAIN ?= 20000
+SFT_N_VAL   ?= 500
+
+.PHONY: sft-dataset
+sft-dataset: dataset
+	@want="n_train=$(SFT_N_TRAIN) n_val=$(SFT_N_VAL)"; \
+	 if [ -f data/sft/train.parquet ] && [ "$$(cat data/sft/.stamp 2>/dev/null)" = "$$want" ]; then \
+	   echo "[sft-dataset] up to date ($$want)"; \
+	 else \
+	   source "$(VENV)/bin/activate" && HF_HOME=$(PROJECT)/models/.hf_cache \
+	     python3 scripts/prepare_sft_dataset.py \
+	       --n-train $(SFT_N_TRAIN) --n-val $(SFT_N_VAL) && \
+	   echo "$$want" > data/sft/.stamp; \
+	 fi
+
+# ── Stage entry points: train-sft / train-rl ─────────────────────────────────
+# Both take an OPTIONAL starting checkpoint via INIT=<merged HF dir>.
+# With no INIT they train from the base model (from scratch).
+#
+#   make train-sft                                  # SFT from the base model
+#   make train-sft INIT=checkpoints/merged/foo      # continue SFT from a ckpt
+#   make train-rl                                   # RL from the base model
+#   make train-rl INIT=checkpoints/merged/sft-step30
+#   make train-rl INIT=... REWARD_FN_NAME=compute_score_guided TOTAL_STEPS=30
+#
+# INIT must be a MERGED HF directory (one containing model.safetensors), not a
+# raw verl checkpoint -- verl saves FSDP shards, so run `make merge-sft` (or
+# verl.model_merger) first. The recipe checks and fails loudly rather than
+# letting vLLM load a weightless config, which is how a whole SFT eval once came
+# back as 0%.
+# Defaults chosen from failures, not taste:
+#   SAVE_FREQ=10  -- an earlier version saved only at TOTAL_STEPS, so a crash at
+#                    step 25/30 (Ray GCS killed by the host OOM killer) threw away
+#                    1h48m of compute with nothing on disk. Checkpoint often.
+#   TRAIN_BATCH_SIZE=8 -- run_grpo.sh defaults to 16, which doubles concurrent
+#                    rollouts and therefore concurrent Lean work; the 16-wide run
+#                    peaked at 45.8GB host RAM and was OOM-killed, while every
+#                    completed run on this box used 8.
+INIT ?=
+_INIT_MODEL = $(if $(INIT),$(INIT),$(PROJECT)/$(MODEL_DIR))
+# Tag runs so a from-scratch run and a warm-started one never share a checkpoint
+# directory (they are different experiments and must not overwrite each other).
+_INIT_TAG = $(if $(INIT),from_$(notdir $(INIT)),scratch)
+
+.PHONY: _check-init
+_check-init:
+	@if [ -n "$(INIT)" ]; then \
+	  test -d "$(INIT)" || { echo "INIT=$(INIT) does not exist"; exit 1; }; \
+	  ls "$(INIT)"/*.safetensors >/dev/null 2>&1 || ls "$(INIT)"/pytorch_model*.bin >/dev/null 2>&1 || { \
+	    echo "INIT=$(INIT) has no model weights (*.safetensors / pytorch_model*.bin)."; \
+	    echo "It is probably a raw verl checkpoint -- merge it first, e.g.:"; \
+	    echo "  make merge-sft      # for SFT checkpoints"; \
+	    exit 1; }; \
+	  echo "[init] warm-starting from $(INIT)"; \
+	else \
+	  echo "[init] no INIT given -- training from the base model $(MODEL_DIR)"; \
+	fi
+
+.PHONY: train-sft
+train-sft: sft-dataset _check-init
+	@MODEL_PATH=$(_INIT_MODEL) \
+	 SAVE_PATH=$${SAVE_PATH:-$(SFT_CKPT)} \
+	 bash scripts/run_sft.sh $(SFT_EXTRA)
+
+.PHONY: train-rl
+train-rl: _check-init
+	@source "$(VENV)/bin/activate" && \
+	 MODEL_PATH=$(_INIT_MODEL) \
+	 REWARD_FN_NAME=$${REWARD_FN_NAME:-compute_score_guided} \
+	 EXPERIMENT_NAME=$${EXPERIMENT_NAME:-rl_$(_INIT_TAG)_$${REWARD_FN_NAME:-compute_score_guided}} \
+	 ROLLOUT_N=$${ROLLOUT_N:-4} AGENT_LOOP_WORKERS=$${AGENT_LOOP_WORKERS:-1} \
+	 TRAIN_BATCH_SIZE=$${TRAIN_BATCH_SIZE:-8} PPO_MINI_BATCH_SIZE=$${PPO_MINI_BATCH_SIZE:-8} \
+	 PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True \
+	 HF_HOME=$(PROJECT)/models/.hf_cache \
+	 bash configs/run_grpo.sh \
+	   trainer.total_training_steps=$${TOTAL_STEPS:-30} \
+	   trainer.test_freq=$${TEST_FREQ:-10} trainer.save_freq=$${SAVE_FREQ:-10}
+
+# Back-compat alias; `make train-sft` is the current entry point.
+.PHONY: sft
+sft: train-sft
+
+# SFT checkpoints are FSDP-sharded like RL ones; merge before vLLM can load them.
+.PHONY: merge-sft
+merge-sft:
+	@source "$(VENV)/bin/activate" && \
+	 step=$$(cat $(SFT_CKPT)/latest_checkpointed_iteration.txt 2>/dev/null); \
+	 test -n "$$step" || { echo "No SFT checkpoint -- run 'make sft' first."; exit 1; }; \
+	 python3 -m verl.model_merger merge --backend fsdp \
+	   --local_dir $(SFT_CKPT)/global_step_$$step \
+	   --target_dir $(PROJECT)/checkpoints/merged/sft-step$$step
+
+# Thin wrappers over `train-rl` for the specific reward functions. Each accepts
+# INIT= exactly like train-rl, e.g.
+#   make train-guided INIT=checkpoints/merged/sft-step30
+.PHONY: train-from-sft
+train-from-sft:
+	@$(MAKE) --no-print-directory train-rl INIT=$(SFT_MERGED)
+
+.PHONY: train-guided
+train-guided:
+	@$(MAKE) --no-print-directory train-rl REWARD_FN_NAME=compute_score_guided
+
+.PHONY: train-shaped
+train-shaped:
+	@$(MAKE) --no-print-directory train-rl REWARD_FN_NAME=compute_score_shaped
+
+# ── Evaluation ────────────────────────────────────────────────────────────────
+# The head-to-head comparison the PoC exists to produce. NOTE: verl's own
+# `val-core/.../acc/mean@1` is just the mean of that run's reward function, so
+# the two arms' validation numbers are on different scales and are NOT
+# comparable to each other. `make evaluate` re-scores both final checkpoints
+# with BOTH metrics (type-check rate and BEq+ rate) so they can be compared.
+
+STEP        ?= 30
+CKPT_ROOT   := $(PROJECT)/checkpoints/beqplus_rl_poc
+CKPT_COMP   := $(CKPT_ROOT)/qwen25_coder_0_5b_compute_score_composite/global_step_$(STEP)
+CKPT_TC     := $(CKPT_ROOT)/qwen25_coder_0_5b_compute_score_typecheck_only/global_step_$(STEP)
+MERGED      := $(PROJECT)/checkpoints/merged
+
+# verl keeps actor weights in FSDP-sharded .pt files; actor/huggingface/ holds
+# only config+tokenizer. vLLM needs real HF weights, so merge them first.
+.PHONY: merge-checkpoints
+merge-checkpoints:
+	@source "$(VENV)/bin/activate" && \
+	 for arm in composite typecheck_only; do \
+	   src=$(CKPT_ROOT)/qwen25_coder_0_5b_compute_score_$$arm/global_step_$(STEP)/actor; \
+	   dst=$(MERGED)/$$arm-step$(STEP); \
+	   if [ -d "$$src" ] && [ ! -d "$$dst" ]; then \
+	     echo "[merge] $$arm step $(STEP) -> $$dst"; \
+	     python3 -m verl.model_merger merge --backend fsdp --local_dir "$$src" --target_dir "$$dst" || \
+	       echo "[merge] FAILED for $$arm (checkpoint may not exist yet)"; \
+	   else \
+	     echo "[merge] skip $$arm (missing src or dst already exists)"; \
+	   fi; \
+	 done
+
+# Parse verl's per-step console metrics out of logs/ into curves + a quantified
+# per-reward impact table (dead steps split into starved vs saturated).
+.PHONY: plots
+plots:
+	@source "$(VENV)/bin/activate" && python3 scripts/plot_results.py
+
+# Evaluate ONE checkpoint dir (merging it first if needed) and write its own
+# result JSON, so the expensive BEq+ scoring is never repeated for models that
+# have already been measured. CKPT may be a raw verl run dir (latest step is
+# picked automatically) or an already-merged HF dir.
+#   make eval-ckpt CKPT=checkpoints/beqplus_rl_poc/rl_from_sft-step30_compute_score_guided
+.PHONY: eval-ckpt
+eval-ckpt:
+	@test -n "$(CKPT)" || { echo "Usage: make eval-ckpt CKPT=<verl run dir | merged dir>"; exit 1; }
+	@source "$(VENV)/bin/activate" && set -e; \
+	 src="$(CKPT)"; name=$$(basename "$$src"); \
+	 if ls "$$src"/*.safetensors >/dev/null 2>&1; then \
+	   merged="$$src"; \
+	 else \
+	   step=$$(cat "$$src/latest_checkpointed_iteration.txt" 2>/dev/null); \
+	   test -n "$$step" || { echo "No latest_checkpointed_iteration.txt in $$src"; exit 1; }; \
+	   merged="$(PROJECT)/checkpoints/merged/$${name}-step$${step}"; \
+	   if [ ! -d "$$merged" ]; then \
+	     echo "[merge] $$src/global_step_$$step -> $$merged"; \
+	     python3 -m verl.model_merger merge --backend fsdp \
+	       --local_dir "$$src/global_step_$$step/actor" --target_dir "$$merged"; \
+	   fi; \
+	 fi; \
+	 out="$(PROJECT)/results/eval_$$(basename $$merged)_n$${N_EVAL:-80}.json"; \
+	 echo "[eval] $$merged -> $$out"; \
+	 PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True HF_HOME=$(PROJECT)/models/.hf_cache \
+	 python3 scripts/evaluate_checkpoints.py --checkpoint "$$merged" \
+	   --n-eval $${N_EVAL:-80} --out "$$out"
+
+# Aggregate every cached result JSON into one table (no re-scoring).
+.PHONY: compare
+compare:
+	@source "$(VENV)/bin/activate" && python3 scripts/compare_results.py
+
+.PHONY: evaluate
+evaluate: merge-checkpoints
+	@source "$(VENV)/bin/activate" && \
+	 PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True \
+	 HF_HOME=$(PROJECT)/models/.hf_cache \
+	 python3 scripts/evaluate_checkpoints.py \
+	   --checkpoint base \
+	   --checkpoint $(MERGED)/typecheck_only-step$(STEP) \
+	   --checkpoint $(MERGED)/composite-step$(STEP) \
+	   --n-eval $${N_EVAL:-80}
+
 # ── HPC submission (SLURM) ────────────────────────────────────────────────────
 # train-composite/train-typecheck above are for local/interactive runs (they
 # always activate $(VENV), not $(VENV_HPC)). On a cluster, submit hpc/train.slurm
@@ -228,6 +467,48 @@ submit-typecheck:
 .PHONY: clean
 clean:
 	find $(PROJECT) -type d -name __pycache__ -not -path "*/repos/*" -not -path "*/.venv*" -exec rm -rf {} + 2>/dev/null; true
+
+# Kill every process a training run can leave behind. Run this between runs --
+# vLLM's engine workers are spawned children that do NOT match `ray::`, so a
+# pattern that only catches Ray actors leaves a multi-GB GPU+RAM squatter alive.
+# A leftover worker is what caused Ray's OOM killer to take out the reward
+# workers mid-run (symptom: "running: N, finished: 0" forever, no Lean process).
+.PHONY: kill-stale
+kill-stale:
+	@for p in $$(ps -eo pid,args | grep -E "ray::|main_ppo|run_curriculum|raylet|gcs_server|VLLM::|vllm" | grep -v grep | awk '{print $$1}'); do \
+	  kill -9 $$p 2>/dev/null || true; \
+	done; sleep 5; \
+	echo "remaining: $$(ps -eo args | grep -E 'ray::|main_ppo|VLLM::' | grep -v grep | wc -l)"; \
+	echo "gpu: $$(nvidia-smi --query-gpu=memory.used --format=csv,noheader 2>/dev/null || echo n/a)"; \
+	free -h 2>/dev/null | sed -n '2p' || true
+
+# Raw verl checkpoints are ~6.1GB each (FSDP shards + optimizer state); the
+# merged HF weights that evaluation actually loads are 954MB. Six finished runs
+# filled this disk to 100%. This prunes RAW checkpoints that are NOT the latest
+# step of their run -- they are only useful for resuming a run mid-flight, which
+# is meaningless once the run has finished. Merged dirs are never touched.
+#
+# Prints what it would remove; pass CONFIRM=1 to actually delete.
+#   make prune-checkpoints            # dry run
+#   make prune-checkpoints CONFIRM=1
+.PHONY: prune-checkpoints
+prune-checkpoints:
+	@total=0; \
+	 for run in checkpoints/*/*/; do \
+	   latest=$$(cat "$$run/latest_checkpointed_iteration.txt" 2>/dev/null) || continue; \
+	   [ -n "$$latest" ] || continue; \
+	   for step in "$$run"global_step_*; do \
+	     [ -d "$$step" ] || continue; \
+	     [ "$$(basename $$step)" = "global_step_$$latest" ] && continue; \
+	     sz=$$(du -sm "$$step" | cut -f1); total=$$((total+sz)); \
+	     if [ -n "$(CONFIRM)" ]; then echo "[prune] rm $$step ($${sz}MB)"; rm -rf "$$step"; \
+	     else echo "[dry-run] would rm $$step ($${sz}MB)"; fi; \
+	   done; \
+	 done; \
+	 echo "---"; \
+	 if [ -n "$(CONFIRM)" ]; then echo "freed $${total}MB"; \
+	 else echo "would free $${total}MB   (re-run with CONFIRM=1 to delete)"; fi; \
+	 df -h . | tail -1
 
 .PHONY: clean-lean
 clean-lean:
@@ -254,9 +535,19 @@ help:
 	@echo "  make train-composite   Real GRPO run: type-check + BEq+ composite reward (local)"
 	@echo "  make train-typecheck   Real GRPO run: type-check-only reward (local, ablation)"
 	@echo "  make train             Both ablation arms, sequentially (local)"
+	@echo "  make train-shaped      GRPO with the graded/process-level BEq+ reward"
+	@echo "  make train-curriculum  Two-phase curriculum from scratch (pass@ then BEq+)"
+	@echo "  make train-sft         SFT; INIT=<merged dir> to warm-start, else from scratch"
+	@echo "  make train-rl          GRPO; INIT=<merged dir> to warm-start, else from scratch"
+	@echo "                           REWARD_FN_NAME=compute_score_{guided,shaped,composite,typecheck_only}"
+	@echo "  make merge-sft         Merge the SFT checkpoint to HF format"
+	@echo "  make train-from-sft    RL starting from the SFT policy (small rollout_n)"
+	@echo "  make evaluate          Score checkpoints on BOTH metrics (the valid comparison)"
+	@echo "  make plots             Training curves + per-reward impact quantification"
 	@echo "  make submit-composite  sbatch hpc/train.slurm with the composite reward"
 	@echo "  make submit-typecheck  sbatch hpc/train.slurm with the typecheck-only reward"
 	@echo "  make check-toolchain   Verify Lean/Mathlib4 toolchain pin"
+	@echo "  make kill-stale        Kill leftover ray/vLLM processes between runs"
 	@echo "  make clean             Remove Python cache files"
 	@echo "  make clean-lean        Remove Mathlib4 build artifacts"
 	@echo ""

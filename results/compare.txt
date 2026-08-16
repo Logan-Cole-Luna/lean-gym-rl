@@ -1,0 +1,38 @@
+=============== COMPARISON ===============
+checkpoint                                     typecheck%  beq_plus%
+rl_from_sft390_dense-step200                        84.2%      29.0%
+
+Wrote results/eval_rl_from_sft390_dense-step200_n400.json
+cached result files used (13):
+  - eval_rl_from_sft-step30_compute_score_guided-step30_n400.json
+  - eval_rl_from_sft-step390_compute_score_guided-step175_n400.json
+  - eval_rl_from_sft-step390_compute_score_guided-step200_n400.json
+  - eval_rl_from_sft390_dense-step100_n400.json
+  - eval_rl_from_sft390_dense-step125_n400.json
+  - eval_rl_from_sft390_dense-step150_n400.json
+  - eval_rl_from_sft390_dense-step175_n400.json
+  - eval_rl_from_sft390_dense-step200_n400.json
+  - eval_rl_from_sft390_dense-step25_n400.json
+  - eval_rl_from_sft390_dense-step50_n400.json
+  - eval_rl_from_sft390_dense-step75_n400.json
+  - eval_sft-step30_n400.json
+  - eval_sft-step390_n400.json
+excluded as stale (pre chat-template fix): ablation_comparison.json
+
+======================================================================================
+checkpoint                              type-check%    BEq+%      n  description
+--------------------------------------------------------------------------------------
+sft-step30                                    76.5%    34.0%   400  SFT on (informal -> gold formal)
+rl_from_sft-step30_compute_score_guided-step30        84.2%    29.0%   400  
+sft-step390                                   76.2%    38.8%   400  
+rl_from_sft-step390_compute_score_guided-step200        81.5%    30.2%   400  
+rl_from_sft-step390_compute_score_guided-step175        82.2%    31.5%   400  
+rl_from_sft390_dense-step25                   77.2%    35.5%   400  
+rl_from_sft390_dense-step50                   79.0%    34.8%   400  
+rl_from_sft390_dense-step75                   80.0%    34.5%   400  
+rl_from_sft390_dense-step125                  80.8%    29.5%   400  
+rl_from_sft390_dense-step150                  81.8%    29.8%   400  
+rl_from_sft390_dense-step175                  80.5%    28.2%   400  
+rl_from_sft390_dense-step100                  78.8%    35.8%   400  
+rl_from_sft390_dense-step200                  84.2%    29.0%   400  
+======================================================================================
