@@ -2,8 +2,9 @@
 """Prefetch the base model + training dataset for offline compute-node jobs.
 
 Run this on a login node with internet access. Downloads into
-PROJECT_ROOT/models/ (model) and the HF datasets cache (dataset) so SLURM jobs
-can run with HF_HUB_OFFLINE=1 (see hpc/cc_env.sh).
+$SCRATCH/ai4math_training_models/ (model + HF datasets cache), or
+PROJECT_ROOT/models/ if $SCRATCH is unset, so SLURM jobs can run with
+HF_HUB_OFFLINE=1 (see hpc/cc_env.sh).
 
 Mirrors MixtureOfMathExperts/hpc/prefetch_models.py's structure.
 """
@@ -22,6 +23,16 @@ def _resolve_project_root(explicit: str | None) -> Path:
     if explicit:
         return Path(explicit).expanduser().resolve()
     return Path(__file__).resolve().parents[1]
+
+
+def _resolve_models_root(project_root: Path) -> Path:
+    # Model weights + HF cache are large and easily re-downloaded, so on CC they
+    # go under $SCRATCH rather than the project dir, which sits on a group-shared
+    # /project filesystem with a tight file-count quota (see hpc/cc_env.sh).
+    scratch = os.environ.get("SCRATCH")
+    if scratch:
+        return Path(scratch) / "ai4math_training_models"
+    return project_root / "models"
 
 
 def _read_token() -> str | None:
@@ -47,7 +58,8 @@ def main() -> None:
     args = parser.parse_args()
 
     project_root = _resolve_project_root(args.project_root)
-    hf_home = Path(os.environ.get("HF_HOME", project_root / "models" / ".hf_cache"))
+    models_root = _resolve_models_root(project_root)
+    hf_home = Path(os.environ.get("HF_HOME", models_root / ".hf_cache"))
     hf_home.mkdir(parents=True, exist_ok=True)
     os.environ["HF_HOME"] = str(hf_home)
 
@@ -61,7 +73,7 @@ def main() -> None:
     if not args.skip_model:
         from huggingface_hub import snapshot_download
 
-        model_dir = args.model_dir or str(project_root / DEFAULT_MODEL_DIR)
+        model_dir = args.model_dir or str(models_root / Path(DEFAULT_MODEL_DIR).name)
         print(f"[prefetch] Downloading model {args.model} -> {model_dir}")
         snapshot_download(args.model, local_dir=model_dir)
         print(f"[prefetch] Model ready: {model_dir}")

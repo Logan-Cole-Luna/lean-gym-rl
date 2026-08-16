@@ -23,7 +23,6 @@
 SHELL       := /bin/bash
 PROJECT     := $(shell pwd)
 VENV        := $(PROJECT)/.venv
-VENV_HPC    := $(PROJECT)/.venv_hpc
 
 # Pinned to match internlm/Lean-Workbook's target toolchain (see reward/beq_plus.py).
 # If you swap datasets, re-pin both of these together and re-run `make mathlib`.
@@ -32,7 +31,6 @@ MATHLIB4_TAG   := v4.8.0-rc1
 
 VERL_REPO   := https://github.com/volcengine/verl.git
 MODEL_ID    := Qwen/Qwen2.5-Coder-0.5B-Instruct
-MODEL_DIR   := models/qwen2.5-coder-0.5b-instruct
 
 # CUDA build of torch to install — must match the driver's CUDA version
 # (`nvidia-smi` header). Override with `make env TORCH_INDEX=...` if different.
@@ -46,6 +44,24 @@ ifeq ($(ON_CC),1)
   PYTHON := bash $(PROJECT)/hpc/python_login.sh
 else
   PYTHON := $(VENV)/bin/python3
+endif
+
+# Model weights + HF cache are large, easily re-downloaded, and not the thing
+# that needs backing up — on CC they go under $SCRATCH instead of $(PROJECT),
+# which sits on a group-shared /project filesystem with a tight file-count quota.
+ifeq ($(ON_CC),1)
+  MODELS_ROOT := $(shell echo $$SCRATCH)/ai4math_training_models
+else
+  MODELS_ROOT := $(PROJECT)/models
+endif
+MODEL_DIR := $(MODELS_ROOT)/qwen2.5-coder-0.5b-instruct
+
+# The CC venv (verl+vllm+torch+ray, ~150 packages) is tens of thousands of
+# small files — also goes under $SCRATCH for the same file-count-quota reason.
+ifeq ($(ON_CC),1)
+  VENV_HPC := $(shell echo $$SCRATCH)/ai4math_training_venv_hpc
+else
+  VENV_HPC := $(PROJECT)/.venv_hpc
 endif
 
 # ── Setup ─────────────────────────────────────────────────────────────────────
@@ -165,8 +181,8 @@ check-toolchain:
 model: $(MODEL_DIR)/config.json
 
 $(MODEL_DIR)/config.json:
-	@mkdir -p models/.hf_cache
-	@HF_HOME=$(PROJECT)/models/.hf_cache $(PYTHON) -c \
+	@mkdir -p $(MODELS_ROOT)/.hf_cache
+	@HF_HOME=$(MODELS_ROOT)/.hf_cache $(PYTHON) -c \
 	  "from huggingface_hub import snapshot_download; snapshot_download('$(MODEL_ID)', local_dir='$(MODEL_DIR)')"
 
 # Dataset sizes are STAMPED, not plain file targets. A file target compares
@@ -187,7 +203,7 @@ dataset:
 	 if [ -f data/train.parquet ] && [ "$$(cat data/.stamp 2>/dev/null)" = "$$want" ]; then \
 	   echo "[dataset] up to date ($$want)"; \
 	 else \
-	   HF_HOME=$(PROJECT)/models/.hf_cache $(PYTHON) scripts/prepare_dataset.py \
+	   HF_HOME=$(MODELS_ROOT)/.hf_cache $(PYTHON) scripts/prepare_dataset.py \
 	     --n-train $(RL_N_TRAIN) --n-val $(RL_N_VAL) && echo "$$want" > data/.stamp; \
 	 fi
 
@@ -200,7 +216,7 @@ smoke:
 	 TRAIN_BATCH_SIZE=8 PPO_MINI_BATCH_SIZE=8 ROLLOUT_N=2 TOTAL_EPOCHS=1 \
 	 PROJECT_NAME=beqplus_smoke EXPERIMENT_NAME=smoke \
 	 PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True \
-	 HF_HOME=$(PROJECT)/models/.hf_cache \
+	 HF_HOME=$(MODELS_ROOT)/.hf_cache \
 	 bash configs/run_grpo.sh \
 	   data.train_files=$(PROJECT)/data/smoke/train.parquet \
 	   data.val_files=$(PROJECT)/data/smoke/val.parquet \
@@ -211,7 +227,7 @@ train-composite:
 	@source "$(VENV)/bin/activate" && \
 	 REWARD_FN_NAME=compute_score_composite \
 	 PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True \
-	 HF_HOME=$(PROJECT)/models/.hf_cache \
+	 HF_HOME=$(MODELS_ROOT)/.hf_cache \
 	 bash configs/run_grpo.sh trainer.total_training_steps=30 trainer.test_freq=10 trainer.save_freq=10
 
 .PHONY: train-typecheck
@@ -219,7 +235,7 @@ train-typecheck:
 	@source "$(VENV)/bin/activate" && \
 	 REWARD_FN_NAME=compute_score_typecheck_only \
 	 PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True \
-	 HF_HOME=$(PROJECT)/models/.hf_cache \
+	 HF_HOME=$(MODELS_ROOT)/.hf_cache \
 	 bash configs/run_grpo.sh trainer.total_training_steps=30 trainer.test_freq=10 trainer.save_freq=10
 
 # Single GPU: the two ablation arms cannot run concurrently.
@@ -271,7 +287,7 @@ sft-dataset: dataset
 	 if [ -f data/sft/train.parquet ] && [ "$$(cat data/sft/.stamp 2>/dev/null)" = "$$want" ]; then \
 	   echo "[sft-dataset] up to date ($$want)"; \
 	 else \
-	   source "$(VENV)/bin/activate" && HF_HOME=$(PROJECT)/models/.hf_cache \
+	   source "$(VENV)/bin/activate" && HF_HOME=$(MODELS_ROOT)/.hf_cache \
 	     python3 scripts/prepare_sft_dataset.py \
 	       --n-train $(SFT_N_TRAIN) --n-val $(SFT_N_VAL) && \
 	   echo "$$want" > data/sft/.stamp; \
@@ -301,7 +317,7 @@ sft-dataset: dataset
 #                    peaked at 45.8GB host RAM and was OOM-killed, while every
 #                    completed run on this box used 8.
 INIT ?=
-_INIT_MODEL = $(if $(INIT),$(INIT),$(PROJECT)/$(MODEL_DIR))
+_INIT_MODEL = $(if $(INIT),$(INIT),$(MODEL_DIR))
 # Tag runs so a from-scratch run and a warm-started one never share a checkpoint
 # directory (they are different experiments and must not overwrite each other).
 _INIT_TAG = $(if $(INIT),from_$(notdir $(INIT)),scratch)
@@ -335,7 +351,7 @@ train-rl: _check-init
 	 ROLLOUT_N=$${ROLLOUT_N:-4} AGENT_LOOP_WORKERS=$${AGENT_LOOP_WORKERS:-1} \
 	 TRAIN_BATCH_SIZE=$${TRAIN_BATCH_SIZE:-8} PPO_MINI_BATCH_SIZE=$${PPO_MINI_BATCH_SIZE:-8} \
 	 PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True \
-	 HF_HOME=$(PROJECT)/models/.hf_cache \
+	 HF_HOME=$(MODELS_ROOT)/.hf_cache \
 	 bash configs/run_grpo.sh \
 	   trainer.total_training_steps=$${TOTAL_STEPS:-30} \
 	   trainer.test_freq=$${TEST_FREQ:-10} trainer.save_freq=$${SAVE_FREQ:-10}
@@ -429,7 +445,7 @@ eval-ckpt:
 	 fi; \
 	 out="$(PROJECT)/results/eval_$$(basename $$merged)_n$${N_EVAL:-80}.json"; \
 	 echo "[eval] $$merged -> $$out"; \
-	 PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True HF_HOME=$(PROJECT)/models/.hf_cache \
+	 PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True HF_HOME=$(MODELS_ROOT)/.hf_cache \
 	 python3 scripts/evaluate_checkpoints.py --checkpoint "$$merged" \
 	   --n-eval $${N_EVAL:-80} --out "$$out"
 
@@ -442,7 +458,7 @@ compare:
 evaluate: merge-checkpoints
 	@source "$(VENV)/bin/activate" && \
 	 PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True \
-	 HF_HOME=$(PROJECT)/models/.hf_cache \
+	 HF_HOME=$(MODELS_ROOT)/.hf_cache \
 	 python3 scripts/evaluate_checkpoints.py \
 	   --checkpoint base \
 	   --checkpoint $(MERGED)/typecheck_only-step$(STEP) \

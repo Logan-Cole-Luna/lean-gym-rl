@@ -21,10 +21,9 @@ if [ -d /cvmfs/soft.computecanada.ca ]; then
     module --force purge 2>/dev/null || true
     module load StdEnv/2023
     module load python/3.11.5
-    module load gcc
+    module load gcc arrow/23.0.1 opencv/4.13.0
 fi
 
-PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-source "${PROJECT_ROOT}/.venv_hpc/bin/activate"
+source "${SCRATCH}/ai4math_training_venv_hpc/bin/activate"
 
 exec python "$@"
