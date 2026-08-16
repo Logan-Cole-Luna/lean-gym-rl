@@ -27,7 +27,10 @@
 set -euo pipefail
 
 PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-VENV_DIR="${PROJECT_ROOT}/.venv_hpc"
+# Lives under $SCRATCH, not $PROJECT_ROOT: ~150 packages (verl+vllm+torch+ray)
+# is tens of thousands of small files, and /lustre06/project has a tight
+# group-shared file-count quota (see hpc/README.md / MEMORY notes on this).
+VENV_DIR="${SCRATCH}/ai4math_training_venv_hpc"
 
 echo "=========================================="
 echo "  ai4math_training — Compute Canada Setup"
@@ -41,7 +44,7 @@ module --force purge
 module load StdEnv/2023
 module load cuda/12.2 cudnn/9.2.1.18
 module load python/3.11.5
-module load gcc
+module load gcc arrow/23.0.1 opencv/4.13.0
 
 echo "[setup] Python: $(which python3) ($(python3 --version))"
 
@@ -104,7 +107,11 @@ if [[ ! -d "${PROJECT_ROOT}/repos/verl" ]]; then
 fi
 
 echo "[setup] Installing verl[vllm] from ${PROJECT_ROOT}/repos/verl (editable)..."
-(cd "${PROJECT_ROOT}/repos/verl" && pip install -e ".[vllm]")
+# vllm pinned to 0.20.2: verl only requires vllm>=0.18.0, and pip's resolver
+# otherwise walks newer versions first, landing on 0.19.1 — a broken wheel in
+# the CC wheelhouse (missing .dist-info, "invalid wheel" build error). 0.20.2
+# is the newest version confirmed to have a valid wheelhouse wheel.
+(cd "${PROJECT_ROOT}/repos/verl" && pip install -e ".[vllm]" "vllm==0.20.2")
 pip install "TransferQueue==0.1.8"
 
 echo "[setup] Installing lean-interact..."
@@ -122,7 +129,7 @@ fi
 # =============================================================
 # Phase 4: Create HF cache directory
 # =============================================================
-HF_CACHE="${PROJECT_ROOT}/models/.hf_cache"
+HF_CACHE="${SCRATCH}/ai4math_training_models/.hf_cache"
 mkdir -p "${HF_CACHE}"
 mkdir -p "${PROJECT_ROOT}/logs"
 echo "[setup] HF cache directory: ${HF_CACHE}"

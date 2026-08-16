@@ -21,13 +21,13 @@ module --force purge
 module load StdEnv/2023
 module load cuda/12.2 cudnn/9.2.1.18
 module load python/3.11.5
-module load gcc
+module load gcc arrow/23.0.1 opencv/4.13.0
 
 # --- Project root ---
 export PROJECT_ROOT="${PROJECT_ROOT:-${SLURM_SUBMIT_DIR:-$SCRATCH/ai4math_training}}"
 
 # --- Activate the persistent CC venv ---
-source "${PROJECT_ROOT}/.venv_hpc/bin/activate"
+source "${SCRATCH}/ai4math_training_venv_hpc/bin/activate"
 
 # --- HF offline mode (compute nodes have no internet) ---
 DEFAULT_SHARED_HF_HOME="${HOME}/scratch/.cache/huggingface"
@@ -36,9 +36,9 @@ if [[ -d "${DEFAULT_SHARED_HF_HOME}/hub" ]]; then
 	export HF_HUB_CACHE="${HF_HUB_CACHE:-${DEFAULT_SHARED_HF_HOME}/hub}"
 	export HF_DATASETS_CACHE="${HF_DATASETS_CACHE:-${DEFAULT_SHARED_HF_HOME}/datasets}"
 else
-	export HF_HOME="${HF_HOME:-${PROJECT_ROOT}/models/.hf_cache}"
-	export HF_HUB_CACHE="${HF_HUB_CACHE:-${PROJECT_ROOT}/models/.hf_cache/hub}"
-	export HF_DATASETS_CACHE="${HF_DATASETS_CACHE:-${PROJECT_ROOT}/models/.hf_cache/datasets}"
+	export HF_HOME="${HF_HOME:-${SCRATCH}/ai4math_training_models/.hf_cache}"
+	export HF_HUB_CACHE="${HF_HUB_CACHE:-${SCRATCH}/ai4math_training_models/.hf_cache/hub}"
+	export HF_DATASETS_CACHE="${HF_DATASETS_CACHE:-${SCRATCH}/ai4math_training_models/.hf_cache/datasets}"
 fi
 export TRANSFORMERS_CACHE="${TRANSFORMERS_CACHE:-${HF_HUB_CACHE}}"
 export HF_TOKEN=$(cat "$HOME/.hf_token" 2>/dev/null || true)

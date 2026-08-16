@@ -23,7 +23,6 @@
 SHELL       := /bin/bash
 PROJECT     := $(shell pwd)
 VENV        := $(PROJECT)/.venv
-VENV_HPC    := $(PROJECT)/.venv_hpc
 
 # Pinned to match internlm/Lean-Workbook's target toolchain (see reward/beq_plus.py).
 # If you swap datasets, re-pin both of these together and re-run `make mathlib`.
@@ -32,7 +31,6 @@ MATHLIB4_TAG   := v4.8.0-rc1
 
 VERL_REPO   := https://github.com/volcengine/verl.git
 MODEL_ID    := Qwen/Qwen2.5-Coder-0.5B-Instruct
-MODEL_DIR   := models/qwen2.5-coder-0.5b-instruct
 
 # CUDA build of torch to install — must match the driver's CUDA version
 # (`nvidia-smi` header). Override with `make env TORCH_INDEX=...` if different.
@@ -46,6 +44,24 @@ ifeq ($(ON_CC),1)
   PYTHON := bash $(PROJECT)/hpc/python_login.sh
 else
   PYTHON := $(VENV)/bin/python3
+endif
+
+# Model weights + HF cache are large, easily re-downloaded, and not the thing
+# that needs backing up — on CC they go under $SCRATCH instead of $(PROJECT),
+# which sits on a group-shared /project filesystem with a tight file-count quota.
+ifeq ($(ON_CC),1)
+  MODELS_ROOT := $(shell echo $$SCRATCH)/ai4math_training_models
+else
+  MODELS_ROOT := $(PROJECT)/models
+endif
+MODEL_DIR := $(MODELS_ROOT)/qwen2.5-coder-0.5b-instruct
+
+# The CC venv (verl+vllm+torch+ray, ~150 packages) is tens of thousands of
+# small files — also goes under $SCRATCH for the same file-count-quota reason.
+ifeq ($(ON_CC),1)
+  VENV_HPC := $(shell echo $$SCRATCH)/ai4math_training_venv_hpc
+else
+  VENV_HPC := $(PROJECT)/.venv_hpc
 endif
 
 # ── Setup ─────────────────────────────────────────────────────────────────────
@@ -165,15 +181,15 @@ check-toolchain:
 model: $(MODEL_DIR)/config.json
 
 $(MODEL_DIR)/config.json:
-	@mkdir -p models/.hf_cache
-	@HF_HOME=$(PROJECT)/models/.hf_cache $(PYTHON) -c \
+	@mkdir -p $(MODELS_ROOT)/.hf_cache
+	@HF_HOME=$(MODELS_ROOT)/.hf_cache $(PYTHON) -c \
 	  "from huggingface_hub import snapshot_download; snapshot_download('$(MODEL_ID)', local_dir='$(MODEL_DIR)')"
 
 .PHONY: dataset
 dataset: data/train.parquet
 
 data/train.parquet: scripts/prepare_dataset.py
-	@HF_HOME=$(PROJECT)/models/.hf_cache $(PYTHON) scripts/prepare_dataset.py
+	@HF_HOME=$(MODELS_ROOT)/.hf_cache $(PYTHON) scripts/prepare_dataset.py
 
 # ── Run ───────────────────────────────────────────────────────────────────────
 
@@ -184,7 +200,7 @@ smoke:
 	 TRAIN_BATCH_SIZE=8 PPO_MINI_BATCH_SIZE=8 ROLLOUT_N=2 TOTAL_EPOCHS=1 \
 	 PROJECT_NAME=beqplus_smoke EXPERIMENT_NAME=smoke \
 	 PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True \
-	 HF_HOME=$(PROJECT)/models/.hf_cache \
+	 HF_HOME=$(MODELS_ROOT)/.hf_cache \
 	 bash configs/run_grpo.sh \
 	   data.train_files=$(PROJECT)/data/smoke/train.parquet \
 	   data.val_files=$(PROJECT)/data/smoke/val.parquet \
@@ -195,7 +211,7 @@ train-composite:
 	@source "$(VENV)/bin/activate" && \
 	 REWARD_FN_NAME=compute_score_composite \
 	 PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True \
-	 HF_HOME=$(PROJECT)/models/.hf_cache \
+	 HF_HOME=$(MODELS_ROOT)/.hf_cache \
 	 bash configs/run_grpo.sh trainer.total_training_steps=30 trainer.test_freq=10 trainer.save_freq=10
 
 .PHONY: train-typecheck
@@ -203,7 +219,7 @@ train-typecheck:
 	@source "$(VENV)/bin/activate" && \
 	 REWARD_FN_NAME=compute_score_typecheck_only \
 	 PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True \
-	 HF_HOME=$(PROJECT)/models/.hf_cache \
+	 HF_HOME=$(MODELS_ROOT)/.hf_cache \
 	 bash configs/run_grpo.sh trainer.total_training_steps=30 trainer.test_freq=10 trainer.save_freq=10
 
 # Single GPU: the two ablation arms cannot run concurrently.
