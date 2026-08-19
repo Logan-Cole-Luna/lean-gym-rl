@@ -46,6 +46,11 @@ def main():
     ap.add_argument("--n-train", type=int, default=400, help="PoC subset size for train")
     ap.add_argument("--n-val", type=int, default=80, help="PoC subset size for val")
     ap.add_argument("--seed", type=int, default=0)
+    # RL must not train on prompts SFT already fit. See the block below for the
+    # measurement that motivated this; `--no-exclude-sft` restores the old
+    # (broken) behaviour only for reproducing historical runs.
+    ap.add_argument("--no-exclude-sft", dest="exclude_sft", action="store_false",
+                    help="allow RL train prompts that SFT already trained on (NOT recommended)")
     args = ap.parse_args()
 
     import os
@@ -86,10 +91,49 @@ def main():
     before = len(pool)
     pool = [r for r in pool
             if INSTRUCTION.format(informal=r["natural_language_statement"]) not in val_prompts]
+    dropped_val_dupes = before - len(pool)
+
+    # EXCLUDE PROMPTS SFT ALREADY TRAINED ON.
+    #
+    # This was the single biggest defect in the RL experiments. 93.4% of the RL
+    # train prompts had also been in the SFT train set, so GRPO was being asked
+    # to improve a policy on problems it had already memorised. Measured on
+    # sft-step390 (results/gradient_signal_probe.json, 48 prompts x 8 rollouts):
+    #
+    #   full-BEq+ rate on RL train prompts  73.7%
+    #   full-BEq+ rate on held-out val      38.8%     <- 34.9pp generalisation gap
+    #   groups where all 8 rollouts already correct   62.5%
+    #   groups able to produce ANY gradient           16.7%
+    #
+    # GRPO's advantage is r_i - mean(r_group), so a group whose rollouts all
+    # score the same teaches nothing. Training on memorised prompts makes 5 of
+    # every 6 groups dead by construction, which is why every RL arm drifted
+    # instead of learning. Filtering here is what makes the reward comparison a
+    # test of the REWARD rather than a test of how much SFT memorised.
+    if args.exclude_sft:
+        sft_path = Path(__file__).resolve().parent.parent / "data" / "sft" / "train.parquet"
+        if sft_path.exists():
+            import pandas as _pd
+
+            sft_prompts = {m[0]["content"] for m in _pd.read_parquet(sft_path)["messages"]}
+            before_sft = len(pool)
+            pool = [r for r in pool
+                    if INSTRUCTION.format(informal=r["natural_language_statement"]) not in sft_prompts]
+            print(f"  excluded {before_sft - len(pool)} records whose prompt was in SFT training")
+        else:
+            print(f"  WARNING: {sft_path} not found -- cannot exclude SFT prompts from RL training.")
+
     train_recs = pool[: args.n_train]
+    if len(train_recs) < args.n_train:
+        # Lean-Workbook has 25,214 rows but only 13,297 UNIQUE prompts, and a
+        # 20k-row SFT set consumes 11,627 of them. Asking for more RL prompts
+        # than remain is silently satisfied with fewer, which would make a
+        # "4000-prompt" run secretly reuse a much smaller set across epochs.
+        print(f"  WARNING: only {len(train_recs)} records available, {args.n_train} requested. "
+              f"Shrink the SFT set (scripts/prepare_sft_dataset.py --n-train) to free more.")
     print(f"PoC subset: {len(train_recs)} train, {len(val_recs)} val (of {len(recs)} available)")
     print(f"  val pinned at offset {VAL_OFFSET}; "
-          f"dropped {before - len(pool)} duplicate-prompt records from the train pool")
+          f"dropped {dropped_val_dupes} duplicate-prompt records from the train pool")
 
     train_rows = [to_verl_row(r, "train", i) for i, r in enumerate(train_recs)]
     val_rows = [to_verl_row(r, "val", i) for i, r in enumerate(val_recs)]

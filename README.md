@@ -11,6 +11,14 @@ project builds the smallest real pipeline that can measure it: GRPO training wit
 swappable reward functions (type-check-only vs. type-check + BEq+), on real data, with a
 real Lean toolchain.
 
+> **Result: [results/FINDINGS.md](results/FINDINGS.md).** Across 37 evaluated
+> checkpoints no RL run beat SFT alone on BEq+ (best: SFT at 38.8%, n=400,
+> paired McNemar throughout). A gradient probe found an early data defect — 93.4%
+> of RL prompts overlapped SFT training, leaving only 16.7% of rollout groups
+> able to produce a gradient. After fixing it and rerunning on disjoint data the
+> training dynamics improved (dead steps 26%→16%, KL drift 0.33→0.21) but BEq+
+> still fell 38.8%→33.2% (p=0.008). Read that file first.
+
 ## What's here
 
 | Piece | Choice | Why |

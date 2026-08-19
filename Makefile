@@ -199,12 +199,19 @@ $(MODEL_DIR)/config.json:
 # byte-stable and already-cached eval results stay comparable.
 # Defaults MUST match what is on disk, or `make train-sft` (which depends on
 # these) would see a stamp mismatch and quietly rebuild a smaller dataset.
-RL_N_TRAIN ?= 4000
+#
+# RL_N_TRAIN is capped by how many unique prompts SFT did NOT consume. The
+# corpus has 13,297 unique prompts; a 20k-row SFT set uses 11,627 and val takes
+# 390, leaving 1,280. prepare_dataset.py now excludes SFT prompts by default --
+# training RL on memorised prompts left 62.5% of rollout groups saturated and
+# only 16.7% able to produce a gradient at all. To run RL on more than 1,280
+# prompts, shrink the SFT set first (SFT_N_TRAIN) to free some back up.
+RL_N_TRAIN ?= 1280
 RL_N_VAL   ?= 400
 
 .PHONY: dataset
 dataset:
-	@want="n_train=$(RL_N_TRAIN) n_val=$(RL_N_VAL)"; \
+	@want="n_train=$(RL_N_TRAIN) n_val=$(RL_N_VAL) excl_sft=1"; \
 	 if [ -f data/train.parquet ] && [ "$$(cat data/.stamp 2>/dev/null)" = "$$want" ]; then \
 	   echo "[dataset] up to date ($$want)"; \
 	 else \
@@ -355,23 +362,46 @@ train-sft: sft-dataset _check-init
 #                    val-core/<data_source>/acc/mean@1 (reward functions emit
 #                    `acc` = BEq+), so it is worth running often enough to
 #                    actually select on. It costs a val pass over data/val.parquet.
-#   SAVE_FREQ=10  -- checkpoint selection is only as good as its candidates, and
-#                    the previous run's 25-step spacing straddled the point
-#                    where BEq+ fell off a cliff (step 100 -> 125).
+#   SAVE_FREQ=20  -- checkpoint selection is only as good as its candidates, but
+#                    each raw checkpoint is ~6.1GB (FSDP shards + optimizer), so
+#                    granularity is bought with disk. 20 gives 5 candidates over
+#                    a 100-step run for ~31GB. The disk has hit 100% here before.
+#   MAX_CKPT_KEEP -- DERIVED from the two above, never set independently.
+#                    verl's trainer.max_actor_ckpt_to_keep rmtree's the actor/
+#                    subdir of older checkpoints, leaving a global_step_N/ shell
+#                    holding only dataloader state. Its default of 2 against
+#                    SAVE_FREQ=10 silently destroyed 8 of the 10 checkpoints of a
+#                    100-step run -- the run completed, but there was almost
+#                    nothing left to select over, and eval-sweep failed on the
+#                    husks with a misleading "Repo id must be in the form ..."
+#                    from transformers. Deriving it means the two knobs cannot
+#                    drift apart again. Override only if you know the disk cost.
+#
+# PPO_MINI_BATCH_SIZE defaults to TRAIN_BATCH_SIZE, not a fixed number. verl's
+# v1 trainer pads the batch up to lcm(dp_size, ppo_mini_batch_size * rollout.n)
+# (trainer_base.py:_get_required_batch_multiple) -- if only TRAIN_BATCH_SIZE is
+# lowered while PPO_MINI_BATCH_SIZE stays at its old value, the padder silently
+# restores the ORIGINAL batch size with synthetic samples and the memory
+# reduction you asked for never happens. Measured: TRAIN_BATCH_SIZE=4 alone
+# with PPO_MINI_BATCH_SIZE left at 8 and ROLLOUT_N=8 logged "Upsampled batch
+# from 32 to 64" and OOM'd on the exact same 64-sequence backward pass as
+# before the "fix". Keeping them equal by default avoids this trap.
 .PHONY: train-rl
 train-rl: _check-init
 	@$(ACTIVATE) && \
+	 tbs=$${TRAIN_BATCH_SIZE:-8}; \
 	 MODEL_PATH=$(_INIT_MODEL) \
 	 REWARD_FN_NAME=$${REWARD_FN_NAME:-compute_score_gated} \
 	 EXPERIMENT_NAME=$${EXPERIMENT_NAME:-rl_$(_INIT_TAG)_$${REWARD_FN_NAME:-compute_score_gated}} \
 	 ROLLOUT_N=$${ROLLOUT_N:-8} AGENT_LOOP_WORKERS=$${AGENT_LOOP_WORKERS:-1} \
-	 TRAIN_BATCH_SIZE=$${TRAIN_BATCH_SIZE:-8} PPO_MINI_BATCH_SIZE=$${PPO_MINI_BATCH_SIZE:-8} \
+	 TRAIN_BATCH_SIZE=$$tbs PPO_MINI_BATCH_SIZE=$${PPO_MINI_BATCH_SIZE:-$$tbs} \
 	 VALIDATION_DATA_DIR=$${VALIDATION_DATA_DIR:-$(PROJECT)/results/val_generations/$${EXPERIMENT_NAME:-rl_$(_INIT_TAG)}} \
 	 PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True \
 	 HF_HOME=$(MODELS_ROOT)/.hf_cache \
+	 MAX_CKPT_KEEP=$${MAX_CKPT_KEEP:-$$(( $${TOTAL_STEPS:-100} / $${SAVE_FREQ:-20} + 2 ))} \
 	 bash configs/run_grpo.sh \
 	   trainer.total_training_steps=$${TOTAL_STEPS:-100} \
-	   trainer.test_freq=$${TEST_FREQ:-10} trainer.save_freq=$${SAVE_FREQ:-10}
+	   trainer.test_freq=$${TEST_FREQ:-10} trainer.save_freq=$${SAVE_FREQ:-20}
 
 # Back-compat alias; `make train-sft` is the current entry point.
 .PHONY: sft
@@ -414,6 +444,82 @@ train-gated:
 .PHONY: train-gated-filtered
 train-gated-filtered:
 	@FILTER_GROUPS=1 $(MAKE) --no-print-directory train-rl REWARD_FN_NAME=compute_score_gated
+
+# ── Rejection-sampling (RFT) arm ──────────────────────────────────────────────
+# The control that separates "BEq+ is a bad training signal" from "GRPO is the
+# wrong way to consume it at this batch size".
+#
+# WHY THIS ARM EXISTS (measured, results/FINDINGS.md). At batch 4 x rollout_n 8
+# only ~37% of rollout groups are informative, so each Adam update is driven by
+# ~1.5 prompts. A placebo reward with NO semantic content but the same advantage
+# geometry reproduces the gated arm's dead-step rate, advantage spread,
+# grad_norm and KL drift -- i.e. the GRPO arms' training curves are consistent
+# with pure noise. Rejection sampling has no advantage estimate at all, so it
+# uses the SAME BEq+ verdicts with none of that variance.
+#
+# The three stages are split because their resource profiles differ by an order
+# of magnitude: generation is GPU-bound and takes minutes, BEq+ scoring is
+# CPU-bound and takes hours (and parallelises across processes offline, unlike
+# during training where FSDP offload leaves no host RAM for extra Mathlibs).
+ROLLOUT_DIR   := $(PROJECT)/data/rollouts
+ROLLOUT_TAG   ?= sft390_k8
+ROLLOUT_K     ?= 8
+ROLLOUT_TEMP  ?= 1.15
+SCORE_WORKERS ?= 4
+
+.PHONY: rollouts
+rollouts:
+	@$(ACTIVATE) && \
+	 PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True HF_HOME=$(MODELS_ROOT)/.hf_cache \
+	 python3 scripts/generate_rollouts.py \
+	   --checkpoint $${INIT:-$(SFT_MERGED)} --parquet $(PROJECT)/data/train.parquet \
+	   --k $(ROLLOUT_K) --temperature $(ROLLOUT_TEMP) \
+	   --out $(ROLLOUT_DIR)/$(ROLLOUT_TAG).jsonl
+
+# Resumable and append-only: a pass over ~10k rollouts is hours long, so an
+# interruption must not throw the completed work away.
+.PHONY: score-rollouts
+score-rollouts:
+	@$(ACTIVATE) && python3 scripts/score_rollouts.py \
+	   --rollouts $(ROLLOUT_DIR)/$(ROLLOUT_TAG).jsonl \
+	   --out $(ROLLOUT_DIR)/$(ROLLOUT_TAG).scored.jsonl \
+	   --workers $(SCORE_WORKERS)
+
+# Both arms come from the SAME scoring pass, so the only difference between them
+# is the acceptance criterion -- which is exactly the paper's claim under test.
+# The type-check filter accepts ~2x as many rollouts, so the second build is
+# SIZE-MATCHED to the first: otherwise the comparison confounds reward quality
+# with dataset size.
+.PHONY: rft-data
+rft-data:
+	@$(ACTIVATE) && set -e; \
+	 python3 scripts/build_rft_dataset.py \
+	   --scored $(ROLLOUT_DIR)/$(ROLLOUT_TAG).scored.jsonl \
+	   --rollouts $(ROLLOUT_DIR)/$(ROLLOUT_TAG).jsonl \
+	   --filter beq_plus --out-dir $(PROJECT)/data/rft_beq \
+	   --stats-out $(PROJECT)/results/rollout_stats.json; \
+	 n=$$(python3 -c "import pandas as pd,sys; print(len(pd.read_parquet('$(PROJECT)/data/rft_beq/train.parquet'))+len(pd.read_parquet('$(PROJECT)/data/rft_beq/val.parquet')))"); \
+	 echo "[rft] size-matching type-check arm to $$n pairs"; \
+	 python3 scripts/build_rft_dataset.py \
+	   --scored $(ROLLOUT_DIR)/$(ROLLOUT_TAG).scored.jsonl \
+	   --rollouts $(ROLLOUT_DIR)/$(ROLLOUT_TAG).jsonl \
+	   --filter typecheck --out-dir $(PROJECT)/data/rft_tc --match-size $$n
+
+# Continue training from the SFT policy on its OWN verified generations.
+# LR is an order of magnitude below the SFT stage's 1e-4: this is a refinement
+# pass over a few thousand self-generated examples, and the starting policy is
+# the best one we have -- the failure mode to avoid is exactly the drift the
+# GRPO arms exhibit.
+.PHONY: train-rft
+train-rft:
+	@test -n "$(RFT_DATA)" || { echo "Usage: make train-rft RFT_DATA=data/rft_beq TAG=beq"; exit 1; }
+	@$(ACTIVATE) && \
+	 MODEL_PATH=$${INIT:-$(SFT_MERGED)} \
+	 SAVE_PATH=$(PROJECT)/checkpoints/rft/$${TAG:-beq} \
+	 TRAIN_FILE=$(PROJECT)/$(RFT_DATA)/train.parquet \
+	 VAL_FILE=$(PROJECT)/$(RFT_DATA)/val.parquet \
+	 LR=$${LR:-1e-5} TOTAL_EPOCHS=$${TOTAL_EPOCHS:-2} SFT_SAVE_FREQ=$${SFT_SAVE_FREQ:-100} \
+	 bash scripts/run_sft.sh
 
 # ── Evaluation ────────────────────────────────────────────────────────────────
 # The head-to-head comparison the PoC exists to produce. NOTE: verl's own
@@ -484,8 +590,16 @@ eval-ckpt:
 	       shard="$$src/global_step_$$step" ;; \
 	   esac; \
 	   if [ -d "$$shard/actor" ]; then shard="$$shard/actor"; fi; \
+	   if [ ! -f "$$shard/huggingface/config.json" ]; then \
+	     echo "[eval-ckpt] SKIP $$name step $$step: no weights in $$shard."; \
+	     echo "  verl's trainer.max_actor_ckpt_to_keep rmtree'd this checkpoint's actor/"; \
+	     echo "  subdir, leaving only its dataloader state. Raise MAX_CKPT_KEEP (see"; \
+	     echo "  train-rl) so every checkpoint you save also survives the run."; \
+	     exit 3; \
+	   fi; \
 	   merged="$(PROJECT)/checkpoints/merged/$${name}-step$${step}"; \
-	   if [ ! -d "$$merged" ]; then \
+	   if ! ls "$$merged"/*.safetensors >/dev/null 2>&1; then \
+	     rm -rf "$$merged"; \
 	     echo "[merge] $$shard -> $$merged"; \
 	     python3 -m verl.model_merger merge --backend fsdp \
 	       --local_dir "$$shard" --target_dir "$$merged"; \
@@ -504,13 +618,26 @@ eval-ckpt:
 .PHONY: eval-sweep
 eval-sweep:
 	@test -n "$(RUN)" || { echo "Usage: make eval-sweep RUN=<verl run dir> [N_EVAL=400]"; exit 1; }
-	@set -e; for step in $$(ls -d $(RUN)/global_step_* 2>/dev/null | sed 's/.*global_step_//' | sort -n); do \
+	@set -e; skipped=0; \
+	 for step in $$(ls -d $(RUN)/global_step_* 2>/dev/null | sed 's/.*global_step_//' | sort -n); do \
 	   name=$$(basename $(RUN))-step$$step; \
 	   out="$(PROJECT)/results/eval_$${name}_n$${N_EVAL:-400}.json"; \
 	   if [ -f "$$out" ]; then echo "[eval-sweep] cached: $$name"; continue; fi; \
+	   d=$(RUN)/global_step_$$step; \
+	   if [ ! -f "$$d/actor/huggingface/config.json" ] && [ ! -f "$$d/huggingface/config.json" ]; then \
+	     echo "[eval-sweep] SKIP $$name: weights pruned mid-run (max_actor_ckpt_to_keep)"; \
+	     skipped=$$((skipped+1)); continue; \
+	   fi; \
 	   echo "[eval-sweep] ===== $$name ====="; \
-	   $(MAKE) --no-print-directory eval-ckpt CKPT=$(RUN)/global_step_$$step N_EVAL=$${N_EVAL:-400}; \
-	 done
+	   $(MAKE) --no-print-directory eval-ckpt CKPT=$$d N_EVAL=$${N_EVAL:-400}; \
+	 done; \
+	 if [ $$skipped -gt 0 ]; then \
+	   echo ""; \
+	   echo "[eval-sweep] $$skipped checkpoint(s) had their weights pruned mid-run by"; \
+	   echo "  verl's trainer.max_actor_ckpt_to_keep, so only their dataloader state"; \
+	   echo "  remains. Selection below covers only what survived. Future runs derive"; \
+	   echo "  MAX_CKPT_KEEP from SAVE_FREQ (see train-rl) so this cannot recur."; \
+	 fi
 	@$(MAKE) --no-print-directory select
 
 # Aggregate every cached result JSON into one table (no re-scoring).
