@@ -27,3 +27,6 @@ __pycache__/
 
 # Editor/OS
 .DS_Store
+
+# verl's raw per-step validation dumps (large, regenerable)
+results/val_generations/
