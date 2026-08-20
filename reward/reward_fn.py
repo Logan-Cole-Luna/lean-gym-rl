@@ -374,6 +374,68 @@ def compute_score_guided(data_source, solution_str, ground_truth, extra_info=Non
     return {"score": score, **_diagnostics(r, sim)}
 
 
+# ── Placebo reward: the drift control ─────────────────────────────────────────
+# Deterministic pseudo-random reward with NO semantic content and NO Lean cost,
+# statistically matched to what compute_score_gated actually produced on the
+# clean disjoint run (group informative rate ~0.37 -> ~16% dead steps at batch 4;
+# within informative groups, 0/1 rewards at p~0.3 -> advantage magnitudes like a
+# 2-3-winners-of-8 group).
+#
+# WHY THIS EXISTS. The clean gated run has a live gradient on 84% of steps, a
+# flat training reward (r=+0.010), KL drift to 0.21, and a significant val BEq+
+# decline -- a policy that moves without learning. Two hypotheses fit:
+#   (a) GRPO's per-update gradient here (~1 informative group of 8 rollouts,
+#       Adam-rescaled to full-lr parameter movement) is noise-dominated, and
+#       100 such updates erode a good policy REGARDLESS of what the reward means;
+#   (b) the BEq+ gradient itself teaches something harmful.
+# This reward decides between them: it reproduces the gated arm's advantage
+# GEOMETRY exactly (sparsity, magnitudes, determinism-in-text) while carrying
+# zero information. If val BEq+ decays the same way under it, the decay is (a)
+# and the fix is variance reduction, not reward design. If the placebo arm stays
+# flat, the decay is (b) and the gated reward needs surgery.
+#
+# Determinism in text is deliberate: BEq+ is a deterministic function of the
+# rollout text, so the placebo is too (identical rollouts score identically,
+# within AND across steps). Each prompt is seen at most once in a 100-step
+# batch-4 run, so the policy cannot learn to farm lucky texts; the signal is
+# structured noise by construction.
+def _placebo_hash(s: str) -> int:
+    import hashlib
+
+    return int.from_bytes(hashlib.md5(s.encode("utf-8")).digest()[:8], "big")
+
+
+PLACEBO_GROUP_INFORMATIVE_P = float(os.environ.get("BEQ_PLACEBO_GROUP_P", "0.37"))
+PLACEBO_ROLLOUT_P = float(os.environ.get("BEQ_PLACEBO_ROLLOUT_P", "0.30"))
+
+
+def compute_score_placebo(data_source, solution_str, ground_truth, extra_info=None) -> dict:
+    # Per-PROMPT gate (hash of the gold): mimics "this prompt is at the policy's
+    # ability edge" being a persistent property of the prompt, as it is for BEq+.
+    gate = (_placebo_hash("gate::" + ground_truth) % 10_000) < PLACEBO_GROUP_INFORMATIVE_P * 10_000
+    if gate:
+        roll = _placebo_hash("roll::" + ground_truth + "##" + solution_str) % 10_000
+        score = 1.0 if roll < PLACEBO_ROLLOUT_P * 10_000 else 0.0
+    else:
+        score = 0.0
+    # Same key set as _diagnostics so verl's metric aggregation and group
+    # filtering see an identical schema. beq_plus/typecheck are 0: they are NOT
+    # measured here, and this arm's val-core metric is meaningless by design --
+    # evaluate its checkpoints offline with scripts/evaluate_checkpoints.py.
+    return {
+        "score": score,
+        "acc": score,
+        "beq_plus": 0.0,
+        "typecheck": 0.0,
+        "semantic_signal": 2.0 * score,
+        "n_directions": 0.0,
+        "gold_implies_pred": 0.0,
+        "pred_implies_gold": 0.0,
+        "similarity": 0.0,
+        "scorer_error": 0.0,
+    }
+
+
 # alias expected when custom_reward_function.name is left unset
 compute_score = compute_score_gated
 
