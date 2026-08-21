@@ -2,8 +2,10 @@
 .venv/
 .venv_hpc/
 
-# Cloned / built externally (recreated by `make verl` / `make mathlib`)
-repos/
+# Cloned / built externally (recreated by `make verl` / `make mathlib`).
+# No trailing slash: on CC this is a symlink into $SCRATCH (see Makefile's
+# _link-repos-hpc), and a `repos/` pattern doesn't match a symlink.
+repos
 
 # Downloaded weights + HF cache (recreated by `make model` / `make dataset`)
 models/
@@ -27,3 +29,6 @@ __pycache__/
 
 # Editor/OS
 .DS_Store
+
+# verl's raw per-step validation dumps (large, regenerable)
+results/val_generations/

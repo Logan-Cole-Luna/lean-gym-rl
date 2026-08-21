@@ -43,8 +43,8 @@ echo "=== Step 3: Warm the lean-interact REPL cache ==="
 # So the first SLURM job doesn't spend its (possibly offline) compute-node time
 # building the REPL binary — do it here, on the login node, with internet.
 cd "${PROJECT_ROOT}"
-source .venv_hpc/bin/activate 2>/dev/null || true
-export LEAN_INTERACT_CACHE_DIR="${PROJECT_ROOT}/.lean_interact_cache"
+source "${SCRATCH}/ai4math_training_venv_hpc/bin/activate"
+export LEAN_INTERACT_CACHE_DIR="${SCRATCH}/ai4math_training_lean_interact_cache"
 python3 scripts/test_lean_interact.py || echo "WARNING: lean-interact smoke test failed — check .venv_hpc setup"
 
 echo ""

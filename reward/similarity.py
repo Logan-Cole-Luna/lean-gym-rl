@@ -135,10 +135,39 @@ def _tree_size(n: _Node) -> int:
     return 1 + sum(_tree_size(c) for c in n.children)
 
 
+_ZSS_WARNED = False
+
+
+def _zss_missing() -> None:
+    """Warn ONCE that the structural term is inert.
+
+    This function exists because the silent version of this failure already cost
+    a 200-step training run. `zss` was in no dependency list, the ImportError was
+    caught by the broad `except Exception: return 0.0` below, and so
+    `structural_similarity` returned 0.0 for every pair -- indistinguishable from
+    "these statements are completely unrelated". The guided reward's headline
+    continuous term was therefore contributing nothing, leaving library-constant
+    Jaccard as the only non-binary signal, and nothing anywhere said so.
+    """
+    global _ZSS_WARNED
+    if not _ZSS_WARNED:
+        _ZSS_WARNED = True
+        print(
+            "[similarity] WARNING: `zss` is not installed, so GTED-style structural "
+            "similarity is DISABLED and scores 0.0 for every pair. The guided reward "
+            "is running on library-constant overlap alone. Install it: pip install zss",
+            flush=True,
+        )
+
+
 def structural_similarity(pred: str, gold: str) -> float:
     """1 - normalized tree edit distance, in [0,1]."""
     try:
-        from zss import simple_distance
+        try:
+            from zss import simple_distance
+        except ImportError:
+            _zss_missing()
+            return 0.0
 
         a, b = operator_tree(pred), operator_tree(gold)
         na, nb = _tree_size(a), _tree_size(b)

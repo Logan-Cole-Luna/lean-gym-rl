@@ -102,20 +102,36 @@ echo "[setup] CC wheelhouse packages installed (where available)."
 # =============================================================
 echo ""
 echo "[setup] Cloning verl (if not already present)..."
+# verl's main branch has since moved to verl==0.10.0.dev0, which hard-pins its
+# [vllm] extra to vllm==0.24.0 and pulls in a much heavier dependency tree
+# (qwen_vl_utils's audio/video codecs, Ascend NPU's TransferQueue, etc.) that
+# doesn't build here (pyav vs. Cython 3 incompatibility). v0.9.0 is the last
+# tag with the original vllm>=0.18.0 range this project was built against.
+# Keep in sync with the Makefile's VERL_TAG.
+VERL_TAG="v0.9.0"
 if [[ ! -d "${PROJECT_ROOT}/repos/verl" ]]; then
-    git clone --depth 1 https://github.com/volcengine/verl.git "${PROJECT_ROOT}/repos/verl"
+    git clone --branch "${VERL_TAG}" --depth 1 https://github.com/volcengine/verl.git "${PROJECT_ROOT}/repos/verl"
 fi
 
 echo "[setup] Installing verl[vllm] from ${PROJECT_ROOT}/repos/verl (editable)..."
-# vllm pinned to 0.20.2: verl only requires vllm>=0.18.0, and pip's resolver
-# otherwise walks newer versions first, landing on 0.19.1 — a broken wheel in
-# the CC wheelhouse (missing .dist-info, "invalid wheel" build error). 0.20.2
-# is the newest version confirmed to have a valid wheelhouse wheel.
+# vllm pinned to 0.20.2: verl@v0.9.0 only requires vllm>=0.18.0, and pip's
+# resolver otherwise walks newer versions first, landing on 0.19.1 — a broken
+# wheel in the CC wheelhouse (missing .dist-info, "invalid wheel" build error).
+# 0.20.2 is the newest version confirmed to have a valid wheelhouse wheel.
 (cd "${PROJECT_ROOT}/repos/verl" && pip install -e ".[vllm]" "vllm==0.20.2")
 pip install "TransferQueue==0.1.8"
 
 echo "[setup] Installing lean-interact..."
 pip install "lean-interact==0.11.5"
+
+# zss provides the tree-edit distance behind reward/similarity.py's GTED-style
+# structural term. It was missing from every dependency list until now, and
+# `structural_similarity` swallows the ImportError in a broad `except Exception:
+# return 0.0` -- so on this cluster that term silently contributed NOTHING to the
+# guided reward for the whole 200-step run, leaving library-constant Jaccard as
+# the only continuous signal. Install it explicitly; similarity.py now also warns
+# rather than failing silently.
+pip install zss
 
 # =============================================================
 # Phase 3: patch the flashinfer bug (see README's Hardware notes)

@@ -50,7 +50,7 @@ export HF_HUB_DISABLE_TELEMETRY=1
 # --- lean-interact REPL cache (built once on the login node by
 #     hpc/lean_cache_and_build.sh; must not need to rebuild on a compute node,
 #     which typically has no internet to fetch/build a REPL binary from scratch).
-export LEAN_INTERACT_CACHE_DIR="${LEAN_INTERACT_CACHE_DIR:-${PROJECT_ROOT}/.lean_interact_cache}"
+export LEAN_INTERACT_CACHE_DIR="${LEAN_INTERACT_CACHE_DIR:-${SCRATCH}/ai4math_training_lean_interact_cache}"
 
 # --- Elan / lake on PATH ---
 export PATH="$HOME/.elan/bin:$PATH"

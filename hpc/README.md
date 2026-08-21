@@ -10,8 +10,8 @@ a tested pipeline, and work through the checklist below before your first submis
 
 | File | Runs where | Purpose |
 |---|---|---|
-| `setup_cc.sh` | login node, once | Creates `.venv_hpc/`, installs CC-wheelhouse packages, then verl/vLLM/lean-interact from PyPI (needs internet) |
-| `cc_env.sh` | sourced by every job | Loads modules, activates `.venv_hpc`, sets HF offline-mode env vars |
+| `setup_cc.sh` | login node, once | Creates `$SCRATCH/ai4math_training_venv_hpc`, installs CC-wheelhouse packages, then verl/vLLM/lean-interact from PyPI (needs internet) |
+| `cc_env.sh` | sourced by every job | Loads modules, activates the `$SCRATCH` venv, sets HF offline-mode env vars |
 | `python_login.sh` | login node | Module-loading `python` wrapper, used by the Makefile's `$(PYTHON)` on CC |
 | `lean_cache_and_build.sh` | login node, once | Downloads Mathlib4's prebuilt oleans, builds, warms the lean-interact REPL cache |
 | `prefetch_models.py` | login node, once | Downloads the base model + Lean-Workbook dataset for offline compute-node access |
@@ -19,10 +19,23 @@ a tested pipeline, and work through the checklist below before your first submis
 
 ## One-time setup
 
+The project itself (this git checkout) can live anywhere, including `$HOME` — it's
+small and git-tracked. `make setup-hpc` redirects everything that isn't (the venv,
+`repos/verl` + `repos/mathlib4`'s build cache, model weights, the lean-interact REPL
+cache) to flat `$SCRATCH/ai4math_training_*` directories, via `env`-vars for the venv/
+models/cache and a `repos -> $SCRATCH/ai4math_training_repos` symlink for `repos/` (so
+every script that references `repos/verl` / `repos/mathlib4` as a relative path keeps
+working unchanged). This matters because `$HOME` on CC has a tight *file-count* quota
+(not just space) that `repos/mathlib4`'s build cache alone (tens of thousands of files)
+can blow through.
+
 ```bash
-cd $SCRATCH/ai4math_training
+cd <wherever you cloned this repo>   # $HOME is fine
 make setup-hpc      # = env-hpc + lean_cache_and_build.sh + prefetch_models.py + dataset prep
 ```
+
+`make setup` also auto-detects Compute Canada and delegates to `setup-hpc`, so running
+the local (uv, `$HOME` venv) path by habit isn't a trap anymore.
 
 Equivalently, step by step:
 

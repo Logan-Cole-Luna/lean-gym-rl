@@ -113,6 +113,36 @@ def generate(model_dir: str, prompts: list[str], max_new_tokens: int, gpu_frac: 
     return [o.outputs[0].text for o in out]
 
 
+_W_SCORER = None
+
+
+def _init_scoring_worker(probe_stronger: bool) -> None:
+    global _W_SCORER
+    from reward.beq_plus import BEqPlusScorer
+    _W_SCORER = (BEqPlusScorer(), probe_stronger)
+
+
+def _score_one(task):
+    """(index, completion, gold) -> per-example record. Order is restored by
+    imap, so per_example stays index-aligned with the validation slice -- the
+    paired McNemar tests depend on that."""
+    i, comp, gold = task
+    from reward.reward_fn import _clean_solution
+    scorer, probe_stronger = _W_SCORER
+    pred = _clean_solution(comp)
+    r = scorer.score(gold, pred, probe_stronger=probe_stronger)
+    return i, pred, {
+        "i": i,
+        "typecheck": bool(r["typecheck"]),
+        "beq_plus": bool(r["beq_plus"]),
+        "gold_implies_pred": bool(r.get("gold_implies_pred", False)),
+        "pred_implies_gold": bool(r.get("pred_implies_gold", False)),
+        "semantic_signal": int(r.get("semantic_signal", 0)),
+        "error": r["error"],
+        "error_kind": r.get("error_kind"),
+    }
+
+
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--checkpoint", action="append", dest="checkpoints", default=[],
@@ -121,7 +151,20 @@ def main() -> None:
     ap.add_argument("--n-eval", type=int, default=80, help="number of val examples to score")
     ap.add_argument("--max-new-tokens", type=int, default=128)
     ap.add_argument("--gpu-frac", type=float, default=0.35)
+    # BEq+ scoring is the wall-clock cost of an eval (the cascade makes up to
+    # ~18 Lean calls per example). Each worker builds its OWN BEqPlusScorer /
+    # Lean REPL -- no shared state, identical scoring semantics, so results
+    # stay comparable with serially-scored evals. Budget ~6GB resident each.
+    ap.add_argument("--workers", type=int, default=1)
     ap.add_argument("--out", default=str(PROJECT_ROOT / "results" / "ablation_comparison.json"))
+    # Generations were previously produced, scored, and thrown away, which left
+    # every "why did this checkpoint get worse?" question unanswerable without a
+    # full re-run. They are small; keep them.
+    ap.add_argument("--no-save-generations", dest="save_generations", action="store_false",
+                    help="skip writing results/gen_<label>_n<N>.jsonl")
+    ap.add_argument("--probe-stronger", action="store_true",
+                    help="also test pred=>gold on its own when gold=>pred fails "
+                         "(see reward/beq_plus.py DIRECTION SEMANTICS); slower")
     args = ap.parse_args()
 
     if not args.checkpoints:
@@ -151,32 +194,93 @@ def main() -> None:
         print(f"[eval] generating from {model_dir} ...")
         completions = generate(model_dir, prompts, args.max_new_tokens, args.gpu_frac)
 
-        from reward.beq_plus import BEqPlusScorer
         from reward.reward_fn import _clean_solution
 
-        scorer = BEqPlusScorer()
         n_tc = n_beq = 0
         per_example = []
-        for i, (comp, gold) in enumerate(zip(completions, golds)):
-            pred = _clean_solution(comp)
-            r = scorer.score(gold, pred)
-            n_tc += bool(r["typecheck"])
-            n_beq += bool(r["beq_plus"])
-            per_example.append({"i": i, "typecheck": bool(r["typecheck"]),
-                                "beq_plus": bool(r["beq_plus"]), "error": r["error"]})
-            if (i + 1) % 10 == 0:
-                print(f"  [{i+1}/{len(completions)}] typecheck={n_tc} beq+={n_beq}", flush=True)
+        generations = []
+
+        if args.workers > 1:
+            import multiprocessing as mp
+            ctx = mp.get_context("spawn")
+            tasks = [(i, c, g) for i, (c, g) in enumerate(zip(completions, golds))]
+            pool = ctx.Pool(args.workers, initializer=_init_scoring_worker,
+                            initargs=(args.probe_stronger,))
+            scored_iter = pool.imap(_score_one, tasks, chunksize=1)
+        else:
+            from reward.beq_plus import BEqPlusScorer
+            scorer = BEqPlusScorer()
+            pool = None
+
+            def _serial():
+                for i, (comp, gold) in enumerate(zip(completions, golds)):
+                    pred = _clean_solution(comp)
+                    r = scorer.score(gold, pred, probe_stronger=args.probe_stronger)
+                    yield i, pred, {
+                        "i": i,
+                        "typecheck": bool(r["typecheck"]),
+                        "beq_plus": bool(r["beq_plus"]),
+                        "gold_implies_pred": bool(r.get("gold_implies_pred", False)),
+                        "pred_implies_gold": bool(r.get("pred_implies_gold", False)),
+                        "semantic_signal": int(r.get("semantic_signal", 0)),
+                        "error": r["error"],
+                        "error_kind": r.get("error_kind"),
+                    }
+            scored_iter = _serial()
+
+        import time as _time
+        _t0 = _time.time()
+        for i, pred, rec in scored_iter:
+            comp = completions[i]
+            n_tc += rec["typecheck"]
+            n_beq += rec["beq_plus"]
+            # Per-direction flags are recorded because the aggregate rates cannot
+            # distinguish "drifted toward weaker statements" from "drifted toward
+            # unrelated ones" -- and the two call for opposite fixes.
+            per_example.append(rec)
+            if args.save_generations:
+                generations.append({"i": i, "prompt": prompts[i], "gold": golds[i],
+                                    "completion": comp, "pred": pred, **rec})
+            done = len(per_example)
+            if done % 10 == 0:
+                rate = (_time.time() - _t0) / done
+                print(f"  [{done}/{len(completions)}] typecheck={n_tc} beq+={n_beq} "
+                      f"({rate:.1f}s/example, eta {rate*(len(completions)-done)/60:.0f}m)",
+                      flush=True)
+        if pool is not None:
+            pool.close(); pool.join()
+        # imap yields in task order, but sort defensively: per_example[i] MUST be
+        # validation example i for the paired tests to mean anything.
+        per_example.sort(key=lambda e: e["i"])
+        generations.sort(key=lambda e: e["i"])
 
         n = len(completions)
+        n_err = sum(1 for e in per_example if e["error_kind"])
         results[label] = {
             "model_dir": model_dir,
             "n": n,
             "typecheck_rate": n_tc / n if n else 0.0,
             "beq_plus_rate": n_beq / n if n else 0.0,
+            "weaker_only_rate": sum(
+                1 for e in per_example if e["gold_implies_pred"] and not e["beq_plus"]
+            ) / n if n else 0.0,
+            "scorer_error_rate": n_err / n if n else 0.0,
             "per_example": per_example,
         }
         print(f"[eval] {label}: typecheck {n_tc}/{n} ({100*n_tc/n:.1f}%)  "
               f"beq_plus {n_beq}/{n} ({100*n_beq/n:.1f}%)")
+        if n_err:
+            # These are scored as failures but are not verdicts about the model.
+            print(f"[eval] WARNING: {n_err}/{n} examples hit a Lean scorer failure "
+                  f"(timeout or dead REPL) and are counted as wrong.")
+
+        if args.save_generations:
+            gen_path = Path(args.out).parent / f"gen_{label}_n{n}.jsonl"
+            gen_path.parent.mkdir(parents=True, exist_ok=True)
+            with gen_path.open("w") as fh:
+                for rec in generations:
+                    fh.write(json.dumps(rec, ensure_ascii=False) + "\n")
+            print(f"[eval] generations -> {gen_path}")
 
     out_path = Path(args.out)
     out_path.parent.mkdir(parents=True, exist_ok=True)

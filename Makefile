@@ -29,6 +29,14 @@ VENV        := $(PROJECT)/.venv
 LEAN_TOOLCHAIN := leanprover/lean4:v4.8.0-rc1
 MATHLIB4_TAG   := v4.8.0-rc1
 
+# verl's main branch has since moved to verl==0.10.0.dev0, which hard-pins its
+# [vllm] extra to vllm==0.24.0 and pulls in a much heavier dependency tree
+# (qwen_vl_utils's audio/video codecs, Ascend NPU's TransferQueue, etc.) that
+# doesn't build here (pyav vs. Cython 3 incompatibility). v0.9.0 is the last
+# tag with the original vllm>=0.18.0 range this project was built against, and
+# skips those extras entirely (they're separate extras, not part of [vllm]).
+# Keep in sync with hpc/setup_cc.sh's VERL_TAG.
+VERL_TAG    := v0.9.0
 VERL_REPO   := https://github.com/volcengine/verl.git
 MODEL_ID    := Qwen/Qwen2.5-Coder-0.5B-Instruct
 
@@ -46,6 +54,11 @@ else
   PYTHON := $(VENV)/bin/python3
 endif
 
+# Every recipe below activates through this rather than hardcoding
+# $(VENV)/bin/activate, which does not exist on Compute Canada (the venv lives
+# on $SCRATCH and needs the module stack loaded first). See hpc/activate.sh.
+ACTIVATE := source $(PROJECT)/hpc/activate.sh
+
 # Model weights + HF cache are large, easily re-downloaded, and not the thing
 # that needs backing up — on CC they go under $SCRATCH instead of $(PROJECT),
 # which sits on a group-shared /project filesystem with a tight file-count quota.
@@ -59,19 +72,55 @@ MODEL_DIR := $(MODELS_ROOT)/qwen2.5-coder-0.5b-instruct
 # The CC venv (verl+vllm+torch+ray, ~150 packages) is tens of thousands of
 # small files — also goes under $SCRATCH for the same file-count-quota reason.
 ifeq ($(ON_CC),1)
-  VENV_HPC := $(shell echo $$SCRATCH)/ai4math_training_venv_hpc
+  SCRATCH_DIR := $(shell echo $$SCRATCH)
+  VENV_HPC := $(SCRATCH_DIR)/ai4math_training_venv_hpc
 else
   VENV_HPC := $(PROJECT)/.venv_hpc
 endif
 
 # ── Setup ─────────────────────────────────────────────────────────────────────
 
+# On CC, `make setup` (uv, a $HOME venv) is the wrong path — it filled the
+# $HOME file-count quota (uv's cache alone is 80k+ small files) the first time
+# this got run there. Detect the cluster and hand off to `setup-hpc` instead of
+# making the user remember which target to type.
 .PHONY: setup
+ifeq ($(ON_CC),1)
+setup:
+	@echo "[setup] Compute Canada / DRAC node detected — this is 'make setup-hpc', not 'make setup'."
+	@echo "[setup] (uv + a \$$HOME venv will blow the file-count quota here; see hpc/README.md.)"
+	@$(MAKE) --no-print-directory setup-hpc
+else
 setup: env verl mathlib model dataset
 	@echo ""
 	@echo "Setup complete. Activate your environment:"
 	@echo "  source $(VENV)/bin/activate"
 	@echo "Then try:  make smoke"
+endif
+
+# repos/verl and repos/mathlib4's build cache are tens of thousands of files
+# between them -- left under this project's own $(PROJECT)/repos (a $HOME
+# checkout) they blow the file-count quota regardless of MODELS_ROOT/VENV_HPC
+# already being on $SCRATCH. The project itself stays in $HOME (small, git-
+# tracked, backed up); only `repos/` gets redirected, via a symlink so every
+# script that references `repos/verl` / `repos/mathlib4` as a relative path
+# keeps working unchanged. Idempotent, and preserves an existing repos/ clone
+# on first run instead of discarding it.
+.PHONY: _link-repos-hpc
+_link-repos-hpc:
+	@target="$(SCRATCH_DIR)/ai4math_training_repos"; \
+	mkdir -p "$$target"; \
+	if [ -L repos ]; then \
+	  true; \
+	elif [ -d repos ]; then \
+	  echo "[repos] moving existing repos/ to $$target ..."; \
+	  mv repos/* "$$target"/ 2>/dev/null || true; \
+	  rmdir repos; \
+	  ln -s "$$target" repos; \
+	else \
+	  ln -s "$$target" repos; \
+	fi; \
+	echo "[repos] repos -> $$target"
 
 .PHONY: setup-hpc
 setup-hpc: env-hpc
@@ -101,7 +150,7 @@ env:
 ## loaded module's system site-packages. Delegates entirely to hpc/setup_cc.sh,
 ## which mirrors MixtureOfMathExperts/hpc/setup_cc.sh's phased approach.
 .PHONY: env-hpc
-env-hpc:
+env-hpc: _link-repos-hpc
 	@bash hpc/setup_cc.sh
 
 # Shared by env and env-hpc — installs verl[vllm] (once repos/verl exists), plus
@@ -113,7 +162,7 @@ _install-deps:
 	    (cd repos/verl && uv pip install -e ".[vllm]"); \
 	    uv pip install "TransferQueue==0.1.8"; \
 	  fi; \
-	  uv pip install "lean-interact==0.11.5" huggingface_hub datasets pandas pyarrow
+	  uv pip install "lean-interact==0.11.5" huggingface_hub datasets pandas pyarrow zss
 	@$(MAKE) --no-print-directory patch-flashinfer VENVDIR=$(VENVDIR)
 
 # vLLM's flashinfer dependency ships a broken type annotation
@@ -135,7 +184,7 @@ patch-flashinfer:
 verl: repos/verl
 
 repos/verl:
-	git clone --depth 1 $(VERL_REPO) repos/verl
+	git clone --branch $(VERL_TAG) --depth 1 $(VERL_REPO) repos/verl
 	@$(MAKE) --no-print-directory _install-deps VENVDIR=$(VENV)
 
 # ── Lean / Mathlib4 ───────────────────────────────────────────────────────────
@@ -194,12 +243,19 @@ $(MODEL_DIR)/config.json:
 # byte-stable and already-cached eval results stay comparable.
 # Defaults MUST match what is on disk, or `make train-sft` (which depends on
 # these) would see a stamp mismatch and quietly rebuild a smaller dataset.
-RL_N_TRAIN ?= 4000
+#
+# RL_N_TRAIN is capped by how many unique prompts SFT did NOT consume. The
+# corpus has 13,297 unique prompts; a 20k-row SFT set uses 11,627 and val takes
+# 390, leaving 1,280. prepare_dataset.py now excludes SFT prompts by default --
+# training RL on memorised prompts left 62.5% of rollout groups saturated and
+# only 16.7% able to produce a gradient at all. To run RL on more than 1,280
+# prompts, shrink the SFT set first (SFT_N_TRAIN) to free some back up.
+RL_N_TRAIN ?= 1280
 RL_N_VAL   ?= 400
 
 .PHONY: dataset
 dataset:
-	@want="n_train=$(RL_N_TRAIN) n_val=$(RL_N_VAL)"; \
+	@want="n_train=$(RL_N_TRAIN) n_val=$(RL_N_VAL) excl_sft=1"; \
 	 if [ -f data/train.parquet ] && [ "$$(cat data/.stamp 2>/dev/null)" = "$$want" ]; then \
 	   echo "[dataset] up to date ($$want)"; \
 	 else \
@@ -211,8 +267,8 @@ dataset:
 
 .PHONY: smoke
 smoke:
-	@source "$(VENV)/bin/activate" && $(PYTHON) scripts/prepare_dataset.py --out-dir data/smoke --n-train 8 --n-val 4
-	@source "$(VENV)/bin/activate" && \
+	@$(ACTIVATE) && $(PYTHON) scripts/prepare_dataset.py --out-dir data/smoke --n-train 8 --n-val 4
+	@$(ACTIVATE) && \
 	 TRAIN_BATCH_SIZE=8 PPO_MINI_BATCH_SIZE=8 ROLLOUT_N=2 TOTAL_EPOCHS=1 \
 	 PROJECT_NAME=beqplus_smoke EXPERIMENT_NAME=smoke \
 	 PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True \
@@ -224,7 +280,7 @@ smoke:
 
 .PHONY: train-composite
 train-composite:
-	@source "$(VENV)/bin/activate" && \
+	@$(ACTIVATE) && \
 	 REWARD_FN_NAME=compute_score_composite \
 	 PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True \
 	 HF_HOME=$(MODELS_ROOT)/.hf_cache \
@@ -232,7 +288,7 @@ train-composite:
 
 .PHONY: train-typecheck
 train-typecheck:
-	@source "$(VENV)/bin/activate" && \
+	@$(ACTIVATE) && \
 	 REWARD_FN_NAME=compute_score_typecheck_only \
 	 PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True \
 	 HF_HOME=$(MODELS_ROOT)/.hf_cache \
@@ -255,7 +311,7 @@ train: train-composite train-typecheck
 #   PHASE2_REWARD=compute_score_composite   strict 0.1*typecheck + 0.9*BEq+
 .PHONY: train-curriculum
 train-curriculum:
-	@source "$(VENV)/bin/activate" && bash scripts/run_curriculum.sh
+	@$(ACTIVATE) && bash scripts/run_curriculum.sh
 
 # ── SFT → RL (the pipeline that actually works) ───────────────────────────────
 # Measured: SFT alone reaches 33.8% BEq+ vs 3.8% for the best from-scratch RL arm.
@@ -287,7 +343,7 @@ sft-dataset: dataset
 	 if [ -f data/sft/train.parquet ] && [ "$$(cat data/sft/.stamp 2>/dev/null)" = "$$want" ]; then \
 	   echo "[sft-dataset] up to date ($$want)"; \
 	 else \
-	   source "$(VENV)/bin/activate" && HF_HOME=$(MODELS_ROOT)/.hf_cache \
+	   $(ACTIVATE) && HF_HOME=$(MODELS_ROOT)/.hf_cache \
 	     python3 scripts/prepare_sft_dataset.py \
 	       --n-train $(SFT_N_TRAIN) --n-val $(SFT_N_VAL) && \
 	   echo "$$want" > data/sft/.stamp; \
@@ -342,19 +398,54 @@ train-sft: sft-dataset _check-init
 	 SAVE_PATH=$${SAVE_PATH:-$(SFT_CKPT)} \
 	 bash scripts/run_sft.sh $(SFT_EXTRA)
 
+# Defaults reflect the post-mortem of the 200-step guided run (BEq+ 38.8% ->
+# 29.0%); configs/run_grpo.sh's header explains each one. The knobs that changed
+# there are reward function, rollout_n, entropy, KL, and advantage
+# normalisation; what changes HERE is only the step/validation cadence:
+#   TEST_FREQ=10  -- validation now reports the real BEq+ rate as
+#                    val-core/<data_source>/acc/mean@1 (reward functions emit
+#                    `acc` = BEq+), so it is worth running often enough to
+#                    actually select on. It costs a val pass over data/val.parquet.
+#   SAVE_FREQ=20  -- checkpoint selection is only as good as its candidates, but
+#                    each raw checkpoint is ~6.1GB (FSDP shards + optimizer), so
+#                    granularity is bought with disk. 20 gives 5 candidates over
+#                    a 100-step run for ~31GB. The disk has hit 100% here before.
+#   MAX_CKPT_KEEP -- DERIVED from the two above, never set independently.
+#                    verl's trainer.max_actor_ckpt_to_keep rmtree's the actor/
+#                    subdir of older checkpoints, leaving a global_step_N/ shell
+#                    holding only dataloader state. Its default of 2 against
+#                    SAVE_FREQ=10 silently destroyed 8 of the 10 checkpoints of a
+#                    100-step run -- the run completed, but there was almost
+#                    nothing left to select over, and eval-sweep failed on the
+#                    husks with a misleading "Repo id must be in the form ..."
+#                    from transformers. Deriving it means the two knobs cannot
+#                    drift apart again. Override only if you know the disk cost.
+#
+# PPO_MINI_BATCH_SIZE defaults to TRAIN_BATCH_SIZE, not a fixed number. verl's
+# v1 trainer pads the batch up to lcm(dp_size, ppo_mini_batch_size * rollout.n)
+# (trainer_base.py:_get_required_batch_multiple) -- if only TRAIN_BATCH_SIZE is
+# lowered while PPO_MINI_BATCH_SIZE stays at its old value, the padder silently
+# restores the ORIGINAL batch size with synthetic samples and the memory
+# reduction you asked for never happens. Measured: TRAIN_BATCH_SIZE=4 alone
+# with PPO_MINI_BATCH_SIZE left at 8 and ROLLOUT_N=8 logged "Upsampled batch
+# from 32 to 64" and OOM'd on the exact same 64-sequence backward pass as
+# before the "fix". Keeping them equal by default avoids this trap.
 .PHONY: train-rl
 train-rl: _check-init
-	@source "$(VENV)/bin/activate" && \
+	@$(ACTIVATE) && \
+	 tbs=$${TRAIN_BATCH_SIZE:-8}; \
 	 MODEL_PATH=$(_INIT_MODEL) \
-	 REWARD_FN_NAME=$${REWARD_FN_NAME:-compute_score_guided} \
-	 EXPERIMENT_NAME=$${EXPERIMENT_NAME:-rl_$(_INIT_TAG)_$${REWARD_FN_NAME:-compute_score_guided}} \
-	 ROLLOUT_N=$${ROLLOUT_N:-4} AGENT_LOOP_WORKERS=$${AGENT_LOOP_WORKERS:-1} \
-	 TRAIN_BATCH_SIZE=$${TRAIN_BATCH_SIZE:-8} PPO_MINI_BATCH_SIZE=$${PPO_MINI_BATCH_SIZE:-8} \
+	 REWARD_FN_NAME=$${REWARD_FN_NAME:-compute_score_gated} \
+	 EXPERIMENT_NAME=$${EXPERIMENT_NAME:-rl_$(_INIT_TAG)_$${REWARD_FN_NAME:-compute_score_gated}} \
+	 ROLLOUT_N=$${ROLLOUT_N:-8} AGENT_LOOP_WORKERS=$${AGENT_LOOP_WORKERS:-1} \
+	 TRAIN_BATCH_SIZE=$$tbs PPO_MINI_BATCH_SIZE=$${PPO_MINI_BATCH_SIZE:-$$tbs} \
+	 VALIDATION_DATA_DIR=$${VALIDATION_DATA_DIR:-$(PROJECT)/results/val_generations/$${EXPERIMENT_NAME:-rl_$(_INIT_TAG)}} \
 	 PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True \
 	 HF_HOME=$(MODELS_ROOT)/.hf_cache \
+	 MAX_CKPT_KEEP=$${MAX_CKPT_KEEP:-$$(( $${TOTAL_STEPS:-100} / $${SAVE_FREQ:-20} + 2 ))} \
 	 bash configs/run_grpo.sh \
-	   trainer.total_training_steps=$${TOTAL_STEPS:-30} \
-	   trainer.test_freq=$${TEST_FREQ:-10} trainer.save_freq=$${SAVE_FREQ:-10}
+	   trainer.total_training_steps=$${TOTAL_STEPS:-100} \
+	   trainer.test_freq=$${TEST_FREQ:-10} trainer.save_freq=$${SAVE_FREQ:-20}
 
 # Back-compat alias; `make train-sft` is the current entry point.
 .PHONY: sft
@@ -363,7 +454,7 @@ sft: train-sft
 # SFT checkpoints are FSDP-sharded like RL ones; merge before vLLM can load them.
 .PHONY: merge-sft
 merge-sft:
-	@source "$(VENV)/bin/activate" && \
+	@$(ACTIVATE) && \
 	 step=$$(cat $(SFT_CKPT)/latest_checkpointed_iteration.txt 2>/dev/null); \
 	 test -n "$$step" || { echo "No SFT checkpoint -- run 'make sft' first."; exit 1; }; \
 	 python3 -m verl.model_merger merge --backend fsdp \
@@ -385,6 +476,95 @@ train-guided:
 train-shaped:
 	@$(MAKE) --no-print-directory train-rl REWARD_FN_NAME=compute_score_shaped
 
+# The corrected SFT -> RL run. Same entry point as train-rl, named so the
+# post-mortem defaults are obvious at the call site.
+.PHONY: train-gated
+train-gated:
+	@$(MAKE) --no-print-directory train-rl REWARD_FN_NAME=compute_score_gated
+
+# Same, plus DAPO group filtering: rollout groups with no learnable signal are
+# discarded and replaced instead of merely contributing zero gradient. Strictly
+# better signal per step, ~3x the generation cost -- see configs/run_grpo.sh.
+.PHONY: train-gated-filtered
+train-gated-filtered:
+	@FILTER_GROUPS=1 $(MAKE) --no-print-directory train-rl REWARD_FN_NAME=compute_score_gated
+
+# ── Rejection-sampling (RFT) arm ──────────────────────────────────────────────
+# The control that separates "BEq+ is a bad training signal" from "GRPO is the
+# wrong way to consume it at this batch size".
+#
+# WHY THIS ARM EXISTS (measured, results/FINDINGS.md). At batch 4 x rollout_n 8
+# only ~37% of rollout groups are informative, so each Adam update is driven by
+# ~1.5 prompts. A placebo reward with NO semantic content but the same advantage
+# geometry reproduces the gated arm's dead-step rate, advantage spread,
+# grad_norm and KL drift -- i.e. the GRPO arms' training curves are consistent
+# with pure noise. Rejection sampling has no advantage estimate at all, so it
+# uses the SAME BEq+ verdicts with none of that variance.
+#
+# The three stages are split because their resource profiles differ by an order
+# of magnitude: generation is GPU-bound and takes minutes, BEq+ scoring is
+# CPU-bound and takes hours (and parallelises across processes offline, unlike
+# during training where FSDP offload leaves no host RAM for extra Mathlibs).
+ROLLOUT_DIR   := $(PROJECT)/data/rollouts
+ROLLOUT_TAG   ?= sft390_k8
+ROLLOUT_K     ?= 8
+ROLLOUT_TEMP  ?= 1.15
+SCORE_WORKERS ?= 4
+
+.PHONY: rollouts
+rollouts:
+	@$(ACTIVATE) && \
+	 PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True HF_HOME=$(MODELS_ROOT)/.hf_cache \
+	 python3 scripts/generate_rollouts.py \
+	   --checkpoint $${INIT:-$(SFT_MERGED)} --parquet $(PROJECT)/data/train.parquet \
+	   --k $(ROLLOUT_K) --temperature $(ROLLOUT_TEMP) \
+	   --out $(ROLLOUT_DIR)/$(ROLLOUT_TAG).jsonl
+
+# Resumable and append-only: a pass over ~10k rollouts is hours long, so an
+# interruption must not throw the completed work away.
+.PHONY: score-rollouts
+score-rollouts:
+	@$(ACTIVATE) && python3 scripts/score_rollouts.py \
+	   --rollouts $(ROLLOUT_DIR)/$(ROLLOUT_TAG).jsonl \
+	   --out $(ROLLOUT_DIR)/$(ROLLOUT_TAG).scored.jsonl \
+	   --workers $(SCORE_WORKERS)
+
+# Both arms come from the SAME scoring pass, so the only difference between them
+# is the acceptance criterion -- which is exactly the paper's claim under test.
+# The type-check filter accepts ~2x as many rollouts, so the second build is
+# SIZE-MATCHED to the first: otherwise the comparison confounds reward quality
+# with dataset size.
+.PHONY: rft-data
+rft-data:
+	@$(ACTIVATE) && set -e; \
+	 python3 scripts/build_rft_dataset.py \
+	   --scored $(ROLLOUT_DIR)/$(ROLLOUT_TAG).scored.jsonl \
+	   --rollouts $(ROLLOUT_DIR)/$(ROLLOUT_TAG).jsonl \
+	   --filter beq_plus --out-dir $(PROJECT)/data/rft_beq \
+	   --stats-out $(PROJECT)/results/rollout_stats.json; \
+	 n=$$(python3 -c "import pandas as pd,sys; print(len(pd.read_parquet('$(PROJECT)/data/rft_beq/train.parquet'))+len(pd.read_parquet('$(PROJECT)/data/rft_beq/val.parquet')))"); \
+	 echo "[rft] size-matching type-check arm to $$n pairs"; \
+	 python3 scripts/build_rft_dataset.py \
+	   --scored $(ROLLOUT_DIR)/$(ROLLOUT_TAG).scored.jsonl \
+	   --rollouts $(ROLLOUT_DIR)/$(ROLLOUT_TAG).jsonl \
+	   --filter typecheck --out-dir $(PROJECT)/data/rft_tc --match-size $$n
+
+# Continue training from the SFT policy on its OWN verified generations.
+# LR is an order of magnitude below the SFT stage's 1e-4: this is a refinement
+# pass over a few thousand self-generated examples, and the starting policy is
+# the best one we have -- the failure mode to avoid is exactly the drift the
+# GRPO arms exhibit.
+.PHONY: train-rft
+train-rft:
+	@test -n "$(RFT_DATA)" || { echo "Usage: make train-rft RFT_DATA=data/rft_beq TAG=beq"; exit 1; }
+	@$(ACTIVATE) && \
+	 MODEL_PATH=$${INIT:-$(SFT_MERGED)} \
+	 SAVE_PATH=$(PROJECT)/checkpoints/rft/$${TAG:-beq} \
+	 TRAIN_FILE=$(PROJECT)/$(RFT_DATA)/train.parquet \
+	 VAL_FILE=$(PROJECT)/$(RFT_DATA)/val.parquet \
+	 LR=$${LR:-1e-5} TOTAL_EPOCHS=$${TOTAL_EPOCHS:-2} SFT_SAVE_FREQ=$${SFT_SAVE_FREQ:-100} \
+	 bash scripts/run_sft.sh
+
 # ── Evaluation ────────────────────────────────────────────────────────────────
 # The head-to-head comparison the PoC exists to produce. NOTE: verl's own
 # `val-core/.../acc/mean@1` is just the mean of that run's reward function, so
@@ -402,7 +582,7 @@ MERGED      := $(PROJECT)/checkpoints/merged
 # only config+tokenizer. vLLM needs real HF weights, so merge them first.
 .PHONY: merge-checkpoints
 merge-checkpoints:
-	@source "$(VENV)/bin/activate" && \
+	@$(ACTIVATE) && \
 	 for arm in composite typecheck_only; do \
 	   src=$(CKPT_ROOT)/qwen25_coder_0_5b_compute_score_$$arm/global_step_$(STEP)/actor; \
 	   dst=$(MERGED)/$$arm-step$(STEP); \
@@ -419,28 +599,54 @@ merge-checkpoints:
 # per-reward impact table (dead steps split into starved vs saturated).
 .PHONY: plots
 plots:
-	@source "$(VENV)/bin/activate" && python3 scripts/plot_results.py
+	@$(ACTIVATE) && python3 scripts/plot_results.py
 
 # Evaluate ONE checkpoint dir (merging it first if needed) and write its own
 # result JSON, so the expensive BEq+ scoring is never repeated for models that
 # have already been measured. CKPT may be a raw verl run dir (latest step is
-# picked automatically) or an already-merged HF dir.
+# picked automatically), a single global_step_N dir, or an already-merged HF dir.
+#
+# Two path details, both of which surface as the SAME misleading error --
+# transformers reports any directory it cannot stat as a bad Hugging Face repo id
+# ("Repo id must be in the form 'repo_name' or 'namespace/repo_name'"), so a
+# wrong path looks like a network/auth problem:
+#   - CKPT is resolved to an ABSOLUTE path (relative paths are read as repo ids).
+#   - RL checkpoints from main_ppo nest weights under global_step_N/actor/, while
+#     SFT checkpoints from sft_trainer put them directly in global_step_N/. Probe
+#     for actor/ rather than assuming either layout.
 #   make eval-ckpt CKPT=checkpoints/beqplus_rl_poc/rl_from_sft-step30_compute_score_guided
 .PHONY: eval-ckpt
 eval-ckpt:
 	@test -n "$(CKPT)" || { echo "Usage: make eval-ckpt CKPT=<verl run dir | merged dir>"; exit 1; }
-	@source "$(VENV)/bin/activate" && set -e; \
-	 src="$(CKPT)"; name=$$(basename "$$src"); \
+	@$(ACTIVATE) && set -e; \
+	 src="$$(cd "$(CKPT)" && pwd)"; name=$$(basename "$$src"); \
 	 if ls "$$src"/*.safetensors >/dev/null 2>&1; then \
 	   merged="$$src"; \
 	 else \
-	   step=$$(cat "$$src/latest_checkpointed_iteration.txt" 2>/dev/null); \
-	   test -n "$$step" || { echo "No latest_checkpointed_iteration.txt in $$src"; exit 1; }; \
+	   case "$$name" in \
+	     global_step_*) \
+	       step=$${name#global_step_}; \
+	       name=$$(basename "$$(dirname "$$src")"); \
+	       shard="$$src" ;; \
+	     *) \
+	       step=$$(cat "$$src/latest_checkpointed_iteration.txt" 2>/dev/null); \
+	       test -n "$$step" || { echo "No latest_checkpointed_iteration.txt in $$src"; exit 1; }; \
+	       shard="$$src/global_step_$$step" ;; \
+	   esac; \
+	   if [ -d "$$shard/actor" ]; then shard="$$shard/actor"; fi; \
+	   if [ ! -f "$$shard/huggingface/config.json" ]; then \
+	     echo "[eval-ckpt] SKIP $$name step $$step: no weights in $$shard."; \
+	     echo "  verl's trainer.max_actor_ckpt_to_keep rmtree'd this checkpoint's actor/"; \
+	     echo "  subdir, leaving only its dataloader state. Raise MAX_CKPT_KEEP (see"; \
+	     echo "  train-rl) so every checkpoint you save also survives the run."; \
+	     exit 3; \
+	   fi; \
 	   merged="$(PROJECT)/checkpoints/merged/$${name}-step$${step}"; \
-	   if [ ! -d "$$merged" ]; then \
-	     echo "[merge] $$src/global_step_$$step -> $$merged"; \
+	   if ! ls "$$merged"/*.safetensors >/dev/null 2>&1; then \
+	     rm -rf "$$merged"; \
+	     echo "[merge] $$shard -> $$merged"; \
 	     python3 -m verl.model_merger merge --backend fsdp \
-	       --local_dir "$$src/global_step_$$step/actor" --target_dir "$$merged"; \
+	       --local_dir "$$shard" --target_dir "$$merged"; \
 	   fi; \
 	 fi; \
 	 out="$(PROJECT)/results/eval_$$(basename $$merged)_n$${N_EVAL:-80}.json"; \
@@ -449,14 +655,50 @@ eval-ckpt:
 	 python3 scripts/evaluate_checkpoints.py --checkpoint "$$merged" \
 	   --n-eval $${N_EVAL:-80} --out "$$out"
 
+# Evaluate EVERY saved step of one run dir, so checkpoint selection has
+# candidates to choose between. Skips steps already scored (the result JSONs are
+# keyed by checkpoint label), so re-running after more steps land is cheap.
+#   make eval-sweep RUN=checkpoints/beqplus_rl_poc/rl_from_sft390_gated
+.PHONY: eval-sweep
+eval-sweep:
+	@test -n "$(RUN)" || { echo "Usage: make eval-sweep RUN=<verl run dir> [N_EVAL=400]"; exit 1; }
+	@set -e; skipped=0; \
+	 for step in $$(ls -d $(RUN)/global_step_* 2>/dev/null | sed 's/.*global_step_//' | sort -n); do \
+	   name=$$(basename $(RUN))-step$$step; \
+	   out="$(PROJECT)/results/eval_$${name}_n$${N_EVAL:-400}.json"; \
+	   if [ -f "$$out" ]; then echo "[eval-sweep] cached: $$name"; continue; fi; \
+	   d=$(RUN)/global_step_$$step; \
+	   if [ ! -f "$$d/actor/huggingface/config.json" ] && [ ! -f "$$d/huggingface/config.json" ]; then \
+	     echo "[eval-sweep] SKIP $$name: weights pruned mid-run (max_actor_ckpt_to_keep)"; \
+	     skipped=$$((skipped+1)); continue; \
+	   fi; \
+	   echo "[eval-sweep] ===== $$name ====="; \
+	   $(MAKE) --no-print-directory eval-ckpt CKPT=$$d N_EVAL=$${N_EVAL:-400}; \
+	 done; \
+	 if [ $$skipped -gt 0 ]; then \
+	   echo ""; \
+	   echo "[eval-sweep] $$skipped checkpoint(s) had their weights pruned mid-run by"; \
+	   echo "  verl's trainer.max_actor_ckpt_to_keep, so only their dataloader state"; \
+	   echo "  remains. Selection below covers only what survived. Future runs derive"; \
+	   echo "  MAX_CKPT_KEEP from SAVE_FREQ (see train-rl) so this cannot recur."; \
+	 fi
+	@$(MAKE) --no-print-directory select
+
 # Aggregate every cached result JSON into one table (no re-scoring).
 .PHONY: compare
 compare:
-	@source "$(VENV)/bin/activate" && python3 scripts/compare_results.py
+	@$(ACTIVATE) && python3 scripts/compare_results.py
+
+# Pick the best checkpoint by BEq+ AND say whether the difference is real.
+# `make compare` tabulates; this one applies the paired test, which is what
+# stops a within-noise argmax from being reported as an improvement.
+.PHONY: select
+select:
+	@$(ACTIVATE) && python3 scripts/select_checkpoint.py $(SELECT_ARGS)
 
 .PHONY: evaluate
 evaluate: merge-checkpoints
-	@source "$(VENV)/bin/activate" && \
+	@$(ACTIVATE) && \
 	 PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True \
 	 HF_HOME=$(MODELS_ROOT)/.hf_cache \
 	 python3 scripts/evaluate_checkpoints.py \
@@ -558,7 +800,11 @@ help:
 	@echo "                           REWARD_FN_NAME=compute_score_{guided,shaped,composite,typecheck_only}"
 	@echo "  make merge-sft         Merge the SFT checkpoint to HF format"
 	@echo "  make train-from-sft    RL starting from the SFT policy (small rollout_n)"
+	@echo "  make train-gated       SFT -> RL with the corrected (semantic-only) reward"
+	@echo "  make train-gated-filtered  ... plus DAPO group filtering (~3x gen cost)"
 	@echo "  make evaluate          Score checkpoints on BOTH metrics (the valid comparison)"
+	@echo "  make eval-sweep RUN=…  Score every saved step of a run, then select"
+	@echo "  make select            Best checkpoint by BEq+ + paired McNemar vs SFT"
 	@echo "  make plots             Training curves + per-reward impact quantification"
 	@echo "  make submit-composite  sbatch hpc/train.slurm with the composite reward"
 	@echo "  make submit-typecheck  sbatch hpc/train.slurm with the typecheck-only reward"
