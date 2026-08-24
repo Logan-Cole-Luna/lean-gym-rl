@@ -38,7 +38,10 @@ MATHLIB4_TAG   := v4.8.0-rc1
 # Keep in sync with hpc/setup_cc.sh's VERL_TAG.
 VERL_TAG    := v0.9.0
 VERL_REPO   := https://github.com/volcengine/verl.git
-MODEL_ID    := Qwen/Qwen2.5-Coder-0.5B-Instruct
+# Override to change model scale, e.g.
+#   make model MODEL_ID=Qwen/Qwen2.5-Coder-3B-Instruct
+# MODEL_DIR below is DERIVED from this, so the two can never drift apart.
+MODEL_ID    ?= Qwen/Qwen2.5-Coder-0.5B-Instruct
 
 # CUDA build of torch to install — must match the driver's CUDA version
 # (`nvidia-smi` header). Override with `make env TORCH_INDEX=...` if different.
@@ -67,7 +70,11 @@ ifeq ($(ON_CC),1)
 else
   MODELS_ROOT := $(PROJECT)/models
 endif
-MODEL_DIR := $(MODELS_ROOT)/qwen2.5-coder-0.5b-instruct
+# Derived from MODEL_ID (basename, lowercased) rather than hardcoded, so
+# `make model MODEL_ID=...` lands somewhere that matches what was asked for
+# instead of silently overwriting the 0.5B checkout.
+MODEL_SLUG := $(shell echo '$(MODEL_ID)' | sed 's|.*/||' | tr 'A-Z' 'a-z')
+MODEL_DIR  := $(MODELS_ROOT)/$(MODEL_SLUG)
 
 # The CC venv (verl+vllm+torch+ray, ~150 packages) is tens of thousands of
 # small files — also goes under $SCRATCH for the same file-count-quota reason.

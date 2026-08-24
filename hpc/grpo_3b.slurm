@@ -1,0 +1,199 @@
+#!/usr/bin/env bash
+# GRPO at batch 16 on the 3B policy.
+#   ARM=gated|placebo|typecheck|selfprove|guided|gated_edge|gated_filtered
+#   sbatch --export=ALL,ARM=gated hpc/grpo_3b.slurm
+#
+# 11h CHUNKS -- the longest that still sits in the good priority band here.
+# 3h chunks were measured to be a false economy: four of them took ~22h wall for
+# 12h of compute, including a single 9h gap between chunk 1 ending and chunk 2
+# starting. At ~10.9 min/step an 11h chunk covers ~60 steps, so step 20 -> 150
+# is 3 chunks rather than 9. Chain them with --dependency=afterany: (a walltime
+# kill is the expected end of a chunk, not a failure); resume_mode=auto picks up
+# from the last checkpoint. Lean scoring is ~2.1s/rollout at 8-12 workers, so 150 steps
+# x 128 rollouts is ~11h -- but CC gives short jobs much better backfill
+# priority, and verl's resume_mode=auto continues toward total_training_steps
+# from the last checkpoint. So submit several of these chained with
+# `--dependency=afterany:` (afterany, NOT afterok: a walltime kill is the
+# expected way each chunk ends, and it is not a failure).
+#SBATCH --account=def-vganesh_gpu
+#SBATCH --job-name=grpo_3b
+#SBATCH --gpus-per-node=a100:2
+#SBATCH --cpus-per-task=24
+#SBATCH --mem=240G
+#SBATCH --time=11:00:00
+#SBATCH --output=logs/grpo_3b_%j.out
+#SBATCH --error=logs/grpo_3b_%j.err
+
+set -uo pipefail
+export PROJECT_ROOT=/home/logan03/lean-gym-rl
+REAL="${PROJECT_ROOT}"
+source "${REAL}/hpc/cc_env.sh"
+unset ROCR_VISIBLE_DEVICES
+cd "${REAL}"
+export PYTHONPATH="${REAL}:${PYTHONPATH:-}"
+
+if [ -n "${SLURM_TMPDIR:-}" ] && [ -f /scratch/logan03/mathlib4_v4.8.0-rc1.tar ]; then
+  t0=$(date +%s)
+  tar -xf /scratch/logan03/mathlib4_v4.8.0-rc1.tar -C "${SLURM_TMPDIR}"
+  cp -a "${LEAN_INTERACT_CACHE_DIR}" "${SLURM_TMPDIR}/lean_interact_cache"
+  export MATHLIB_ROOT="${SLURM_TMPDIR}/mathlib4"
+  export LEAN_INTERACT_CACHE_DIR="${SLURM_TMPDIR}/lean_interact_cache"
+  echo "[grpo3b] staging took $(( $(date +%s) - t0 ))s"
+fi
+export BEQ_ENV_TIMEOUT="${BEQ_ENV_TIMEOUT:-2400}"
+
+# MULTI-TURN IS NOW ON BY DEFAULT (MULTITURN=0 disables). The policy gets a Lean
+# type-check tool mid-rollout (reward/lean_tool.py) and sees the compiler's real
+# diagnostics before the reward lands -- 23.4% of rollouts fail to elaborate and
+# can never earn BEq+, so those are dead weight in their group.
+#
+# IT CHANGES THE ROLLOUT DISTRIBUTION. Arms trained with and without it are NOT
+# comparable, so a whole comparison set must be run one way or the other.
+MULTITURN="${MULTITURN:-1}"
+[ "$MULTITURN" = "1" ] && MULTITURN_ON=1 || MULTITURN_ON=""
+ARM="${ARM:?set ARM=gated|placebo|typecheck|selfprove|guided|gated_edge|gated_filtered}"
+# BEST_SFT selects which SFT series the RL arms train from. Default is the
+# original Instruct-based one; BEST_SFT=data_3b/best_sft_mt.txt runs the same
+# arms on top of the mid-trained model. Arms from different series are NOT
+# comparable -- they have different baselines.
+BEST_SFT="${BEST_SFT:-data_3b/best_sft.txt}"
+SERIES_TAG="${SERIES_TAG:-}"
+SERIES_SUFFIX="${SERIES_TAG:+_${SERIES_TAG}}"
+CKPT=$(cat "${BEST_SFT}" 2>/dev/null)
+[ -n "${CKPT}" ] || { echo "[grpo3b] FATAL: ${BEST_SFT} missing"; exit 1; }
+case "${CKPT}" in /*) ;; *) CKPT="$(cd "$(dirname "${CKPT}")" && pwd)/$(basename "${CKPT}")" ;; esac
+[ -d "${CKPT}" ] || { echo "[grpo3b] FATAL: checkpoint dir not found: ${CKPT}"; exit 1; }
+
+EXTRA=()
+TRAIN_FILE="${TRAIN_FILE:-${REAL}/data_3b/train.parquet}"
+case "$ARM" in
+  gated)   REWARD_FN_NAME=compute_score_gated ;;
+  selfprove)
+    # THE DECISIVE GOLD-FREE ARM. Strongest reward obtainable without ever
+    # consulting the gold: type-check + provable + not closed by `tauto` alone.
+    # Modelled on kimina-prover-rl's compile reward, with the anti-triviality
+    # guard their task does not need (their statement is an input; ours is the
+    # output, so `theorem x : 1 = 1` would otherwise score full marks).
+    # Paired against `gated` this asks the project's core question directly:
+    # can compiler-only signals substitute for gold-referenced semantics?
+    REWARD_FN_NAME=compute_score_selfprove ;;
+  typecheck)
+    # LOOP-HEALTH PROBE -- not a baseline we want to "succeed".
+    #
+    # Success criterion is that the REWARD rises, nothing else. Its BEq+ is
+    # EXPECTED to fall, and that is the point, not a malfunction: at 0.5B this
+    # reward went 0.000 -> 1.000 in 30 steps while BEq+ collapsed to 3.8%.
+    #
+    # Why it cannot be made honest here: in autoformalization the statement is
+    # the model's OUTPUT, so "it type-checks" is satisfied by `theorem x : 1 = 1`.
+    # Contrast project-numina/kimina-prover-rl, whose compile reward is sound
+    # only because their statement is an INPUT -- reward/proof_utils.py does
+    # extract_proof_from_text(output, formal_statement) with formal_statement
+    # taken from extra_info, so the model supplies only the proof body and
+    # cannot change the goal. That asymmetry is why they need no semantic reward
+    # and we do. Any sound reward for THIS task must compare against the gold,
+    # which is what BEq+ does -- so there is no non-exploitable non-BEq+
+    # baseline to run.
+    #
+    # What this arm buys: it separates "BEq+ does not teach" from "this 3B stack
+    # cannot optimise anything". If the reward does NOT rise, the loop is broken
+    # and no conclusion about BEq+ is admissible. It also re-tests the paper's
+    # exploitability claim on a 3B policy.
+    REWARD_FN_NAME=compute_score_typecheck_only ;;
+  guided)
+    # PROCESS-LEVEL REWARD (Interplay paper, arXiv:2512.07783 (d)).
+    #
+    # Why this arm and not a new reward: 32.3% of 3B-baseline rollouts TYPE-CHECK
+    # but earn no direction, and `compute_score_gated` pays them 0.00 -- exactly
+    # what it pays unparseable garbage. That dead band is a third of all mass, so
+    # for a third of prompts the group reward is CONSTANT and GRPO's advantage is
+    # identically zero there however the group is composed. It is the structural
+    # reason the gain channel has been pinned at 4.9-7.3% across every arm.
+    #
+    # compute_score_guided splits that band with gold-referenced similarity:
+    #   no type-check                 0.00
+    #   type-checks                   0.10 + 0.10*sim   (0.10 - 0.20)
+    #   + one direction              +0.15              (0.25 - 0.35)
+    #   + both directions            +0.65              (0.90 - 1.00)
+    # Measured feasibility: token-level Jaccard against the gold separates BEq+
+    # from type-check-only rollouts at AUC 0.706, at zero Lean cost.
+    #
+    # norm_adv_by_std_in_grpo=False matters MOST here: a group that is uniformly
+    # "type-checks only" has a reward spread of ~0.01, and verl's default
+    # renormalises that back to full scale, handing a near-noise similarity
+    # difference the same gradient as proving equivalence -- the exact failure in
+    # this reward's header (policy copied gold tokens into invalid Lean, entropy
+    # collapsed to 0.127).
+    #
+    # It is set REDUNDANTLY below. configs/run_grpo.sh:189 already defaults
+    # `norm_adv_by_std=${NORM_ADV_BY_STD:-False}`, so EVERY arm -- gated, placebo
+    # and the rest -- has always run with it off. Restating it here is a guard
+    # against that default changing, NOT something that distinguishes this arm.
+    # Do not read a gated-vs-guided difference as coming from this setting.
+    #
+    # Similarity CANNOT see semantic inversion: smoke-tested, flipping `<` to `>`
+    # scores 0.970 while a correctly-renamed variant scores 0.820. It guides the
+    # search; only BEq+ certifies. That is why the sim weight (0.10) is strictly
+    # below the one-direction step (0.15).
+    REWARD_FN_NAME=compute_score_guided
+    EXTRA+=(algorithm.norm_adv_by_std_in_grpo=False) ;;
+  gated_edge)
+    # EDGE-OF-COMPETENCE POOL (Interplay paper (b)). Identical reward to `gated`;
+    # the ONLY difference is the prompt pool, restricted to prompts that scored
+    # 1-7/8 at k=8 from this same SFT checkpoint. Those are the only groups that
+    # can produce a nonzero advantage, so informative goes 46% -> ~100% by
+    # construction, at zero extra Lean cost per step (contrast FILTER_GROUPS=1,
+    # which buys the same thing online at ~8x because refill is one prompt at a
+    # time).
+    #
+    # It is a STATIC filter on a MOVING target: prompts migrate
+    # starved -> informative -> saturated as the policy improves, so the pool
+    # decays in usefulness over the run. Paired against `gated` on the full pool,
+    # that decay is the measurement -- if difficulty curation helps at all it
+    # should show early and fade.
+    REWARD_FN_NAME=compute_score_gated
+    TRAIN_FILE="${REAL}/data_3b/train_edge.parquet"
+    [ -f "${TRAIN_FILE}" ] || { echo "[grpo3b] FATAL: ${TRAIN_FILE} missing -- run hpc/score_pool_3b.slurm then make_difficulty_subset.py"; exit 1; } ;;
+  gated_filtered)
+    REWARD_FN_NAME=compute_score_gated
+    # DAPO-style: discard groups that cannot produce an advantage and refill.
+    # ~3x generation cost, but it attacks the dead-batch problem head-on.
+    export FILTER_GROUPS=1 FILTER_GROUPS_METRIC=semantic_signal ;;
+  placebo)
+    REWARD_FN_NAME=compute_score_placebo
+    # The control MUST be fitted to this policy's geometry, not 0.5B's.
+    # Per-series: the fit is to a specific policy's geometry, so a mid-trained
+    # run must use its own constants, never the Instruct series'.
+    PLACEBO_CONSTS="data_3b/placebo_constants${SERIES_SUFFIX}.sh"
+    [ -f "${PLACEBO_CONSTS}" ] || {
+      echo "[grpo3b] FATAL: ${PLACEBO_CONSTS} missing -- run rollouts_3b first."
+      echo "[grpo3b] An uncalibrated placebo is not a control."; exit 1; }
+    . "${PLACEBO_CONSTS}"
+    echo "[grpo3b] placebo fitted to 3B: GROUP_P=${BEQ_PLACEBO_GROUP_P} ROLLOUT_P=${BEQ_PLACEBO_ROLLOUT_P}" ;;
+  *) echo "bad ARM"; exit 1 ;;
+esac
+
+# 4300 RL prompts / batch 16 = 268 steps per epoch, so 150 steps stays well
+# inside one pass -- no prompt is ever seen twice.
+MODEL_PATH="${CKPT}" \
+REWARD_FN_NAME="${REWARD_FN_NAME}" \
+TRAIN_BATCH_SIZE=16 PPO_MINI_BATCH_SIZE=16 ROLLOUT_N=8 \
+ROLLOUT_GPU_MEM_UTIL="${ROLLOUT_GPU_MEM_UTIL:-0.30}" \
+AGENT_LOOP_WORKERS="${AGENT_LOOP_WORKERS:-24}" \
+NGPUS_PER_NODE="${NGPUS_PER_NODE:-2}" \
+SAVE_FREQ=10 MAX_CKPT_KEEP=20 \
+EXPERIMENT_NAME="rl3b${SERIES_SUFFIX}_${ARM}" \
+  bash configs/run_grpo.sh \
+    ${MULTITURN_ON:+actor_rollout_ref.rollout.multi_turn.enable=True} \
+    ${MULTITURN_ON:+actor_rollout_ref.rollout.multi_turn.max_assistant_turns=${MAX_TURNS:-2}} \
+    ${MULTITURN_ON:+actor_rollout_ref.rollout.multi_turn.function_tool_path=${REAL}/reward/lean_tool.py} \
+    data.train_files="${TRAIN_FILE}" \
+    data.val_files="${REAL}/data_3b/val.parquet" \
+    trainer.total_training_steps="${TOTAL_STEPS:-150}" \
+    trainer.resume_mode=auto \
+    trainer.test_freq="${TEST_FREQ:-50}" \
+    trainer.save_freq=10 \
+    'actor_rollout_ref.actor.checkpoint.save_contents=[model,extra,hf_model]' \
+    ${EXTRA[@]+"${EXTRA[@]}"}
+
+echo "[grpo3b] arm=${ARM} done"

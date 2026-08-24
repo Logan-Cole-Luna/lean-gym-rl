@@ -100,12 +100,25 @@ def generate(model_dir: str, prompts: list[str], max_new_tokens: int, gpu_frac: 
             for p in prompts
         ]
 
+    # max_model_len was hardcoded to 896 (= the 16GB-era max_prompt_length 768 +
+    # max_response_length 128). vLLM REJECTS any prompt over the limit rather
+    # than truncating, so a single long example aborts the whole evaluation --
+    # which is what happened the first time a 1,000-row validation set was used
+    # (one prompt at 1,470 tokens out of 1,000). Derive it from the data, with
+    # the old value as a floor so existing runs are unchanged.
+    longest = max((len(tok(p)["input_ids"]) for p in prompts), default=0)
+    max_model_len = max(896, longest + max_new_tokens + 8)
+    if max_model_len > 896:
+        print(f"[eval] max_model_len {max_model_len} (longest prompt {longest} tokens); "
+              f"note training drops prompts over 768, so anything above that is "
+              f"off-distribution for every checkpoint alike", flush=True)
+
     llm = LLM(
         model=model_dir,
         trust_remote_code=True,
         dtype="bfloat16",
         gpu_memory_utilization=gpu_frac,
-        max_model_len=896,
+        max_model_len=max_model_len,
         enforce_eager=True,
     )
     # Greedy: we're measuring the policy's mode, not sampling diversity.
@@ -172,7 +185,19 @@ def main() -> None:
 
     import pandas as pd
 
-    df = pd.read_parquet(args.val_parquet).head(args.n_eval)
+    _val = pd.read_parquet(args.val_parquet)
+    # FAIL rather than silently produce a file whose name claims more examples
+    # than it holds. `.head(n)` returns fewer rows when the parquet is smaller,
+    # and the caller names the output `..._n{N_EVAL}.json` from the REQUEST, so
+    # a 400-row parquet with --n-eval 1000 used to write an `_n1000` file
+    # containing 400 records -- which any later analysis keyed on n would
+    # silently mis-pair. This bites easily because hpc/grpo_eval.slurm defaults
+    # VAL_PARQUET to the 400-row data/val.parquet.
+    if args.n_eval > len(_val):
+        raise SystemExit(
+            f"--n-eval {args.n_eval} exceeds {args.val_parquet} ({len(_val)} rows). "
+            f"Pass --val-parquet data_3b/val.parquet (1000 rows), or lower --n-eval.")
+    df = _val.head(args.n_eval)
     prompts = [row[0]["content"] for row in df["prompt"]]
     golds = [rm["ground_truth"] for rm in df["reward_model"]]
     print(f"[eval] {len(prompts)} validation examples from {args.val_parquet}")

@@ -11,7 +11,7 @@
 #SBATCH --gpus-per-node=a100:1
 #SBATCH --cpus-per-task=12
 #SBATCH --mem=120G
-#SBATCH --time=05:00:00
+#SBATCH --time=03:00:00
 #SBATCH --output=logs/rft_eval_%j.out
 #SBATCH --error=logs/rft_eval_%j.err
 

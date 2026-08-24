@@ -51,6 +51,12 @@ def main():
     # (broken) behaviour only for reproducing historical runs.
     ap.add_argument("--no-exclude-sft", dest="exclude_sft", action="store_false",
                     help="allow RL train prompts that SFT already trained on (NOT recommended)")
+    # The SFT set to exclude is NOT always data/sft: a second model scale gets
+    # its own split (e.g. data_3b/sft), and excluding the wrong one silently
+    # reintroduces the train/test contamination this flag exists to prevent.
+    ap.add_argument("--sft-parquet", default="",
+                    help="SFT train parquet whose prompts to exclude "
+                         "(default: <out-dir>/sft/train.parquet, else data/sft/train.parquet)")
     args = ap.parse_args()
 
     import os
@@ -111,7 +117,12 @@ def main():
     # instead of learning. Filtering here is what makes the reward comparison a
     # test of the REWARD rather than a test of how much SFT memorised.
     if args.exclude_sft:
-        sft_path = Path(__file__).resolve().parent.parent / "data" / "sft" / "train.parquet"
+        if args.sft_parquet:
+            sft_path = Path(args.sft_parquet)
+        else:
+            cand = Path(args.out_dir) / "sft" / "train.parquet"
+            sft_path = cand if cand.exists() else (
+                Path(__file__).resolve().parent.parent / "data" / "sft" / "train.parquet")
         if sft_path.exists():
             import pandas as _pd
 

@@ -308,6 +308,60 @@ def compute_score_gated(data_source, solution_str, ground_truth, extra_info=None
     return {"score": score, **_diagnostics(r)}
 
 
+# ── Self-prove reward: the strongest GOLD-FREE signal, i.e. no BEq+ ──────────
+# The decisive opponent for BEq+. Everything else in this file that works either
+# consults the gold (BEq+, similarity) or is trivially gameable (type-check).
+# This one is the best a compiler-only reward can do for autoformalization, and
+# it is modelled on project-numina/kimina-prover-rl.
+#
+# Why theirs is sound and this is not, structurally: kimina does PROOF
+# GENERATION, so the statement arrives as an input (reward/proof_utils.py does
+# extract_proof_from_text(output, formal_statement)) and the model can only fill
+# in a proof body. "It compiles" therefore means "you proved the given theorem".
+# In autoformalization the statement IS the output, so no compiler-only reward
+# can pin the semantics. This reward buys back what it can:
+#
+#   type-check  -- necessary, trivially gamed on its own
+#   provable    -- the statement must be TRUE, not merely well-formed
+#   non-trivial -- and not closed by `tauto` alone, so `theorem x : 1 = 1` earns 0
+#
+# It still cannot tell whether the statement says what the INFORMAL TEXT said --
+# only the gold can, which is the whole argument for BEq+. Expect this arm to
+# drift toward true-but-unrelated statements. That prediction is the experiment:
+# if BEq+ holds semantic accuracy while this degrades it, the case for a
+# gold-referenced semantic reward is made against the strongest alternative
+# rather than against a strawman.
+W_SP_TYPECHECK = float(os.environ.get("BEQ_W_SP_TYPECHECK", "0.2"))
+
+
+def compute_score_selfprove(data_source, solution_str, ground_truth, extra_info=None) -> dict:
+    scorer = _get_scorer()
+    pred = _clean_solution(solution_str)
+    r = scorer.self_prove(ground_truth, pred)
+    if r.get("self_prove"):
+        score = 1.0
+    elif r.get("typecheck"):
+        score = W_SP_TYPECHECK          # well-formed but vacuous or unproved
+    else:
+        score = 0.0
+    _note_call(r.get("error_kind"))
+    # Same key set as _diagnostics so verl's metric aggregation sees one schema.
+    # beq_plus is reported for MONITORING only -- it is never paid for here, which
+    # is the point of the arm.
+    return {
+        "score": score,
+        "acc": score,
+        "beq_plus": 0.0,
+        "typecheck": float(bool(r.get("typecheck"))),
+        "semantic_signal": 2.0 * float(bool(r.get("self_prove"))),
+        "n_directions": 0.0,
+        "gold_implies_pred": 0.0,
+        "pred_implies_gold": 0.0,
+        "similarity": 0.0,
+        "scorer_error": float(bool(r.get("error_kind"))),
+    }
+
+
 # ── Guided reward: continuous similarity + BEq+ certification ────────────────
 # Kept for ablation against `compute_score_gated`. This is the reward the
 # 200-step SFT->RL run used, and the one whose measured result motivated the

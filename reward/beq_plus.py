@@ -20,6 +20,7 @@ from __future__ import annotations
 import json
 import os
 import re
+import time as _time
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -96,6 +97,20 @@ if BEQ_MEMORY_LIMIT_MB is not None and BEQ_MEMORY_LIMIT_MB < BEQ_MATHLIB_BASELIN
 # (9 tactic attempts x 2 directions), so this multiplies out; 60s is the
 # upstream default and is far too generous for an online reward loop.
 BEQ_TIMEOUT_PER_PROOF = int(os.environ.get("BEQ_TIMEOUT_PER_PROOF", "30"))
+
+# BEq+ IMPLIES type-check -- verified with zero exceptions across 9,528 scored
+# rollouts. So when the prediction does not elaborate, the equivalence cascade
+# (up to ~18 Lean calls) cannot possibly fire and is pure waste. 23.4% of
+# rollouts fail type-check, so skipping is a large fraction of the calls.
+#
+# This is metric-preserving by construction, but VERIFY on your data before
+# trusting it: re-score a sample with BEQ_SKIP_CASCADE_ON_TYPECHECK_FAIL=0 and
+# confirm every verdict matches. Set to 0 to restore the old behaviour.
+BEQ_SKIP_CASCADE_ON_TYPECHECK_FAIL = os.environ.get(
+    "BEQ_SKIP_CASCADE_ON_TYPECHECK_FAIL", "1") == "1"
+# Accumulate per-phase wall-clock so the cost of the cascade vs. the type-check
+# is measurable rather than assumed (see BEqPlusScorer.stats).
+BEQ_TIME_PHASES = os.environ.get("BEQ_TIME_PHASES", "1") == "1"
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -312,13 +327,21 @@ class BEqPlusScorer:
         # at least measure how often it happens -- if `timeout`/`infra` climb,
         # the reward signal is quietly degrading and the run is not measuring
         # what it claims to.
-        self.stats: dict[str, int] = {
+        self.stats: dict[str, float] = {
             "score_calls": 0,
             "typecheck_calls": 0,
             "timeout": 0,
             "infra": 0,      # REPL died / connection aborted / malformed JSON
             "other_error": 0,
             "probe_calls": 0,
+            # Cascade skipped because the prediction did not type-check, and so
+            # could not have proved in either direction (see
+            # BEQ_SKIP_CASCADE_ON_TYPECHECK_FAIL).
+            "cascade_skipped": 0,
+            # Wall-clock split, so "Lean is the bottleneck" can be attributed to
+            # the type-check or the equivalence cascade rather than guessed at.
+            "t_typecheck": 0.0,
+            "t_cascade": 0.0,
         }
 
     def _note_error(self, exc: BaseException) -> str:
@@ -366,6 +389,39 @@ class BEqPlusScorer:
             return False, None
         return out.lean_code_is_valid(), None
 
+    def typecheck_message(self, theorem_text: str, context: str = "") -> tuple[bool, str]:
+        """`(elaborates, human-readable Lean diagnostics)`.
+
+        `typecheck_ex` deliberately returns only an error CATEGORY, because a
+        reward must distinguish "wrong statement" from "Lean broke". Multi-turn
+        feedback needs the opposite: the actual message, so the policy can fix
+        the statement. Same check, different projection -- the diagnostics are
+        already on the response and were simply being dropped.
+        """
+        self.stats["typecheck_calls"] += 1
+        env = self.get_env(context)
+        if env is None:
+            self.stats["infra"] += 1
+            return False, "Lean environment unavailable."
+        try:
+            code = clean_last_theorem_string(theorem_text, "candidate_theorem", add_sorry=True)
+        except ValueError:
+            return False, ("Could not parse a single Lean theorem declaration from the "
+                           "output. Emit exactly one `theorem ... := by sorry`.")
+        try:
+            out = self.server.run(Command(cmd=code, env=env), timeout=self.timeout_per_proof)
+        except (TimeoutError, ConnectionAbortedError, json.JSONDecodeError) as e:
+            self._note_error(e)
+            return False, f"Lean did not respond ({type(e).__name__})."
+        if isinstance(out, LeanError):
+            return False, str(getattr(out, "message", "Lean error"))
+        if out.lean_code_is_valid():
+            return True, ""
+        errs = [f"{getattr(m, 'severity', 'error')}: {getattr(m, 'data', m)}"
+                for m in (getattr(out, "messages", []) or [])
+                if getattr(m, "severity", "") == "error"]
+        return False, "\n".join(errs) if errs else "Statement failed to elaborate."
+
     def typecheck(self, theorem_text: str, context: str = "") -> bool:
         """True iff `theorem_text` elaborates (with `sorry` closing the proof)
         against Mathlib + `context`. This is the syntactic / type-check reward
@@ -382,6 +438,67 @@ class BEqPlusScorer:
         self.stats["probe_calls"] += 1
         res = check_theorem_equivalence(premise, goal, self.server, env, self.timeout_per_proof)
         return res.beq_plus_unidirections[0] is not None
+
+    def self_prove(self, gold_full_snippet: str, pred_theorem_text: str) -> dict:
+        """GOLD-FREE check: does `pred` type-check, and is it TRUE on its own?
+
+        This is the autoformalization analogue of project-numina/kimina-prover-rl's
+        compile reward. Theirs is sound because the statement is an INPUT and the
+        model only supplies a proof body; ours is not, because the statement is
+        the OUTPUT. So provability alone is worse than useless -- `theorem x :
+        1 = 1` type-checks AND proves instantly.
+
+        The guard: a statement counts only if it is provable AND not provable by
+        `tauto` alone, i.e. it has some content. That cannot certify the
+        statement means the RIGHT thing (only the gold can do that, which is
+        BEq+), but it does raise the price of gaming from one token to something
+        non-trivial, which is what makes this a fair opponent for BEq+ rather
+        than a strawman.
+
+        The gold is taken ONLY for its header/context so `pred` elaborates in the
+        same environment; its theorem body is never consulted.
+        """
+        self.stats["score_calls"] += 1
+        context, _gold_theorem = split_header_and_theorem(gold_full_snippet)
+        out = {"typecheck": False, "provable": False, "trivial": False,
+               "self_prove": False, "error": None, "error_kind": None}
+        env = self.get_env(context)
+        if env is None:
+            self.stats["infra"] += 1
+            out["error"], out["error_kind"] = "header_env_failed", "infra"
+            return out
+        out["typecheck"], tc_err = self.typecheck_ex(pred_theorem_text, context)
+        if tc_err:
+            out["error_kind"] = tc_err
+        if not out["typecheck"]:
+            return out
+        try:
+            # Cheapest tactic first: if `tauto` alone closes it, the statement is
+            # vacuous and earns nothing.
+            out["trivial"] = self._prove_with(pred_theorem_text, env, ["tauto"])
+            out["provable"] = out["trivial"] or self._prove_with(
+                pred_theorem_text, env, ["simp_all_arith!", "noncomm_ring", "exact?"])
+            out["self_prove"] = bool(out["provable"] and not out["trivial"])
+        except Exception as e:
+            out["error"] = f"{type(e).__name__}: {e}"[:200]
+            out["error_kind"] = self._note_error(e)
+        return out
+
+    def _prove_with(self, theorem_text: str, env: int, tactics: list[str]) -> bool:
+        """True iff any of `tactics` closes `theorem_text` in `env`."""
+        stmt = clean_last_theorem_string(theorem_text, "thm") or theorem_text
+        for tac in tactics:
+            self.stats["probe_calls"] += 1
+            try:
+                out = self.server.run(Command(cmd=f"{stmt} := by {tac}", env=env),
+                                      timeout=self.timeout_per_proof)
+            except Exception:
+                continue
+            msgs = getattr(out, "messages", []) or []
+            if isinstance(out, CommandResponse) and not any(
+                    getattr(m, "severity", "") == "error" for m in msgs):
+                return True
+        return False
 
     def score(self, gold_full_snippet: str, pred_theorem_text: str, probe_stronger: bool | None = None) -> dict:
         """gold_full_snippet: full record text (imports+namespace+...+theorem),
@@ -426,9 +543,20 @@ class BEqPlusScorer:
             out["error"] = "header_env_failed"
             out["error_kind"] = "infra"
             return out
+        _t0 = _time.perf_counter() if BEQ_TIME_PHASES else 0.0
         out["typecheck"], tc_err = self.typecheck_ex(pred_theorem_text, context)
+        if BEQ_TIME_PHASES:
+            self.stats["t_typecheck"] += _time.perf_counter() - _t0
         if tc_err:
             out["error_kind"] = tc_err
+        # See BEQ_SKIP_CASCADE_ON_TYPECHECK_FAIL: BEq+ implies type-check, so a
+        # non-elaborating prediction cannot prove in either direction. Every
+        # field below stays at its False/0 default, which is what the full
+        # cascade would have returned anyway.
+        if BEQ_SKIP_CASCADE_ON_TYPECHECK_FAIL and not out["typecheck"]:
+            self.stats["cascade_skipped"] += 1
+            return out
+        _t1 = _time.perf_counter() if BEQ_TIME_PHASES else 0.0
         try:
             res = check_theorem_equivalence(gold_theorem_text, pred_theorem_text, self.server, env, self.timeout_per_proof)
             out["beql"] = res.beql()
@@ -450,6 +578,8 @@ class BEqPlusScorer:
         except Exception as e:  # keep the server alive on a single bad record
             out["error"] = f"{type(e).__name__}: {e}"[:200]
             out["error_kind"] = self._note_error(e)
+        if BEQ_TIME_PHASES:
+            self.stats["t_cascade"] += _time.perf_counter() - _t1
         return out
 
 

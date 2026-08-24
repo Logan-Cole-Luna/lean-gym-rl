@@ -85,6 +85,9 @@ def main() -> None:
     ap.add_argument("--probe-stronger", action="store_true",
                     help="also test pred=>gold alone (see beq_plus.py DIRECTION SEMANTICS)")
     ap.add_argument("--limit", type=int, default=0)
+    ap.add_argument("--result-timeout", type=float, default=900,
+                    help="seconds to wait for any single result before assuming a worker "
+                         "died holding its task (see the loop below); 0 disables")
     args = ap.parse_args()
 
     records = [json.loads(l) for l in Path(args.rollouts).read_text().splitlines() if l.strip()]
@@ -119,7 +122,39 @@ def main() -> None:
         args.workers, initializer=_init_worker,
         initargs=(args.memory_limit_mb, args.timeout_per_proof, args.probe_stronger),
     ) as pool:
-        for i, res in enumerate(pool.imap_unordered(_score_one, todo, chunksize=1), 1):
+        # DO NOT go back to a plain `for res in pool.imap_unordered(...)`.
+        # A worker that dies (the memory cap kills them) is replaced by the Pool,
+        # but the task it was holding is LOST, and imap_unordered then blocks
+        # forever waiting for a result that will never arrive. Measured cost of
+        # that: three jobs (score_pool slice 1, both passk runs) each finished
+        # their real work and then sat hung until the walltime killed them --
+        # ~9 GPU-hours burned, and because they exited TIMEOUT rather than
+        # COMPLETED every `afterok` behind them was cancelled. Each file was
+        # short by exactly ONE rollout of ~7,744.
+        #
+        # Driving the iterator by hand with a per-result timeout turns a silent
+        # multi-hour hang into a clean exit that keeps 99.99% of the data. The
+        # timeout is per RESULT, not per rollout, and results stream in from
+        # `--workers` in parallel, so 15 min is far above the worst realistic
+        # wait (18 Lean calls x 30s = 9 min for a single pair).
+        # 0/negative means "wait forever". Passing timeout=0 straight through
+        # would abort on the FIRST result, i.e. the exact opposite of the
+        # documented behaviour.
+        _result_timeout = args.result_timeout if args.result_timeout > 0 else None
+        it = pool.imap_unordered(_score_one, todo, chunksize=1)
+        i = 0
+        while True:
+            try:
+                res = it.next(timeout=_result_timeout)
+            except StopIteration:
+                break
+            except mp.TimeoutError:
+                print(f"[score] STALLED: no result for {_result_timeout}s after "
+                      f"{i}/{len(todo)}. A worker almost certainly died holding a task; "
+                      f"its rollout is lost. Writing what we have and exiting cleanly.",
+                      flush=True)
+                break
+            i += 1
             fh.write(json.dumps(res, ensure_ascii=False) + "\n")
             fh.flush()  # the pass is hours long; never buffer results away
             n_tc += res["typecheck"]

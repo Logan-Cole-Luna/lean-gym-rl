@@ -60,6 +60,13 @@ def main() -> None:
     ap.add_argument("--n-train", type=int, default=4000)
     ap.add_argument("--n-val", type=int, default=200)
     ap.add_argument("--seed", type=int, default=0)
+    # Which eval set to hold out is NOT always data/val.parquet: a second model
+    # scale gets its own, larger val, and excluding the wrong one puts eval
+    # prompts into SFT training -- exactly the train-on-test defect the filter
+    # below exists to prevent.
+    ap.add_argument("--val-parquet", default="",
+                    help="eval parquet whose prompts to exclude from SFT "
+                         "(default: <out-dir>/../val.parquet, else data/val.parquet)")
     # Drop examples longer than the SFT trainer's max_length instead of letting
     # it truncate them: a truncated theorem statement is a corrupt target, and
     # verl's default truncation=error turns one long example into a crash mid
@@ -104,7 +111,11 @@ def main() -> None:
     # model over 4k examples does not memorise individual items). But it was
     # luck, not design: any longer/larger SFT run would start memorising, and
     # the headline "SFT beats RL" claim would quietly become train-on-test.
-    val_path = PROJECT_ROOT / "data" / "val.parquet"
+    if args.val_parquet:
+        val_path = Path(args.val_parquet)
+    else:
+        cand = Path(args.out_dir).parent / "val.parquet"
+        val_path = cand if cand.exists() else PROJECT_ROOT / "data" / "val.parquet"
     if val_path.exists():
         import pandas as _pd
 
