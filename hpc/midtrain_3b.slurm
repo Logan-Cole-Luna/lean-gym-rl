@@ -30,13 +30,7 @@
 #SBATCH --output=logs/midtrain_3b_%j.out
 #SBATCH --error=logs/midtrain_3b_%j.err
 
-set -uo pipefail
-export PROJECT_ROOT=/home/logan03/lean-gym-rl
-REAL="${PROJECT_ROOT}"
-source "${REAL}/hpc/cc_env.sh"
-unset ROCR_VISIBLE_DEVICES
-cd "${REAL}"
-export PYTHONPATH="${REAL}:${PYTHONPATH:-}"
+source /home/logan03/lean-gym-rl/hpc/job_prelude.sh
 mkdir -p logs
 
 TRAIN="${REAL}/data_3b/midtrain/train.parquet"

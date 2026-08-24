@@ -1,426 +1,286 @@
-# ai4math_training — BEq+ as an RL Reward for Lean 4 Autoformalization
+# lean-gym-rl
 
-A proof-of-concept measuring the actual training-time impact of using **BEq+**
-(semantic/symbolic statement-equivalence) as an RL reward signal for autoformalization,
-per *"Online Reinforcement Learning for Autoformalization"*
-([researchgate.net/publication/396825045](https://www.researchgate.net/publication/396825045)).
-That paper's core claim: a type-check-only reward is exploitable — the policy learns to
-produce syntactically valid but semantically vacuous Lean statements. Composing it with
-a BEq+ semantic-equivalence reward against ground truth is meant to close that gap. This
-project builds the smallest real pipeline that can measure it: GRPO training with two
-swappable reward functions (type-check-only vs. type-check + BEq+), on real data, with a
-real Lean toolchain.
+**A gym for reinforcement learning on Lean 4 autoformalization.**
 
-> **Result: [results/FINDINGS.md](results/FINDINGS.md).** Across 37 evaluated
-> checkpoints no RL run beat SFT alone on BEq+ (best: SFT at 38.8%, n=400,
-> paired McNemar throughout). A gradient probe found an early data defect — 93.4%
-> of RL prompts overlapped SFT training, leaving only 16.7% of rollout groups
-> able to produce a gradient. After fixing it and rerunning on disjoint data the
-> training dynamics improved (dead steps 26%→16%, KL drift 0.33→0.21) but BEq+
-> still fell 38.8%→33.2% (p=0.008). Read that file first.
+Autoformalization — turning an informal mathematical statement into a formal
+Lean 4 theorem — is unusually hard to reward. The statement is the model's
+*output*, so "it compiles" is satisfied by `theorem x : 1 = 1`. Every reward that
+is cheap is exploitable, and every reward that is sound is expensive. This repo
+exists to make that trade-off **measurable**: swappable rewards, a real
+Lean/Mathlib scoring backend, and an evaluation harness that insists on paired
+tests against a *calibrated noise control*.
 
-## What's here
+The flagship experiment is **BEq+** as a training-time RL reward. It is one arm
+among several, and the harness is the point.
 
-| Piece | Choice | Why |
-|---|---|---|
-| RL framework | [verl](https://github.com/volcengine/verl) (`repos/verl`) | Widely-used open RL post-training library for LLMs; native GRPO; pluggable `custom_reward_function`. |
-| Algorithm | GRPO, full-parameter (no LoRA) | See *Hardware notes* below for why LoRA was dropped. |
-| Base model | `Qwen/Qwen2.5-Coder-0.5B-Instruct` | Small enough to actually train on a single 16GB GPU; code-pretrained, so not starting from zero on Lean syntax. |
-| Dataset | [`internlm/Lean-Workbook`](https://huggingface.co/datasets/internlm/Lean-Workbook) | 57k well-known, widely-cited NL↔Lean4 pairs (NeurIPS'24), built specifically for autoformalization training. |
-| Lean / Mathlib | Mathlib4 @ `v4.8.0-rc1` (`repos/mathlib4`) | Pinned to match Lean-Workbook's target toolchain — built fresh for this project, not shared with other Lean projects on this machine. |
-| Semantic reward | **BEq+** (`reward/beq_plus.py`) | Deterministic, CPU-only, LLM-free symbolic equivalence metric (Poiroux et al., EMNLP'25). Algorithm vendored from `augustepoiroux/RLMEval`; wrapped in a persistent Lean REPL server for online per-rollout scoring. |
-
-## Setup
-
-Requires [`uv`](https://astral.sh/uv), a CUDA-capable GPU, and network access for the
-one-time downloads.
-
-```bash
-make setup          # env + verl + Mathlib4 + model + dataset (~20-30 min, mostly Mathlib)
-source .venv/bin/activate
-make smoke           # ~1-2 min sanity check: one GRPO step on 8 examples
+```
+informal statement ──▶ policy ──▶ Lean statement ──▶ [ reward ] ──▶ GRPO
+                                                        ▲
+                          type-check · self-prove · BEq+ · similarity · placebo
 ```
 
-`make help` lists every target. Each setup step is also independently re-runnable
-(`make env`, `make verl`, `make mathlib`, `make model`, `make dataset`) if you only need
-to redo one piece.
+---
 
-## Running training
+## Why a gym, and not just a training script
 
-```bash
-make train-composite    # GRPO with type-check + BEq+ composite reward
-make train-typecheck    # GRPO with type-check-only reward (the exploitable baseline)
-make train               # both, sequentially — this is a single-GPU PoC, they can't overlap
+Three things kept going wrong often enough to be designed against:
 
-make train-shaped        # graded/process-level BEq+ reward, from scratch
-make train-curriculum    # two-phase curriculum from scratch (see below)
-```
+1. **A reward that looks like it works usually isn't working.** Type-check-only
+   RL drives its own metric from 76.7% → 98.0% while semantic accuracy collapses
+   41.2% → 8.0%. Any harness that reports only the reward would call that a
+   success.
+2. **GRPO with no signal at all is destructive**, so "RL made it worse" is not
+   evidence about your reward. A run must be compared to a *fitted* placebo, not
+   to the SFT baseline.
+3. **Net accuracy hides the mechanism.** Arms differ mostly in how much they
+   destroy. Splitting retention from gains is what separates "protects the
+   policy" from "teaches it something".
 
-### Reward functions
+So the harness ships a reward zoo, a calibrated control, and paired statistics as
+first-class pieces.
 
-Selected per run via `REWARD_FN_NAME`; all live in `reward/reward_fn.py`.
+---
 
-| name | definition | purpose |
-|---|---|---|
-| `compute_score_typecheck_only` | `1.0` iff the statement elaborates | the exploitable baseline |
-| `compute_score_composite` | `0.1·typecheck + 0.9·BEq+` | the paper's composite formulation |
-| `compute_score_shaped` | `0.10 typecheck + 0.20 one-direction + 0.70 both` | graded — but see the measurement below |
-| `compute_score_guided` | `0.10·similarity + 0.10 typecheck + 0.15 one-dir + 0.65 both` | continuous; grades the buckets the others collapse |
-| **`compute_score_gated`** | `0.25 one-direction + 0.75 both`, **flat 0 otherwise** | **default.** Pays *nothing* for type-check or similarity — see [Why SFT→RL regressed](#why-sftrl-regressed-and-what-changed) |
+## The reward zoo
 
-Every reward returns a **dict**, not a float: `{"score": …}` plus per-sample
-diagnostics that verl forwards into `reward_extra_info`. Two consequences worth
-knowing:
+`reward/reward_fn.py`. All share one signature and one diagnostic schema, so any
+of them drops into `configs/run_grpo.sh` via `REWARD_FN_NAME`.
 
-- `acc` is emitted as the BEq+ indicator, and verl promotes an `acc` key to the
-  run's core validation variable — so `val-core/<data_source>/acc/mean@1` is now
-  **literally the BEq+ rate**, not the reward mean. (The warning further down
-  about not comparing arms with that metric applied to the old float-returning
-  version.)
-- `semantic_signal` ∈ {0,1,2} is what `algorithm.filter_groups.metric` keys off
-  when group filtering is enabled.
-
-### Why the shaped reward wasn't enough (measured)
-
-Rung occupancy of `compute_score_shaped` over 40 validation outputs of the SFT
-policy (`results/rung_probe.json`):
-
-| rung | share |
-|---|---|
-| 0.00 — does not type-check | 27.5% |
-| 0.15 — type-checks, no BEq+ | 32.5% |
-| **0.50 — one BEq+ direction** | **2.5%** |
-| 1.00 — full BEq+ | 37.5% |
-
-The intermediate rung fires on **1 example in 40**, because "one direction
-proves" still requires a successful Lean tactic search — nearly as rare as the
-full proof. So the shaped reward is *cosmetically* denser but functionally close
-to binary: 60% of the data sits in two undifferentiated buckets where a
-one-coefficient near-miss scores exactly the same as `theorem x : 1 = 1`.
-
-### The guided reward
-
-`compute_score_guided` adds a **continuous** term from `reward/similarity.py`,
-which is defined even when the statement fails to elaborate, so it grades both
-dead buckets:
-
-- **GTED-style structural similarity** — statements are converted to operator
-  trees and compared by normalized tree edit distance. Inspired by
-  [GTED (arXiv:2507.07399)](https://arxiv.org/abs/2507.07399), which reports the
-  highest accuracy/Kappa on miniF2F and is explicitly complementary to BEq (BEq
-  tests logical equivalence; GTED measures structural distance). **Ours is an
-  approximation**: we build trees from bracket/operator structure rather than
-  from a real Lean-LSP parse, to avoid a second Lean round-trip per rollout.
-- **Library-constant overlap** — Jaccard over dotted/capitalised constants
-  (`Set.Ioo`, `Nat.choose`). Bare lowercase identifiers are excluded on purpose:
-  counting them gave an unrelated prediction 0.667 credit just for also
-  mentioning `x`.
-- **Embedding similarity** — the continuous, pairing-free reward proposed in the
-  source paper itself. Optional (`BEQ_USE_EMBEDDING=1`), CPU-only, off by
-  default given this project's host-RAM history.
-
-Effect on the cases that matter:
-
-| case | composite | shaped | **guided** |
+| reward | what it checks | Lean cost | exploitable? |
 |---|---|---|---|
-| exact match | 1.00 | 1.00 | **1.00** |
-| one BEq+ direction | 0.10 | 0.50 | **0.53** |
-| near-miss (one coefficient off) | 0.10 | 0.15 | **0.34** |
-| reward-hack boilerplate | 0.10 | 0.15 | **0.24** |
+| `typecheck_only` | statement elaborates | 1 call | **yes, badly** |
+| `selfprove` | elaborates + provable + not closed by `tauto` alone | ~4 calls | partially — drifts to true-but-unrelated |
+| `gated` | BEq+ ladder: 0 / one direction / both directions | up to ~18 calls | no (gold-referenced) |
+| `guided` | `gated` + type-check-gated structural similarity | same + CPU | similarity is capped below the semantic step |
+| `shaped`, `composite` | weighted blends of the above | varies | — |
+| `placebo` | deterministic pseudo-random on the rollout hash | **none** | n/a — it is the control |
 
-The near-miss and the hack were indistinguishable before; they now differ by
-0.10.
+**BEq+** (`reward/beq_plus.py`) is deterministic, LLM-free, bidirectional Lean
+tactic equivalence (Poiroux et al., EMNLP'25), vendored from
+`augustepoiroux/RLMEval` and wrapped in a persistent Mathlib-resident REPL
+(~4.3GB per worker) so it can score rollouts online.
 
-**Ordering constraint (important).** Structural similarity cannot detect
-semantic *inversion* — flipping `<` to `>` is one token and scores ~0.98, the
-same as a harmless typo. The similarity weight is therefore capped so that no
-amount of structural resemblance can outscore actually proving equivalence.
-Similarity guides the search; BEq+ certifies the answer.
+### The control is the load-bearing piece
 
-**Expectations.** Denser shaping is well motivated but not guaranteed to pay off:
-[FormalRewardBench-adjacent work](https://arxiv.org/abs/2605.10141) finds partial
-credit "produces a smoother reward signal but does not improve the final solve
-rate". Our own SFT→RL null result is consistent with that. Treat this as a
-hypothesis to test (`make train-guided`), not a fix.
+`compute_score_placebo` invokes no Lean and carries zero information. Its
+constants are **fitted to each policy** by `scripts/calibrate_placebo.py`, which
+matches three measured statistics: the informative-group rate, the within-group
+standard deviation, and the mean reward.
 
-The **shaped** reward is a process-level signal derived from BEq+'s own internals.
-BEq+ proves equivalence in *two* directions (gold⇒pred and pred⇒gold) and only reports
-success when both hold; the per-direction results were previously discarded. One
-direction proving means the prediction is a strictly stronger or weaker version of the
-gold — genuinely close — so it earns partial credit. The ladder is monotone, so the
-argmax is still exact BEq+ equivalence: it shapes the path, not the target.
+All three are necessary. Fitting only the first two leaves the problem
+degenerate — within-group sd is symmetric under `p ↔ 1−p` — and the two
+solutions have *mirrored advantage skew*, which changes how destructive the
+control is. We shipped the wrong branch once and only caught it when a second
+policy fitted to the opposite one.
 
-Concretely (`python -m reward.reward_fn`):
+---
 
-| case | typecheck | composite | shaped |
-|---|---|---|---|
-| equivalent | 1.00 | 1.00 | 1.00 |
-| strictly stronger (one direction) | 1.00 | 0.10 | **0.50** |
-| semantically wrong | 1.00 | 0.10 | 0.15 |
-| reward-hack boilerplate | 1.00 | 0.10 | 0.15 |
+## Experiments
 
-A near-miss gets 5× the gradient it would under the strict composite, while the hack
-still bottoms out — shaping without opening a new exploit.
+A decisive per-arm breakdown — what each reward computes, where they overlap,
+where they diverge — is in [`arms.md`](arms.md).
 
-### Why SFT→RL regressed, and what changed
+Each is a slurm arm plus an analysis. Results in
+[`logook.md`](logook.md) and [`results/FINDINGS.md`](results/FINDINGS.md).
 
-Scaling the SFT→RL run to 200 steps and the eval set to 400 examples turned the
-earlier null result into a **statistically significant regression**
-(`results/compare.txt`):
+### 1. Does a gold-referenced semantic reward beat noise? *(flagship)*
 
-| checkpoint | type-check % | BEq+ % | vs SFT (McNemar, n=400) |
-|---|---|---|---|
-| SFT @ 390 | 76.2% | **38.8%** | — |
-| SFT→RL guided @ 25 | 77.2% | 35.5% | −27/+14, p=0.060 |
-| SFT→RL guided @ 100 | 78.8% | 35.8% | −31/+19, p=0.119 |
-| SFT→RL guided @ 125 | 80.8% | 29.5% | −53/+16, **p<1e-4** |
-| SFT→RL guided @ 200 | 84.2% | 29.0% | −56/+17, **p<1e-4** |
+`gated` vs the calibrated placebo, paired McNemar on a pinned 400-example slice.
 
-Type-check goes **up** while BEq+ goes **down**, and of the 56 examples lost at
-step 200, **48 still type-check** — the policy is producing valid Lean that no
-longer means the right thing. Meanwhile the training reward never trended up at
-all (0.84 at step 10, 0.50 at step 200, pure oscillation) while KL from the SFT
-reference climbed 0.05 → 0.5 and entropy fell to 0.015. The run paid a large KL
-toll to go nowhere.
-
-**Root cause: GRPO's advantage is computed within a rollout group, and in a group
-where nothing proves equivalent the only terms that can rank the samples are
-`typecheck` and `similarity`.** For a policy at ~35% BEq+ that is the majority of
-groups, so the *dominant* gradient over a run says "emit valid Lean that
-resembles the gold" rather than "be equivalent to the gold". The similarity term
-was capped so it could never *outscore* proven equivalence — but that cap does
-nothing in groups where no sample proves anything, which is precisely where the
-term did its damage.
-
-Five contributing factors, all now addressed:
-
-| # | Problem | Fix |
-|---|---|---|
-| 1 | Non-semantic terms are the only differentiator in no-signal groups | `compute_score_gated`: flat floor ⇒ zero advantage ⇒ **no gradient** from those groups. `FILTER_GROUPS=1` additionally *replaces* them (stronger, ~3× generation cost) |
-| 2 | `norm_adv_by_std_in_grpo` rescales near-tie groups back to full gradient, amplifying scorer noise | `NORM_ADV_BY_STD=False` (Dr. GRPO) |
-| 3 | Entropy → 0.015 with `rollout_n=4`: rollouts in a group are near-duplicates | `ROLLOUT_N=8`, `ENTROPY_COEFF=0.005`, `ROLLOUT_TEMPERATURE` exposed |
-| 4 | `kl_loss_coef=0.001` let the policy drift to KL 0.5 from the best BEq+ policy available | `KL_LOSS_COEF=0.01` (watch `actor/kl_loss`, target ≲0.05) |
-| 5 | Checkpoints were selected on a reward that can rise while BEq+ falls | rewards emit `acc` = BEq+ (see above); `make select` applies the paired test offline |
-
-**Two latent bugs surfaced while fixing the above, both of which affected the
-measured run:**
-
-- **`zss` was never installed, and `structural_similarity` swallowed the
-  ImportError.** The GTED-style tree-edit term — the guided reward's headline
-  continuous signal — returned `0.0` for *every* pair throughout training. The
-  "continuous" reward was in fact `0.4 × library-constant Jaccard`, i.e. credit
-  for name-dropping the right Mathlib constants. `zss` is now a declared
-  dependency and the missing-import path warns loudly instead of scoring 0.
-
-- **BEq+'s one-direction rung can only ever fire for *weaker* statements.** The
-  vendored cascade proves `gold ⇒ pred` first and `break`s if it fails, so
-  `n_directions == 1` always means "prediction is strictly weaker than the gold",
-  and a strictly *stronger* prediction is scored identically to garbage. Partial
-  credit was therefore paid exclusively for weakening — the direction that trends
-  toward vacuity. The rung's weight is reduced accordingly, per-direction results
-  are logged separately, and `BEQ_PROBE_STRONGER=1` makes the signal symmetric at
-  the cost of one extra Lean cascade per non-equivalent rollout. See the
-  DIRECTION SEMANTICS note at the top of `reward/beq_plus.py`.
-
-Lean scorer failures (timeouts, dead REPLs) are also now counted and reported per
-sample as `scorer_error`. They still score 0 — verl gives a reward function no
-way to abstain — but a correct rollout lost to a timeout is a gradient pointing
-away from correctness, so the rate is worth watching rather than leaving
-invisible.
-
-**Running the corrected pipeline:**
-
-```bash
-make train-gated INIT=checkpoints/merged/sft-step390     # ~100 steps
-make eval-sweep RUN=checkpoints/beqplus_rl_poc/rl_from_sft-step390_compute_score_gated
-make select                                              # best ckpt + paired test
-```
-
-`DRY_RUN=1` in front of any training command prints the fully-resolved verl
-invocation and exits without touching the GPU.
-
-### Curriculum
-
-`make train-curriculum` (→ `scripts/run_curriculum.sh`) trains **from scratch** in two
-phases: the first half on the cheap, dense type-check reward to learn Lean syntax, then
-a checkpoint handoff, then the second half on BEq+ for semantics.
-
-```bash
-make train-curriculum                                   # 15 + 15 steps, shaped phase 2
-TOTAL_STEPS=40 SWITCH_AT=20 make train-curriculum       # custom split
-PHASE2_REWARD=compute_score_composite make train-curriculum
-```
-
-Two implementation notes worth knowing before changing it:
-
-- **Why two runs, not a mid-run reward switch.** verl doesn't pass the global step to
-  `custom_reward_function` (`extra_info` carries only dataset fields + `num_turns`), so
-  an in-run switch needs a call-counting hack that interleaved validation passes would
-  corrupt. A checkpoint handoff is robust and is how curricula are normally built.
-- **Why phase 1 stops at the midpoint** rather than converging: by step ~26 the
-  type-check objective saturates at 100% and the policy collapses onto trivially-true
-  boilerplate with entropy ~0.62. Handing off from a collapsed policy leaves phase 2
-  nothing to explore with.
-
-## Plots and per-reward quantification
-
-```bash
-make plots     # → results/training_curves.png, training_metrics.csv, reward_impact.md
-```
-
-`scripts/plot_results.py` scrapes verl's per-step console metrics out of `logs/`,
-groups them by arm (one log may contain several arms back-to-back), and quantifies what
-each reward actually did at the training level. The most useful column is **dead
-steps** — steps where every rollout in every group earned the same reward, so GRPO's
-advantage was zero and the step contributed no gradient — split by cause:
-
-| arm | steps | dead steps | starved | saturated |
+| step | placebo | **gated** | diff | p |
 |---|---|---|---|---|
-| composite (strict BEq+), from scratch | 30 | 18/30 | **18** | 0 |
-| type-check-only, from scratch | 30 | 10/30 | 4 | **6** |
-| **SFT → RL (shaped)** | 15 | **0/15** | **0** | 0 |
+| 30 | 22.2% | **40.5%** | **+18.2pp** | 7e-16 |
+| 50 | 23.8% | 36.2% | +12.5pp | 6e-7 |
+| 70 | 18.8% | 34.0% | +15.2pp | 2e-10 |
 
-*starved* = the reward never fired for any rollout (signal too sparse to learn from);
-*saturated* = every rollout already succeeds (nothing left to optimise). The composite
-arm spent **60% of training producing no gradient at all**, entirely from starvation —
-the measured mechanism behind its poor result below, and the thing the shaped and
-curriculum arms exist to fix.
+`gated-step30` is statistically **indistinguishable from the SFT baseline**
+(40.5% vs 41.2%, p=0.78, retention 83.6%) while pure noise at the same step keeps
+only 51.5% of the baseline's correct answers. BEq+ does not teach the policy much
+— it very nearly fully protects it.
 
-Both read `configs/run_grpo.sh`, which wires the reward function in via
-`reward.custom_reward_function.{path,name}` and reads
-`REWARD_FN_NAME=compute_score_composite|compute_score_typecheck_only` from the
-environment. Every other knob (batch size, rollout group size, LR, step count) is a
-shell variable at the top of that script, overridable via env var
-(`TRAIN_BATCH_SIZE=32 make train-composite`, etc.) or extra Hydra overrides passed
-straight through (`bash configs/run_grpo.sh trainer.total_epochs=5`).
+### 2. Is a type-check-only reward exploitable? *(reproduced, decisively)*
 
-## Evaluating (the actual comparison)
+| step | 10 | 50 | 90 | 110 |
+|---|---|---|---|---|
+| BEq+ | 40.0% | 22.0% | 22.0% | **8.0%** |
+| type-check | 88.0% | 93.5% | 97.2% | **98.0%** |
 
-**Do not compare the two arms using verl's own `val-core/.../acc/mean@1`.** That metric
-is just the mean of *whatever reward function that run used* — the composite arm's is
-`0.1·typecheck + 0.9·beq_plus`, the baseline's is the raw type-check rate. They are on
-different scales, and the composite number can't be decomposed on its own (a score of
-0.0825 is consistent with anything from "82.5% type-check, 0% BEq+" to "8.25% both",
-since BEq+ implies type-check).
+Monotone in both directions. By step 150 the training reward is exactly 1.000 and
+`critic/advantages` has max = min = 0 — the objective is dead. Crucially this
+ends up *below the placebo* on semantics while far above it on the proxy, which
+is the difference between "an optimiser aimed at the wrong target" and "drift".
 
-`make evaluate` does the valid comparison: it merges both final checkpoints out of
-verl's FSDP-sharded format and re-scores them — plus the untrained base model — with
-**both metrics separately**, on the same validation examples.
+### 3. Can a gold-free reward substitute? *(open)*
+
+`selfprove` is the strongest reward obtainable without ever consulting the gold.
+If it keeps pace with `gated`, the case for gold-referenced semantics weakens a
+lot. Two checkpoints so far: retention 82.4% / 78.2%, gain-rate 7.2% / 7.7%.
+Running.
+
+### 4. Does mid-training help? *(negative, and instructive)*
+
+Following *On the Interplay of Pre-Training, Mid-Training, and RL*
+(arXiv:2512.07783). Continued LM pre-training on Mathlib statements before SFT
+moved nothing: 38.9% vs 39.4% BEq+, informative 42.9% vs 46.0%, pass@32 56.4% vs
+55.2%.
+
+The reason is worth knowing: **only ~2.3% of Mathlib declarations elaborate
+standalone.** Mathlib is factored through `variable`/`section`/`namespace`
+precisely so statements need not restate their context; autoformalization targets
+are self-contained one-liners. The distributions barely intersect.
+
+### 5. Curating RL data to the "edge of competence" *(running)*
+
+GRPO's advantage is `A_i = r_i − mean(r_group)`, so a group scoring 0/8 and one
+scoring 8/8 both contribute exactly zero. `gated_edge` restricts the pool to
+prompts measured at 1–7/8, taking the informative fraction from 46% to ~100% by
+construction.
+
+### 6. Capability vs exploration *(settled)*
+
+At k=32 on prompts the policy never solves at k=8, only **14.5%** are ever
+recovered — and **84.3% type-check**. The model reliably writes well-formed Lean
+that means the wrong thing. That is a capability limit, not an exploration one,
+and it bounds what any reward can do.
+
+---
+
+## What the harness measures
+
+Net accuracy is reported, but it is the least informative number.
+
+**Retention vs gains.** Every arm is scored against the SFT baseline
+example-by-example: how many correct answers it *kept*, and how many previously
+wrong ones it *converted*.
+
+**Gain-rate** (converted ÷ previously-wrong) separates the arms far better than
+the headline does:
+
+| reward class | gain-rate |
+|---|---|
+| gold-referenced semantics (`gated`) | **7.7–10.6%** |
+| gold-free compiler signal (`selfprove`) | 7.2–7.7% |
+| exploitable proxy (`typecheck`), decaying | 7.7% → 2.1% |
+| pure noise (`placebo`) | 1.7–4.3% |
+
+**pass@k.** `scripts/passk_report.py` uses the unbiased estimator (Chen et al.
+2021). Differences visible at pass@1 but not at pass@32 are sharpening, not
+capability.
+
+**Always paired.** Same pinned slice, McNemar exact. Never difference two
+headline rates — a subset can be easier than the whole.
+
+---
+
+## Figures
+
+`make figures` regenerates everything in `results/figures/` from the cached eval
+JSONs — no Lean, no GPU, deterministic.
+
+Every step-indexed figure is drawn on the **reporting grid, `evalio.STEP_GRID` =
+10/30/50/90**, and starts at step 0 on the SFT baseline all arms resume from.
+Off-grid checkpoints are still trained and still evaluated — they are just not
+what results are shown at. Override with `--steps`. `runtime.png` is the one
+exception: per-step cost comes from mtime deltas between *consecutive*
+checkpoints, so subsetting would degrade the estimate.
+
+The **placebo is hidden by default** (`--hide rl3b_v2_placebo`). That is a
+presentation choice, not a claim that `typecheck` replaces it: type-check is an
+informative-but-exploitable reward, the placebo is calibrated zero-information
+noise, and only the placebo can separate "RL helped" from "the policy drifted".
+Its numbers stay in `arms.md` and `compare_arms.py`; `--hide ''` draws it again.
+
+| figure | shows |
+|---|---|
+| `arm_trajectories_pass1.png` | **the reference figure.** pass@1 on BEq+ (left) and on compiling (right), same rollouts, same decoder — the only sound way to read the two verdicts against each other |
+| `arm_trajectories.png` | BEq+ vs training step, every arm, against the SFT line. **Greedy decode (T=0)** — what the McNemar tests use, but not comparable point-for-point with any pass@k figure |
+| `arm_trajectories_passk.png` | sampled at T=1.15: pass@1 (dotted) vs pass@32 (solid) on **BEq+**, same arms — sharpening vs capability |
+| `arm_trajectories_passk_typecheck.png` | the same, on the **compiling** verdict. pass@32 is saturated (84.7–100%) so it cannot rank arms; pass@1 spans 40.8–94.6% and is where type-check RL's gain actually shows |
+| `passk.png` | pass@k curves for the SFT baselines and every arm |
+| `runtime.png` | seconds per GRPO step and cumulative GPU-hours, per reward, against the measured **Lean-free floor** (~32 s). Lean is 97% of a `gated` step and 1% of a `typecheck` step |
+| `retention_gain.png` | what each arm kept vs converted, with the 4.9–7.3% ceiling band |
+| `proxy_vs_semantic.png` | type-check on x, BEq+ on y: reward hacking as a trajectory |
+
+Style follows Interplay-LM-Reasoning (arXiv:2512.07783), recovered by sampling
+their published figure — they use **Okabe-Ito**. The series order in
+`scripts/figstyle.py` is validated for colourblind separation and must not be
+reshuffled; see that file's header.
+
+---
+
+## Layout
+
+```
+reward/
+  beq_plus.py       BEq+ behind a persistent Lean REPL
+  reward_fn.py      the reward zoo
+  similarity.py     GTED-style structural + symbol similarity
+  lean_tool.py      verl function_tool: gives the policy Lean's real diagnostics
+configs/run_grpo.sh GRPO entrypoint; every constant's header records the failure
+                    that produced it
+scripts/
+  prepare_dataset.py / prepare_sft_dataset.py / prepare_midtrain_dataset.py
+  generate_rollouts.py / score_rollouts.py       rollout + offline BEq+ scoring
+  build_rft_dataset.py / make_difficulty_subset.py / make_starved_subset.py
+  calibrate_placebo.py                           fit the control to a policy
+  evaluate_checkpoints.py / compare_arms.py / select_checkpoint.py
+  passk_report.py / probe_gradient_signal.py
+hpc/*.slurm         SLURM jobs; cluster fixes baked in (see hpc/NARVAL_NOTES.md)
+```
+
+---
+
+## Quickstart
 
 ```bash
-make evaluate              # merge-checkpoints + score base/typecheck/composite
-STEP=20 make evaluate      # compare a different checkpoint step
-N_EVAL=200 make evaluate   # more validation examples
+make setup                                   # env + verl + Mathlib4 + model + data
+source hpc/cc_env.sh                         # never run bare `python`
+
+# 1. splits
+python scripts/prepare_sft_dataset.py --n-train 8000
+python scripts/prepare_dataset.py --out-dir data_3b --n-val 1000 --n-train 4300
+
+# 2. SFT baseline, then evaluate and pick the best epoch
+sbatch hpc/sft_3b.slurm
+sbatch hpc/eval_3b_sft.slurm
+
+# 3. measure the group geometry and FIT THE CONTROL to this policy
+sbatch hpc/rollouts_3b.slurm                 # also a go/no-go gate
+
+# 4. arms
+sbatch --export=ALL,ARM=gated   hpc/grpo_3b.slurm
+sbatch --export=ALL,ARM=placebo hpc/grpo_3b.slurm
+
+# 5. paired comparison
+sbatch --export=ALL,RUN=rl3b_gated,N_EVAL=1000 hpc/grpo_eval.slurm
+python scripts/compare_arms.py rl3b_gated rl3b_v2_placebo
 ```
 
-## Results
+Adding a reward is one function in `reward/reward_fn.py` returning
+`{"score": float, ...diagnostics}` and one case in `hpc/grpo_3b.slurm`.
 
-30 training steps per arm (SFT: 2 epochs / 30 steps), `Qwen2.5-Coder-0.5B-Instruct`,
-80 validation examples, greedy decoding, both metrics scored identically for every
-checkpoint (`results/ablation_comparison_chatfixed.json`):
+---
 
-| checkpoint | type-check % | BEq+ % |
+## Stack
+
+| piece | choice | why |
 |---|---|---|
-| base (untrained) | 0.0% | 0.0% |
-| type-check-only RL @ 30 | **100.0%** | 3.8% |
-| composite (BEq+) RL @ 30 | 83.8% | 0.0% |
-| curriculum phase-1 (type-check) @ 15 | 43.8% | 1.2% |
-| **SFT @ 30** | 72.5% | **33.8%** |
-| SFT → RL (shaped) @ 15 | 72.5% | 30.0% |
+| RL framework | [verl](https://github.com/volcengine/verl) | native GRPO, pluggable `custom_reward_function`, colocated FSDP + vLLM |
+| algorithm | GRPO, full-parameter | no LoRA — see `configs/run_grpo.sh` |
+| policy | `Qwen2.5-Coder-3B-Instruct` | code-pretrained; 0.5B series kept for cross-scale paired tests |
+| data | [`internlm/Lean-Workbook`](https://huggingface.co/datasets/internlm/Lean-Workbook) | 13,297 unique NL↔Lean4 pairs after dedup |
+| Lean | Mathlib4 @ `v4.8.0-rc1` | pinned to Lean-Workbook's target toolchain |
 
-Measurement noise: re-running the SFT evaluation gave 73.8% / 32.5% versus 72.5% /
-33.8% — vLLM batching makes even greedy decoding vary by ~1-2 examples out of 80, so
-differences smaller than that mean nothing.
+Compute notes, including why every job stages Mathlib to node-local NVMe, are in
+[`hpc/NARVAL_NOTES.md`](hpc/NARVAL_NOTES.md).
 
-**The paper's premise reproduces, emphatically.** The type-check-only arm saturated its
-reward completely — 100% of rollouts type-checking by step 26, `actor/pg_loss` exactly
-0.0 — while semantic correctness stayed at 3.8%. What it emits shows the hack directly
-(`results/typecheck_only_sample_generations.md`): asked to formalize "13 choose 2 = 78",
-it outputs `theorem x : x - 1 = -1`. It learned to emit trivial arithmetic identities
-that always elaborate, ignoring the input entirely — precisely the "syntactically valid
-but semantically vacuous" failure the paper describes. Note the diagnostic shape:
-**highest type-check, near-zero BEq+**.
+---
 
-**Neither RL arm learned semantics from scratch.** Both sit at ~0-4% BEq+. The mechanism
-is reward sparsity interacting with GRPO: advantages are computed *within* a rollout
-group, so if no sample in a group earns the semantic reward the gradient is exactly
-zero. Measured, the composite arm spent **18 of 30 steps producing no gradient at all**,
-every one from starvation (see the dead-step table above).
+## Status
 
-**SFT solves what RL could not — by ~9×.** Plain supervised fine-tuning on
-(informal → gold formal) pairs reaches **33.8% BEq+** in ~6 minutes of training, versus
-3.8% for the best RL arm after 25+ minutes. It also inverts the reward-hacking
-signature: SFT has *lower* type-check than the hacked baseline (72.5% vs 100%) but ~9×
-the semantic accuracy, because it is solving the task rather than gaming the checker.
+`sft3b-step93` = **41.2% BEq+ / 79.0% type-check** on the pinned 400 slice. No RL
+arm has *beaten* it; `gated` **ties** it while the calibrated control loses half
+the baseline's correct answers. Running: `selfprove`, `guided`, `gated_edge`.
 
-The reason is structural. BEq+ as a *reward* only informs the policy when it happens to
-fire, which for a weak policy is almost never. The same BEq+ signal as a *supervised
-target* is dense — every example teaches the exact reference formalization.
-
-**SFT does fix RL's cold start — but 15 steps of RL on top added nothing measurable.**
-Starting RL from the SFT policy, the shaped reward fires immediately (0.49 at step 1,
-versus 0.0 for the first ~19 steps from scratch) and no step is starved, so the
-mechanism works exactly as intended. Yet the resulting checkpoint scores 30.0% BEq+
-against SFT's 32.5% — indistinguishable given ~±2 examples of measurement noise. The
-reward oscillated between 0.19 and 0.51 throughout with no trend, while entropy fell
-monotonically (0.42 → 0.29): the policy sharpened without getting better on held-out
-data.
-
-Read honestly, that is a *null result at this scale*, not evidence that RL cannot help:
-15 steps × batch 8 is only ~120 prompts of experience on a 0.5B model. What it does
-establish is that the expensive part (BEq+ in the loop) is now unblocked and correctly
-instrumented, so the interesting question — does RL add anything over SFT given a real
-step budget — is a compute question rather than an engineering one.
-
-BEq+ remains an excellent *metric* throughout — it is what exposed the baseline's reward
-hacking in the first place.
-
-### Does RL add anything on top of SFT? (paired tests)
-
-Two attempts, both evaluated against the SFT policy on the *same* 80 examples, so
-McNemar's paired test applies:
-
-| comparison | metric | change | discordant | p |
-|---|---|---|---|---|
-| SFT→RL shaped | BEq+ | 26→24 | lost 7, gained 5 | 0.774 |
-| SFT→RL shaped | type-check | 59→58 | lost 9, gained 8 | 1.000 |
-| SFT→RL guided | BEq+ | 26→19 | lost 10, gained 3 | 0.092 |
-| SFT→RL guided | type-check | 59→65 | lost 6, gained 12 | 0.238 |
-
-**Nothing is significant.** The eye-catching 8.7pp BEq+ drop for guided is p=0.092 —
-suggestive, not established. The directional pattern (type-check up, BEq+ down) is what
-you would expect if the reward is easier to satisfy by emitting valid, structurally
-similar Lean than genuinely equivalent Lean, but it is not demonstrated.
-
-**These runs were underpowered.** At n=80 with p≈0.3, the minimum detectable paired
-difference is ~12.6pp — larger than the effect we were trying to measure:
-
-| eval n | detectable BEq+ difference |
-|---|---|
-| 80 | ~12.6 pp |
-| 200 | ~8.0 pp |
-| **400** | **~5.6 pp** |
-| 800 | ~4.0 pp |
-
-The validation set has been enlarged to 400 (`scripts/prepare_dataset.py`). The slice is
-pinned to a fixed offset so the original 80 remain an exact prefix — cached per-example
-results stay valid and comparable rather than being silently re-based.
-
-## Repo layout
-
-```
-configs/run_grpo.sh     GRPO launch script (both ablation arms select via REWARD_FN_NAME)
-reward/beq_plus.py       BEq+ metric — persistent Lean REPL wrapper (vendored algorithm)
-reward/reward_fn.py       verl-facing reward functions (composite / typecheck-only)
-scripts/prepare_dataset.py   Lean-Workbook → verl parquet format
-scripts/run_curriculum.sh    two-phase from-scratch curriculum (pass@ → BEq+)
-scripts/evaluate_checkpoints.py  the valid head-to-head (both metrics, both arms)
-scripts/plot_results.py      training curves + per-reward impact quantification
-scripts/test_lean_interact.py   standalone Lean/Mathlib sanity check
-results/                  ablation_comparison.json + sample generations + plots
-repos/verl/               cloned RL framework (editable install)
-repos/mathlib4/           Mathlib4 @ v4.8.0-rc1 (built via `lake exe cache get`)
-models/                   downloaded base model + HF cache
-data/                     prepared train/val parquet (+ data/smoke/ for the smoke test)
-hpc/                      SLURM transfer notes + job template (see hpc/README.md)
-```
+Full history, including the negative results and the bugs that produced them, is
+in [`logook.md`](logook.md).

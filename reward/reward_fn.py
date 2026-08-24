@@ -58,6 +58,7 @@ opt-in via FILTER_GROUPS=1 in configs/run_grpo.sh.
 """
 from __future__ import annotations
 
+import functools
 import os
 import re
 import threading
@@ -194,6 +195,43 @@ def _note_call(error_kind: str | None) -> None:
             )
 
 
+# ── nothing in this module may raise ─────────────────────────────────────────
+# A reward function that raises does NOT just lose its rollout. verl's agent loop
+# marks the task failed and the enclosing GRPO step never closes, so the job sits
+# on a GPU doing nothing until walltime. That is exactly how `rl3b_selfprove`
+# (job 1586327) burned an allocation: a recycled Lean REPL surfaced as
+# `AttributeError: 'NoneType' object has no attribute 'stdin'`, which
+# `typecheck_ex` did not catch, and the step froze at
+# `running: 1, finished: 5, failure: 10` for 20 minutes.
+#
+# beq_plus.py now recovers from that specific fault at the Lean boundary. This
+# decorator is the SECOND line: whatever else goes wrong -- an unparseable gold,
+# a scorer that will not construct, a bug introduced later in this file -- the
+# rollout is scored 0 and the step still closes.
+#
+# SCORING 0 IS NOT NEUTRAL and is not pretended to be. A correct rollout lost to
+# an infrastructure fault contributes a gradient against correctness, the same
+# bias already documented for Lean timeouts in BEqPlusScorer.__init__. It is
+# `scorer_error=1` in reward_extra_info so the rate is visible in the run's
+# metrics; if it climbs, the reward is degrading and the run is not measuring
+# what it claims to. Losing a rollout is recoverable, losing the job is not.
+_ZERO = {"score": 0.0, "acc": 0.0, "beq_plus": 0.0, "typecheck": 0.0,
+         "semantic_signal": 0.0, "n_directions": 0.0, "gold_implies_pred": 0.0,
+         "pred_implies_gold": 0.0, "similarity": 0.0, "scorer_error": 1.0}
+
+
+def _never_raises(fn):
+    @functools.wraps(fn)
+    def wrapped(data_source, solution_str, ground_truth, extra_info=None):
+        try:
+            return fn(data_source, solution_str, ground_truth, extra_info)
+        except Exception as e:
+            print(f"[reward] {fn.__name__} FAILED, scoring 0: "
+                  f"{type(e).__name__}: {e}"[:300], flush=True)
+            return dict(_ZERO)
+    return wrapped
+
+
 def _diagnostics(r: dict, similarity_value: float = 0.0) -> dict[str, float]:
     """The per-sample fields every reward forwards into `reward_extra_info`.
 
@@ -226,6 +264,7 @@ def _score_pair(solution_str: str, ground_truth: str) -> tuple[dict, str, str]:
     return r, pred, gold_theorem
 
 
+@_never_raises
 def compute_score_typecheck_only(data_source, solution_str, ground_truth, extra_info=None) -> dict:
     scorer = _get_scorer()
     pred = _clean_solution(solution_str)
@@ -238,6 +277,7 @@ def compute_score_typecheck_only(data_source, solution_str, ground_truth, extra_
     return {"score": 1.0 if ok else 0.0, "typecheck": float(ok), "scorer_error": float(bool(err))}
 
 
+@_never_raises
 def compute_score_composite(data_source, solution_str, ground_truth, extra_info=None) -> dict:
     r, _pred, _gold = _score_pair(solution_str, ground_truth)
     score = W_TYPECHECK * float(r["typecheck"]) + W_BEQ_PLUS * float(r["beq_plus"])
@@ -265,6 +305,7 @@ W_SHAPED_ONE_DIR = float(os.environ.get("BEQ_W_SHAPED_ONE_DIR", "0.20"))
 W_SHAPED_BOTH_DIR = float(os.environ.get("BEQ_W_SHAPED_BOTH_DIR", "0.70"))
 
 
+@_never_raises
 def compute_score_shaped(data_source, solution_str, ground_truth, extra_info=None) -> dict:
     r, _pred, _gold = _score_pair(solution_str, ground_truth)
     if not r["typecheck"]:
@@ -296,6 +337,7 @@ def compute_score_shaped(data_source, solution_str, ground_truth, extra_info=Non
 W_GATED_ONE_DIR = float(os.environ.get("BEQ_W_GATED_ONE_DIR", "0.25"))
 
 
+@_never_raises
 def compute_score_gated(data_source, solution_str, ground_truth, extra_info=None) -> dict:
     r, _pred, _gold = _score_pair(solution_str, ground_truth)
     signal = r.get("semantic_signal", r.get("n_directions", 0))
@@ -334,6 +376,7 @@ def compute_score_gated(data_source, solution_str, ground_truth, extra_info=None
 W_SP_TYPECHECK = float(os.environ.get("BEQ_W_SP_TYPECHECK", "0.2"))
 
 
+@_never_raises
 def compute_score_selfprove(data_source, solution_str, ground_truth, extra_info=None) -> dict:
     scorer = _get_scorer()
     pred = _clean_solution(solution_str)
@@ -409,6 +452,7 @@ W_G_BOTH_DIR = float(os.environ.get("BEQ_W_G_BOTH_DIR", "0.65"))
 #
 # So similarity is multiplied by the type-check indicator. Structural
 # resemblance is only worth anything once the statement is actually valid Lean.
+@_never_raises
 def compute_score_guided(data_source, solution_str, ground_truth, extra_info=None) -> dict:
     from reward.similarity import similarity
 
@@ -463,6 +507,7 @@ PLACEBO_GROUP_INFORMATIVE_P = float(os.environ.get("BEQ_PLACEBO_GROUP_P", "0.37"
 PLACEBO_ROLLOUT_P = float(os.environ.get("BEQ_PLACEBO_ROLLOUT_P", "0.30"))
 
 
+@_never_raises
 def compute_score_placebo(data_source, solution_str, ground_truth, extra_info=None) -> dict:
     # Per-PROMPT gate (hash of the gold): mimics "this prompt is at the policy's
     # ability edge" being a persistent property of the prompt, as it is for BEq+.

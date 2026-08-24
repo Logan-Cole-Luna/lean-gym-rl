@@ -10,24 +10,11 @@
 #SBATCH --output=logs/validate_corpus_%j.out
 #SBATCH --error=logs/validate_corpus_%j.err
 
-set -uo pipefail
-export PROJECT_ROOT=/home/logan03/lean-gym-rl
-source "${PROJECT_ROOT}/hpc/cc_env.sh"
-unset ROCR_VISIBLE_DEVICES
-cd "${PROJECT_ROOT}"
-export PYTHONPATH="${PROJECT_ROOT}:${PYTHONPATH:-}"
+source /home/logan03/lean-gym-rl/hpc/job_prelude.sh
 
 # Mathlib must be on node-local NVMe or `import Mathlib` blows the Lean timeout
 # on compute nodes too, not just login nodes.
-if [ -n "${SLURM_TMPDIR:-}" ] && [ -f /scratch/logan03/mathlib4_v4.8.0-rc1.tar ]; then
-  t0=$(date +%s)
-  tar -xf /scratch/logan03/mathlib4_v4.8.0-rc1.tar -C "${SLURM_TMPDIR}"
-  cp -a "${LEAN_INTERACT_CACHE_DIR}" "${SLURM_TMPDIR}/lean_interact_cache"
-  export MATHLIB_ROOT="${SLURM_TMPDIR}/mathlib4"
-  export LEAN_INTERACT_CACHE_DIR="${SLURM_TMPDIR}/lean_interact_cache"
-  echo "[validate] staging took $(( $(date +%s) - t0 ))s"
-fi
-export BEQ_ENV_TIMEOUT="${BEQ_ENV_TIMEOUT:-2400}"
+stage_mathlib "[validate]"
 
 python3 scripts/validate_midtrain_corpus.py \
   --sample "${SAMPLE:?set SAMPLE=<sample.jsonl>}" \

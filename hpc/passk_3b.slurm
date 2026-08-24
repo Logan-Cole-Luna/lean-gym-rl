@@ -27,23 +27,9 @@
 #SBATCH --output=logs/passk_3b_%j.out
 #SBATCH --error=logs/passk_3b_%j.err
 
-set -uo pipefail
-export PROJECT_ROOT=/home/logan03/lean-gym-rl
-REAL="${PROJECT_ROOT}"
-source "${REAL}/hpc/cc_env.sh"
-unset ROCR_VISIBLE_DEVICES
-cd "${REAL}"
-export PYTHONPATH="${REAL}:${PYTHONPATH:-}"
+source /home/logan03/lean-gym-rl/hpc/job_prelude.sh
 
-if [ -n "${SLURM_TMPDIR:-}" ] && [ -f /scratch/logan03/mathlib4_v4.8.0-rc1.tar ]; then
-  t0=$(date +%s)
-  tar -xf /scratch/logan03/mathlib4_v4.8.0-rc1.tar -C "${SLURM_TMPDIR}"
-  cp -a "${LEAN_INTERACT_CACHE_DIR}" "${SLURM_TMPDIR}/lean_interact_cache"
-  export MATHLIB_ROOT="${SLURM_TMPDIR}/mathlib4"
-  export LEAN_INTERACT_CACHE_DIR="${SLURM_TMPDIR}/lean_interact_cache"
-  echo "[passk] staging took $(( $(date +%s) - t0 ))s"
-fi
-export BEQ_ENV_TIMEOUT="${BEQ_ENV_TIMEOUT:-2400}"
+stage_mathlib "[passk]"
 
 # BEST_SFT names the pointer file written by eval_3b_sft.slurm. Read at RUNTIME
 # so this job can be chained behind the eval that creates it.
@@ -60,9 +46,16 @@ case "${CKPT_DIR}" in /*) ;; *) CKPT_DIR="$(cd "$(dirname "${CKPT_DIR}")" && pwd
 # model's rollouts and reported as its own pass@k. Same class of trap as the
 # eval-label collapse documented in CLAUDE.md.
 if [ -z "${LABEL:-}" ]; then
-  # <run>/global_step_<N>/huggingface -> <run>-step<N>
-  _step=$(basename "$(dirname "${CKPT_DIR}")")          # global_step_93
-  _run=$(basename "$(dirname "$(dirname "${CKPT_DIR}")")")
+  # Two checkpoint shapes exist and both must derive the same way:
+  #   SFT: <run>/global_step_<N>/huggingface
+  #   RL : <run>/global_step_<N>/actor/huggingface     <- verl writes actor/
+  # Strip the trailing huggingface, then an optional actor, then read
+  # global_step_<N> and the run name above it.
+  _p="${CKPT_DIR%/}"
+  _p="${_p%/huggingface}"
+  _p="${_p%/actor}"
+  _step=$(basename "${_p}")                             # global_step_93
+  _run=$(basename "$(dirname "${_p}")")
   case "${_step}" in
     global_step_*) LABEL="${_run}-step${_step##global_step_}" ;;
     *)             LABEL="${_run}" ;;
@@ -94,4 +87,11 @@ fi
 python3 scripts/score_rollouts.py --rollouts "${OUT}" --out "${SCORED}" --workers 8 || exit 1
 python3 scripts/passk_report.py --scored "${SCORED}" --label "${LABEL}" \
   --out "results/passk_${LABEL}_k${K}.json" || exit 1
+# BOTH VERDICTS, from the SAME rollouts. pass@1 is the reporting basis and it is
+# reported as BEq+ / compiles, so the compiling curve is not optional. It costs
+# nothing -- score_rollouts already wrote `typecheck` next to `beq_plus`, this
+# just re-reads the file. The _tc suffix keeps it off the beq_plus record;
+# evalio.load_passk filters on the `metric` field inside.
+python3 scripts/passk_report.py --scored "${SCORED}" --label "${LABEL}" \
+  --metric typecheck --out "results/passk_${LABEL}_k${K}_tc.json" || exit 1
 echo "[passk] ${LABEL} done"

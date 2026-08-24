@@ -24,23 +24,9 @@
 #SBATCH --output=logs/grpo_3b_%j.out
 #SBATCH --error=logs/grpo_3b_%j.err
 
-set -uo pipefail
-export PROJECT_ROOT=/home/logan03/lean-gym-rl
-REAL="${PROJECT_ROOT}"
-source "${REAL}/hpc/cc_env.sh"
-unset ROCR_VISIBLE_DEVICES
-cd "${REAL}"
-export PYTHONPATH="${REAL}:${PYTHONPATH:-}"
+source /home/logan03/lean-gym-rl/hpc/job_prelude.sh
 
-if [ -n "${SLURM_TMPDIR:-}" ] && [ -f /scratch/logan03/mathlib4_v4.8.0-rc1.tar ]; then
-  t0=$(date +%s)
-  tar -xf /scratch/logan03/mathlib4_v4.8.0-rc1.tar -C "${SLURM_TMPDIR}"
-  cp -a "${LEAN_INTERACT_CACHE_DIR}" "${SLURM_TMPDIR}/lean_interact_cache"
-  export MATHLIB_ROOT="${SLURM_TMPDIR}/mathlib4"
-  export LEAN_INTERACT_CACHE_DIR="${SLURM_TMPDIR}/lean_interact_cache"
-  echo "[grpo3b] staging took $(( $(date +%s) - t0 ))s"
-fi
-export BEQ_ENV_TIMEOUT="${BEQ_ENV_TIMEOUT:-2400}"
+stage_mathlib "[grpo3b]"
 
 # MULTI-TURN IS NOW ON BY DEFAULT (MULTITURN=0 disables). The policy gets a Lean
 # type-check tool mid-rollout (reward/lean_tool.py) and sees the compiler's real
@@ -76,6 +62,17 @@ case "$ARM" in
     # output, so `theorem x : 1 = 1` would otherwise score full marks).
     # Paired against `gated` this asks the project's core question directly:
     # can compiler-only signals substitute for gold-referenced semantics?
+    #
+    # FEWER AGENT-LOOP WORKERS THAN EVERY OTHER ARM, on memory. This is the only
+    # arm that runs `exact?` -- a whole-Mathlib search -- on EVERY rollout that
+    # type-checks, via _prove_with. Those searches grow a REPL toward the 8 GB
+    # BEQ_MEMORY_LIMIT_MB cap, and 24 x 8 GB is 192 GB against this job's 120 G.
+    # The first attempt (1586327) had its REPLs recycled out from under in-flight
+    # calls and wedged the step. beq_plus.py now survives that, but a recycle
+    # still costs a rollout, and a node OOM would kill Ray workers outright --
+    # which no reward-side guard can recover from. 16 x 8 GB worst case, ~69 GB
+    # typical, leaves room for vLLM's host allocations.
+    AGENT_LOOP_WORKERS="${AGENT_LOOP_WORKERS:-16}"
     REWARD_FN_NAME=compute_score_selfprove ;;
   typecheck)
     # LOOP-HEALTH PROBE -- not a baseline we want to "succeed".
@@ -173,8 +170,15 @@ case "$ARM" in
   *) echo "bad ARM"; exit 1 ;;
 esac
 
-# 4300 RL prompts / batch 16 = 268 steps per epoch, so 150 steps stays well
+# 4300 RL prompts / batch 16 = 268 steps per epoch, so even 150 steps stays
 # inside one pass -- no prompt is ever seen twice.
+#
+# DEFAULT IS 90, DOWN FROM 150. Every arm that got that far had already separated
+# and then flattened: gated sits 34-40% from step 30 to 90, the placebo is on its
+# floor by 30, and typecheck's collapse is visible by 50. The extra 60 steps cost
+# ~16 GPU-hours per BEq+ arm (16 min/step) and changed no conclusion. Arms are
+# also compared at matched steps, so the useful range is capped by the SHORTEST
+# arm regardless. Figures cap at 90 to match (scripts/make_figures.py --max-step).
 MODEL_PATH="${CKPT}" \
 REWARD_FN_NAME="${REWARD_FN_NAME}" \
 TRAIN_BATCH_SIZE=16 PPO_MINI_BATCH_SIZE=16 ROLLOUT_N=8 \
@@ -189,7 +193,7 @@ EXPERIMENT_NAME="rl3b${SERIES_SUFFIX}_${ARM}" \
     ${MULTITURN_ON:+actor_rollout_ref.rollout.multi_turn.function_tool_path=${REAL}/reward/lean_tool.py} \
     data.train_files="${TRAIN_FILE}" \
     data.val_files="${REAL}/data_3b/val.parquet" \
-    trainer.total_training_steps="${TOTAL_STEPS:-150}" \
+    trainer.total_training_steps="${TOTAL_STEPS:-90}" \
     trainer.resume_mode=auto \
     trainer.test_freq="${TEST_FREQ:-50}" \
     trainer.save_freq=10 \

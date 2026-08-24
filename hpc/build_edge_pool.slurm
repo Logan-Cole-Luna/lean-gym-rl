@@ -9,11 +9,7 @@
 #SBATCH --output=logs/build_edge_%j.out
 #SBATCH --error=logs/build_edge_%j.err
 
-set -uo pipefail
-export PROJECT_ROOT=/home/logan03/lean-gym-rl
-source "${PROJECT_ROOT}/hpc/cc_env.sh"
-cd "${PROJECT_ROOT}"
-export PYTHONPATH="${PROJECT_ROOT}:${PYTHONPATH:-}"
+source /home/logan03/lean-gym-rl/hpc/job_prelude.sh
 
 PAIRS=()
 for t in sft3b_k8 pool_s1 pool_s2; do

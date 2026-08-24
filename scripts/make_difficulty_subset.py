@@ -134,11 +134,20 @@ def main() -> None:
     epochs = args.total_steps / spe if spe else float("inf")
     print(f"[edge] kept {kept}/{total} prompts with {args.min_wins}-{args.max_wins} "
           f"successes ({100*kept/total:.1f}%) -> {args.out}")
-    print(f"[edge] informative fraction of this pool is ~100% by construction "
-          f"(was {100*sum(v for w, v in hist.items() if 1 <= w <= 7)/total:.1f}%)")
+    k = max(w for w, _k, _g in wins_by_text.values()) if wins_by_text else 8
+    if args.min_wins >= 1 and args.max_wins < k:
+        print(f"[edge] informative fraction of this pool is ~100% by construction "
+              f"(was {100*sum(v for w, v in hist.items() if 1 <= w < k)/total:.1f}%)")
+    else:
+        # e.g. --min-wins 0 --max-wins 0 extracts STARVED prompts, which are the
+        # zero-advantage ones. Saying "informative ~100%" there would be exactly
+        # backwards.
+        print(f"[edge] NOTE: this selection is not the informative band; "
+              f"{args.min_wins}-{args.max_wins} of k={k} produces "
+              f"{'zero' if args.max_wins == 0 else 'partial'} GRPO advantage.")
     print(f"[edge] {spe:.1f} steps/epoch at batch {args.batch_size}; "
           f"{args.total_steps} steps = {epochs:.1f} epochs")
-    if epochs > 3:
+    if epochs > 3 and args.min_wins >= 1:
         print(f"[edge] WARNING: {epochs:.1f} epochs over a curated pool -- memorisation will")
         print(f"[edge] confound any gain. Score more prompts or cut --total-steps.")
 

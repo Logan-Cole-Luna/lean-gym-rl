@@ -22,23 +22,9 @@
 #SBATCH --output=logs/score_pool_%j.out
 #SBATCH --error=logs/score_pool_%j.err
 
-set -uo pipefail
-export PROJECT_ROOT=/home/logan03/lean-gym-rl
-REAL="${PROJECT_ROOT}"
-source "${REAL}/hpc/cc_env.sh"
-unset ROCR_VISIBLE_DEVICES
-cd "${REAL}"
-export PYTHONPATH="${REAL}:${PYTHONPATH:-}"
+source /home/logan03/lean-gym-rl/hpc/job_prelude.sh
 
-if [ -n "${SLURM_TMPDIR:-}" ] && [ -f /scratch/logan03/mathlib4_v4.8.0-rc1.tar ]; then
-  t0=$(date +%s)
-  tar -xf /scratch/logan03/mathlib4_v4.8.0-rc1.tar -C "${SLURM_TMPDIR}"
-  cp -a "${LEAN_INTERACT_CACHE_DIR}" "${SLURM_TMPDIR}/lean_interact_cache"
-  export MATHLIB_ROOT="${SLURM_TMPDIR}/mathlib4"
-  export LEAN_INTERACT_CACHE_DIR="${SLURM_TMPDIR}/lean_interact_cache"
-  echo "[pool] staging took $(( $(date +%s) - t0 ))s"
-fi
-export BEQ_ENV_TIMEOUT="${BEQ_ENV_TIMEOUT:-2400}"
+stage_mathlib "[pool]"
 
 SLICE="${SLICE:?set SLICE=1|2}"
 PARQ="data_3b/pool_slice${SLICE}.parquet"

@@ -285,25 +285,11 @@ smoke:
 	   data.val_files=$(PROJECT)/data/smoke/val.parquet \
 	   trainer.total_training_steps=1
 
-.PHONY: train-composite
-train-composite:
-	@$(ACTIVATE) && \
-	 REWARD_FN_NAME=compute_score_composite \
-	 PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True \
-	 HF_HOME=$(MODELS_ROOT)/.hf_cache \
-	 bash configs/run_grpo.sh trainer.total_training_steps=30 trainer.test_freq=10 trainer.save_freq=10
-
-.PHONY: train-typecheck
-train-typecheck:
-	@$(ACTIVATE) && \
-	 REWARD_FN_NAME=compute_score_typecheck_only \
-	 PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True \
-	 HF_HOME=$(MODELS_ROOT)/.hf_cache \
-	 bash configs/run_grpo.sh trainer.total_training_steps=30 trainer.test_freq=10 trainer.save_freq=10
-
-# Single GPU: the two ablation arms cannot run concurrently.
+# Two 30-step ablation arms, sequentially (single GPU: they cannot overlap).
 .PHONY: train
-train: train-composite train-typecheck
+train:
+	@$(MAKE) --no-print-directory train-rl REWARD=composite      STEPS=30
+	@$(MAKE) --no-print-directory train-rl REWARD=typecheck_only STEPS=30
 
 # ── Curriculum ────────────────────────────────────────────────────────────────
 # Trains FROM SCRATCH in two phases: first half on the cheap dense type-check
@@ -442,16 +428,16 @@ train-rl: _check-init
 	@$(ACTIVATE) && \
 	 tbs=$${TRAIN_BATCH_SIZE:-8}; \
 	 MODEL_PATH=$(_INIT_MODEL) \
-	 REWARD_FN_NAME=$${REWARD_FN_NAME:-compute_score_gated} \
-	 EXPERIMENT_NAME=$${EXPERIMENT_NAME:-rl_$(_INIT_TAG)_$${REWARD_FN_NAME:-compute_score_gated}} \
+	 REWARD_FN_NAME=$${REWARD_FN_NAME:-compute_score_$${REWARD:-gated}} \
+	 EXPERIMENT_NAME=$${EXPERIMENT_NAME:-rl_$(_INIT_TAG)_$${REWARD_FN_NAME:-compute_score_$${REWARD:-gated}}} \
 	 ROLLOUT_N=$${ROLLOUT_N:-8} AGENT_LOOP_WORKERS=$${AGENT_LOOP_WORKERS:-1} \
 	 TRAIN_BATCH_SIZE=$$tbs PPO_MINI_BATCH_SIZE=$${PPO_MINI_BATCH_SIZE:-$$tbs} \
 	 VALIDATION_DATA_DIR=$${VALIDATION_DATA_DIR:-$(PROJECT)/results/val_generations/$${EXPERIMENT_NAME:-rl_$(_INIT_TAG)}} \
 	 PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True \
 	 HF_HOME=$(MODELS_ROOT)/.hf_cache \
-	 MAX_CKPT_KEEP=$${MAX_CKPT_KEEP:-$$(( $${TOTAL_STEPS:-100} / $${SAVE_FREQ:-20} + 2 ))} \
+	 MAX_CKPT_KEEP=$${MAX_CKPT_KEEP:-$$(( $${TOTAL_STEPS:-$${STEPS:-100}} / $${SAVE_FREQ:-20} + 2 ))} \
 	 bash configs/run_grpo.sh \
-	   trainer.total_training_steps=$${TOTAL_STEPS:-100} \
+	   trainer.total_training_steps=$${TOTAL_STEPS:-$${STEPS:-100}} \
 	   trainer.test_freq=$${TEST_FREQ:-10} trainer.save_freq=$${SAVE_FREQ:-20}
 
 # Back-compat alias; `make train-sft` is the current entry point.
@@ -471,30 +457,22 @@ merge-sft:
 # Thin wrappers over `train-rl` for the specific reward functions. Each accepts
 # INIT= exactly like train-rl, e.g.
 #   make train-guided INIT=checkpoints/merged/sft-step30
-.PHONY: train-from-sft
-train-from-sft:
-	@$(MAKE) --no-print-directory train-rl INIT=$(SFT_MERGED)
-
-.PHONY: train-guided
-train-guided:
-	@$(MAKE) --no-print-directory train-rl REWARD_FN_NAME=compute_score_guided
-
-.PHONY: train-shaped
-train-shaped:
-	@$(MAKE) --no-print-directory train-rl REWARD_FN_NAME=compute_score_shaped
-
-# The corrected SFT -> RL run. Same entry point as train-rl, named so the
-# post-mortem defaults are obvious at the call site.
-.PHONY: train-gated
-train-gated:
-	@$(MAKE) --no-print-directory train-rl REWARD_FN_NAME=compute_score_gated
-
-# Same, plus DAPO group filtering: rollout groups with no learnable signal are
-# discarded and replaced instead of merely contributing zero gradient. Strictly
-# better signal per step, ~3x the generation cost -- see configs/run_grpo.sh.
-.PHONY: train-gated-filtered
-train-gated-filtered:
-	@FILTER_GROUPS=1 $(MAKE) --no-print-directory train-rl REWARD_FN_NAME=compute_score_gated
+# The five former aliases (train-from-sft / train-guided / train-shaped /
+# train-gated / train-gated-filtered) were each a one-line wrapper around
+# train-rl with a different REWARD_FN_NAME. They are now flags on one target:
+#
+#   make train-rl REWARD=gated                 # semantic ladder (the default arm)
+#   make train-rl REWARD=guided                # + similarity shaping
+#   make train-rl REWARD=selfprove             # gold-free
+#   make train-rl REWARD=typecheck_only        # exploitable proxy (probe only)
+#   make train-rl REWARD=gated FILTER_GROUPS=1 # + DAPO group filtering
+#   make train-rl INIT=$(SFT_MERGED)           # warm-start from the SFT policy
+#
+# REWARD is shorthand: REWARD=gated sets REWARD_FN_NAME=compute_score_gated.
+# Pass REWARD_FN_NAME directly if you need a name that does not fit the pattern.
+#
+# NOTE these are LOCAL single-GPU runs, kept for smoke tests and 0.5B work. The
+# 3B series runs on SLURM -- see hpc/grpo_3b.slurm.
 
 # ── Rejection-sampling (RFT) arm ──────────────────────────────────────────────
 # The control that separates "BEq+ is a bad training signal" from "GRPO is the
@@ -604,24 +582,23 @@ merge-checkpoints:
 
 # Parse verl's per-step console metrics out of logs/ into curves + a quantified
 # per-reward impact table (dead steps split into starved vs saturated).
-.PHONY: plots
-plots:
-	@$(ACTIVATE) && python3 scripts/plot_results.py
+# Regenerate every figure from the cached eval JSONs. Cheap and deterministic --
+# no Lean, no GPU -- so it is safe to re-run after any eval lands.
+# Regenerate the checkpoint table at the top of arms.md from cached results.
+.PHONY: arms-table
+arms-table:
+	@$(ACTIVATE) && python3 scripts/make_arms_table.py
 
-# Evaluate ONE checkpoint dir (merging it first if needed) and write its own
-# result JSON, so the expensive BEq+ scoring is never repeated for models that
-# have already been measured. CKPT may be a raw verl run dir (latest step is
-# picked automatically), a single global_step_N dir, or an already-merged HF dir.
-#
-# Two path details, both of which surface as the SAME misleading error --
-# transformers reports any directory it cannot stat as a bad Hugging Face repo id
-# ("Repo id must be in the form 'repo_name' or 'namespace/repo_name'"), so a
-# wrong path looks like a network/auth problem:
-#   - CKPT is resolved to an ABSOLUTE path (relative paths are read as repo ids).
-#   - RL checkpoints from main_ppo nest weights under global_step_N/actor/, while
-#     SFT checkpoints from sft_trainer put them directly in global_step_N/. Probe
-#     for actor/ rather than assuming either layout.
-#   make eval-ckpt CKPT=checkpoints/beqplus_rl_poc/rl_from_sft-step30_compute_score_guided
+.PHONY: figures
+figures:
+	@$(ACTIVATE) && python3 scripts/make_figures.py --n $${N:-400}
+
+# `plots` now just runs `figures`. The old scripts/plot_results.py parsed verl's
+# stdout for per-step metrics, which only three arms ever wrote there; it is in
+# scripts/archive/ with the reason.
+.PHONY: plots
+plots: figures
+
 .PHONY: eval-ckpt
 eval-ckpt:
 	@test -n "$(CKPT)" || { echo "Usage: make eval-ckpt CKPT=<verl run dir | merged dir>"; exit 1; }
@@ -719,13 +696,11 @@ evaluate: merge-checkpoints
 # always activate $(VENV), not $(VENV_HPC)). On a cluster, submit hpc/train.slurm
 # instead — these targets are just a one-line convenience wrapper for it.
 
-.PHONY: submit-composite
-submit-composite:
-	sbatch hpc/train.slurm --export=REWARD_FN_NAME=compute_score_composite,TOTAL_STEPS=$${TOTAL_STEPS:-200}
-
-.PHONY: submit-typecheck
-submit-typecheck:
-	sbatch hpc/train.slurm --export=REWARD_FN_NAME=compute_score_typecheck_only,TOTAL_STEPS=$${TOTAL_STEPS:-200}
+# One submit target instead of one per reward.
+#   make submit REWARD=gated STEPS=200
+.PHONY: submit
+submit:
+	sbatch --export=ALL,REWARD_FN_NAME=compute_score_$${REWARD:-gated},TOTAL_STEPS=$${STEPS:-200} hpc/train.slurm
 
 # ── Clean ─────────────────────────────────────────────────────────────────────
 
@@ -787,38 +762,45 @@ clean-all: clean clean-lean
 .PHONY: help
 help:
 	@echo ""
-	@echo "ai4math_training — BEq+ RL PoC targets"
-	@echo "  make setup             Full local setup (env + verl + Lean/Mathlib + model + data)"
-	@echo "  make setup-hpc         Compute Canada / DRAC setup (see hpc/README.md first)"
-	@echo "  make env               Create CUDA venv, install verl[vllm] + lean-interact"
-	@echo "  make env-hpc           CC venv via hpc/setup_cc.sh (wheelhouse + verl/vllm)"
-	@echo "  make verl              Clone verl"
-	@echo "  make mathlib           Build Mathlib4 at the pinned tag"
-	@echo "  make model             Download the base model"
-	@echo "  make dataset           Prepare Lean-Workbook train/val parquet"
-	@echo "  make smoke             Tiny end-to-end GRPO smoke test (~1 step, 8 examples)"
-	@echo "  make train-composite   Real GRPO run: type-check + BEq+ composite reward (local)"
-	@echo "  make train-typecheck   Real GRPO run: type-check-only reward (local, ablation)"
-	@echo "  make train             Both ablation arms, sequentially (local)"
-	@echo "  make train-shaped      GRPO with the graded/process-level BEq+ reward"
-	@echo "  make train-curriculum  Two-phase curriculum from scratch (pass@ then BEq+)"
-	@echo "  make train-sft         SFT; INIT=<merged dir> to warm-start, else from scratch"
-	@echo "  make train-rl          GRPO; INIT=<merged dir> to warm-start, else from scratch"
-	@echo "                           REWARD_FN_NAME=compute_score_{guided,shaped,composite,typecheck_only}"
-	@echo "  make merge-sft         Merge the SFT checkpoint to HF format"
-	@echo "  make train-from-sft    RL starting from the SFT policy (small rollout_n)"
-	@echo "  make train-gated       SFT -> RL with the corrected (semantic-only) reward"
-	@echo "  make train-gated-filtered  ... plus DAPO group filtering (~3x gen cost)"
-	@echo "  make evaluate          Score checkpoints on BOTH metrics (the valid comparison)"
+	@echo "lean-gym-rl — a gym for RL on Lean 4 autoformalization"
+	@echo ""
+	@echo "SETUP"
+	@echo "  make setup             Local: env + verl + Lean/Mathlib + model + data"
+	@echo "  make setup-hpc         Compute Canada / DRAC (read hpc/NARVAL_NOTES.md first)"
+	@echo "  make model             Download the base model   (MODEL_ID=...)"
+	@echo "  make dataset           Lean-Workbook train/val parquet"
+	@echo "  make sft-dataset       SFT pairs from Lean-Workbook"
+	@echo "  make check-toolchain   Verify the Lean/Mathlib pin"
+	@echo ""
+	@echo "TRAIN (local, single GPU — the 3B series runs on SLURM, see below)"
+	@echo "  make smoke             ~1 step, 8 examples; proves the loop runs"
+	@echo "  make sft               SFT from the base model"
+	@echo "  make train-rl          GRPO. Flags:"
+	@echo "                           REWARD=gated|guided|selfprove|typecheck_only|composite"
+	@echo "                           STEPS=100  INIT=<merged dir>  FILTER_GROUPS=1"
+	@echo "  make train             The two 30-step ablation arms, sequentially"
+	@echo "  make train-rft         Rejection-sampling arm (RFT_DATA=... TAG=...)"
+	@echo "  make train-curriculum  Two-phase curriculum (type-check then BEq+)"
+	@echo ""
+	@echo "DATA FOR RL"
+	@echo "  make rollouts          Generate k rollouts from a checkpoint"
+	@echo "  make score-rollouts    BEq+-score them (resumable)"
+	@echo "  make rft-data          Build the size-matched RFT datasets"
+	@echo ""
+	@echo "EVALUATE"
+	@echo "  make evaluate          Score checkpoints on BOTH metrics"
 	@echo "  make eval-sweep RUN=…  Score every saved step of a run, then select"
 	@echo "  make select            Best checkpoint by BEq+ + paired McNemar vs SFT"
-	@echo "  make plots             Training curves + per-reward impact quantification"
-	@echo "  make submit-composite  sbatch hpc/train.slurm with the composite reward"
-	@echo "  make submit-typecheck  sbatch hpc/train.slurm with the typecheck-only reward"
-	@echo "  make check-toolchain   Verify Lean/Mathlib4 toolchain pin"
-	@echo "  make kill-stale        Kill leftover ray/vLLM processes between runs"
-	@echo "  make clean             Remove Python cache files"
-	@echo "  make clean-lean        Remove Mathlib4 build artifacts"
+	@echo "  make figures           Regenerate every figure in results/figures/"
+	@echo "  make arms-table        Refresh the checkpoint table in arms.md"
 	@echo ""
+	@echo "SLURM (the 3B series — these are where the real runs happen)"
+	@echo "  sbatch --export=ALL,ARM=gated hpc/grpo_3b.slurm"
+	@echo "  sbatch --export=ALL,RUN=rl3b_gated,N_EVAL=1000 hpc/grpo_eval.slurm"
+	@echo "  make submit            sbatch hpc/train.slurm (REWARD=… STEPS=…)"
+	@echo ""
+	@echo "HOUSEKEEPING"
+	@echo "  make clean | clean-lean | clean-all | prune-checkpoints | kill-stale"
+
 
 .DEFAULT_GOAL := help

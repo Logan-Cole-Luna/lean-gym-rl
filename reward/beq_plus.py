@@ -289,6 +289,7 @@ class BEqPlusScorer:
         memory_hard_limit_mb: int | None = BEQ_MEMORY_LIMIT_MB,
     ):
         self.timeout_per_proof = timeout_per_proof
+        self.probe_timeout = float(os.environ.get("BEQ_PROBE_TIMEOUT", "10"))
         self.env_timeout = env_timeout
         config = LeanREPLConfig(
             project=LocalProject(directory=mathlib_root, auto_build=False),
@@ -338,6 +339,9 @@ class BEqPlusScorer:
             # could not have proved in either direction (see
             # BEQ_SKIP_CASCADE_ON_TYPECHECK_FAIL).
             "cascade_skipped": 0,
+            # REPL restarts. Climbing here means AutoLeanServer is recycling the
+            # Lean process often (memory), and each restart costs one rollout.
+            "restarts": 0,
             # Wall-clock split, so "Lean is the bottleneck" can be attributed to
             # the type-check or the equivalence cascade rather than guessed at.
             "t_typecheck": 0.0,
@@ -348,17 +352,93 @@ class BEqPlusScorer:
         """Classify a scorer failure and bump the matching counter."""
         if isinstance(exc, TimeoutError):
             kind = "timeout"
-        elif isinstance(exc, (ConnectionAbortedError, json.JSONDecodeError)):
+        elif isinstance(exc, (ConnectionAbortedError, json.JSONDecodeError,
+                              BrokenPipeError, OSError, AttributeError, ValueError)):
+            # AttributeError is here on purpose: a REPL whose process is gone
+            # surfaces as `'NoneType' object has no attribute 'stdin'` from deep
+            # inside lean_interact, not as a connection error.
             kind = "infra"
         else:
             kind = "other_error"
         self.stats[kind] += 1
         return kind
 
+    # ── surviving a dead REPL ────────────────────────────────────────────────
+    # WHAT WENT WRONG. `rl3b_selfprove` (job 1586327) wedged after ~50 minutes:
+    # 10 of 16 prompts in a step raised
+    #     AttributeError: 'NoneType' object has no attribute 'stdin'
+    # from lean_interact's `_execute_cmd_in_repl`, preceded by `Broken pipe`.
+    # `typecheck_ex` caught only (TimeoutError, ConnectionAbortedError,
+    # JSONDecodeError), so the AttributeError escaped the reward function, killed
+    # the verl agent-loop task holding it, and the step never closed. The job then
+    # sat at `running: 1, finished: 5, failure: 10` for 20 minutes with a GPU
+    # allocated. Same failure class as the documented `multiprocessing.Pool` hang,
+    # in a code path that had no equivalent guard.
+    #
+    # WHY THE REPL WAS GONE, and why this is expected rather than exotic:
+    # AutoLeanServer is constructed with `max_process_memory=0.8`, which RECYCLES
+    # the REPL process when it grows -- and BEq+'s `exact?` searches trip that
+    # routinely once the policy is good enough to type-check (see the note in
+    # __init__). A call in flight during a recycle hits a process that is already
+    # gone. So the dead REPL is a normal operating condition, not a crash.
+    #
+    # WHY CLEARING `_env_cache` IS THE ACTUAL FIX. The cache maps a header string
+    # to an INTEGER env id living inside the REPL process. Restart the process and
+    # every id in it is stale, but the dict survives -- so a worker that recovered
+    # the connection would go on submitting commands against environments that no
+    # longer exist, returning False for everything and silently poisoning the
+    # reward for the rest of the run. Losing one rollout is the acceptable
+    # outcome; a worker that looks alive and scores everything 0.0 is not.
+    def _restart(self) -> bool:
+        """Re-establish the base Mathlib env after the REPL died or recycled.
+
+        INVALIDATES THE CACHE FIRST, AND UNCONDITIONALLY. The first version
+        cleared it only on a successful rebuild, so a restart that ALSO failed --
+        the likely case, since the REPL is being recycled under memory pressure --
+        left the worker holding ids from the dead process and handing out
+        confident False verdicts against environments that no longer exist. An
+        empty cache costs one re-elaboration per header; a stale one costs the
+        rest of the run.
+        """
+        self.stats["restarts"] += 1
+        self._env_cache = {}
+        try:
+            out = self.server.run(Command(cmd=BASE_IMPORT), timeout=self.env_timeout,
+                                  add_to_session_cache=True)
+        except Exception:
+            return False
+        env = getattr(out, "env", None)
+        if env is None:
+            return False
+        self.base_env = env
+        self._env_cache = {"": env}
+        return True
+
+    def _run(self, cmd: str, env: int | None, timeout: float | None,
+             add_to_session_cache: bool = False):
+        """The ONE place this class talks to Lean. Returns None on any failure.
+
+        Every caller must treat None as "Lean did not answer", never as "the
+        statement is wrong" -- that distinction is what `stats` exists to track.
+        A broad `except Exception` is deliberate: lean_interact raises whatever
+        the underlying subprocess failure happens to produce, and enumerating
+        those types is what left the AttributeError uncaught.
+        """
+        try:
+            return self.server.run(Command(cmd=cmd, env=env), timeout=timeout,
+                                   add_to_session_cache=add_to_session_cache)
+        except (TimeoutError, json.JSONDecodeError) as e:
+            self._note_error(e)          # the REPL is alive, this command was not
+            return None
+        except Exception as e:
+            self._note_error(e)
+            self._restart()
+            return None
+
     def get_env(self, context: str) -> int | None:
         if context in self._env_cache:
             return self._env_cache[context]
-        out = self.server.run(Command(cmd=context, env=self.base_env), timeout=self.env_timeout, add_to_session_cache=True)
+        out = self._run(context, self.base_env, self.env_timeout, add_to_session_cache=True)
         env = getattr(out, "env", None)
         if env is not None:
             self._env_cache[context] = env
@@ -381,10 +461,9 @@ class BEqPlusScorer:
             code = clean_last_theorem_string(theorem_text, "candidate_theorem", add_sorry=True)
         except ValueError:
             return False, None  # genuinely unparseable output, not a Lean failure
-        try:
-            out = self.server.run(Command(cmd=code, env=env), timeout=self.timeout_per_proof)
-        except (TimeoutError, ConnectionAbortedError, json.JSONDecodeError) as e:
-            return False, self._note_error(e)
+        out = self._run(code, env, self.timeout_per_proof)
+        if out is None:
+            return False, "infra"
         if isinstance(out, LeanError):
             return False, None
         return out.lean_code_is_valid(), None
@@ -408,11 +487,9 @@ class BEqPlusScorer:
         except ValueError:
             return False, ("Could not parse a single Lean theorem declaration from the "
                            "output. Emit exactly one `theorem ... := by sorry`.")
-        try:
-            out = self.server.run(Command(cmd=code, env=env), timeout=self.timeout_per_proof)
-        except (TimeoutError, ConnectionAbortedError, json.JSONDecodeError) as e:
-            self._note_error(e)
-            return False, f"Lean did not respond ({type(e).__name__})."
+        out = self._run(code, env, self.timeout_per_proof)
+        if out is None:
+            return False, "Lean did not respond."
         if isinstance(out, LeanError):
             return False, str(getattr(out, "message", "Lean error"))
         if out.lean_code_is_valid():
@@ -482,17 +559,33 @@ class BEqPlusScorer:
         except Exception as e:
             out["error"] = f"{type(e).__name__}: {e}"[:200]
             out["error_kind"] = self._note_error(e)
+            if out["error_kind"] == "infra":
+                self._restart()
         return out
 
     def _prove_with(self, theorem_text: str, env: int, tactics: list[str]) -> bool:
-        """True iff any of `tactics` closes `theorem_text` in `env`."""
+        """True iff any of `tactics` closes `theorem_text` in `env`.
+
+        PROBE TIMEOUT IS SEPARATE FROM `timeout_per_proof` -- and it is what makes
+        this arm affordable. The ladder short-circuits on the first success, so
+        the cost is paid in full on statements NOTHING proves, which is most of
+        them: tauto, simp_all_arith!, noncomm_ring, then `exact?`, a search over
+        all of Mathlib that reliably burns its entire budget. At the BEq+ timeout
+        of 30s that is ~120s per unprovable rollout, which measured out at ~4.5x
+        gated's cost per GRPO step: the arm reached step 20 in 22h while gated
+        reached step 90 in the same budget, i.e. it could not finish.
+
+        10s cuts the worst case to ~40s. It does change the metric -- a proof
+        needing more than 10s of `exact?` search no longer counts -- but the
+        metric was already "provable within a budget", and an unfinishable arm
+        measures nothing at all. Set BEQ_PROBE_TIMEOUT to restore the old
+        behaviour; runs with different values are NOT comparable.
+        """
         stmt = clean_last_theorem_string(theorem_text, "thm") or theorem_text
         for tac in tactics:
             self.stats["probe_calls"] += 1
-            try:
-                out = self.server.run(Command(cmd=f"{stmt} := by {tac}", env=env),
-                                      timeout=self.timeout_per_proof)
-            except Exception:
+            out = self._run(f"{stmt} := by {tac}", env, self.probe_timeout)
+            if out is None:
                 continue
             msgs = getattr(out, "messages", []) or []
             if isinstance(out, CommandResponse) and not any(
@@ -578,6 +671,12 @@ class BEqPlusScorer:
         except Exception as e:  # keep the server alive on a single bad record
             out["error"] = f"{type(e).__name__}: {e}"[:200]
             out["error_kind"] = self._note_error(e)
+            # The vendored cascade calls lean_server.run directly and catches only
+            # three exception types, so a recycled REPL lands here. Recording it
+            # is not enough: _env_cache still holds ids from the dead process, and
+            # a worker that keeps those scores every later rollout 0.0. Restart.
+            if out["error_kind"] == "infra":
+                self._restart()
         if BEQ_TIME_PHASES:
             self.stats["t_cascade"] += _time.perf_counter() - _t1
         return out

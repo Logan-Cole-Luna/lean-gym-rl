@@ -63,6 +63,17 @@ def load(paths: list[Path]) -> tuple[dict, dict]:
         for label, rec in data.items():
             if not isinstance(rec, dict) or "beq_plus_rate" not in rec:
                 continue
+            # `_meta` is a metadata block inside each rollout_stats*.json, not a
+            # checkpoint. Every such file has one, so they all collide under a
+            # single label -- and rollout_stats.json (0.5B), rollout_stats_3b.json
+            # (3B) and rollout_stats_3b_mt.json (mid-trained 3B) are THREE
+            # DIFFERENT POLICIES. That made `_meta` appear as a row in the table
+            # and, worse, produced a "re-measurement spread" of 3.3pp for it,
+            # captioned "same checkpoint, different eval runs" with the advice to
+            # treat smaller differences as noise. 3.3pp is the size of the real
+            # effects here, so that line was actively misleading.
+            if label.startswith("_"):
+                continue
             seen.setdefault(label, []).append((p.name, rec["beq_plus_rate"]))
             merged[label] = rec  # newest file wins
     return merged, seen
@@ -102,9 +113,13 @@ def main() -> None:
               f"{r.get('n', '?'):>5}  {DESCRIPTIONS.get(label, '')}")
     print("=" * 86)
 
-    # Surface re-measurement spread: identical checkpoints scored in different
-    # runs differ slightly because vLLM batching is not bit-deterministic even at
+    # Surface re-measurement spread: THE SAME checkpoint scored in different runs
+    # differs slightly because vLLM batching is not bit-deterministic even at
     # temperature 0. Differences below this spread are not real.
+    #
+    # This is only meaningful for a genuine re-score. Metadata keys are filtered
+    # in load(); if a future label ever aggregates across policies, this number
+    # becomes nonsense again -- check what is in `dupes` before quoting it.
     dupes = {k: v for k, v in seen.items() if len({round(x[1], 4) for x in v}) > 1}
     if dupes:
         print("\nre-measurement spread (same checkpoint, different eval runs):")

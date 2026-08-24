@@ -23,23 +23,9 @@
 #SBATCH --output=logs/grpo3b_bb_%j.out
 #SBATCH --error=logs/grpo3b_bb_%j.err
 
-set -uo pipefail
-export PROJECT_ROOT=/home/logan03/lean-gym-rl
-REAL="${PROJECT_ROOT}"
-source "${REAL}/hpc/cc_env.sh"
-unset ROCR_VISIBLE_DEVICES
-cd "${REAL}"
-export PYTHONPATH="${REAL}:${PYTHONPATH:-}"
+source /home/logan03/lean-gym-rl/hpc/job_prelude.sh
 
-if [ -n "${SLURM_TMPDIR:-}" ] && [ -f /scratch/logan03/mathlib4_v4.8.0-rc1.tar ]; then
-  t0=$(date +%s)
-  tar -xf /scratch/logan03/mathlib4_v4.8.0-rc1.tar -C "${SLURM_TMPDIR}"
-  cp -a "${LEAN_INTERACT_CACHE_DIR}" "${SLURM_TMPDIR}/lean_interact_cache"
-  export MATHLIB_ROOT="${SLURM_TMPDIR}/mathlib4"
-  export LEAN_INTERACT_CACHE_DIR="${SLURM_TMPDIR}/lean_interact_cache"
-  echo "[grpo3b] staging took $(( $(date +%s) - t0 ))s"
-fi
-export BEQ_ENV_TIMEOUT="${BEQ_ENV_TIMEOUT:-2400}"
+stage_mathlib "[grpo3b]"
 
 MULTITURN="${MULTITURN:-1}"
 [ "$MULTITURN" = "1" ] && MULTITURN_ON=1 || MULTITURN_ON=""
@@ -93,7 +79,7 @@ EXPERIMENT_NAME="rl3b_bb_${ARM}" \
     ${MULTITURN_ON:+actor_rollout_ref.rollout.multi_turn.function_tool_path=${REAL}/reward/lean_tool.py} \
     data.train_files="${REAL}/data_3b/train.parquet" \
     data.val_files="${REAL}/data_3b/val.parquet" \
-    trainer.total_training_steps="${TOTAL_STEPS:-40}" \
+    trainer.total_training_steps="${TOTAL_STEPS:-90}" \
     trainer.resume_mode=auto \
     trainer.test_freq="${TEST_FREQ:-50}" \
     trainer.save_freq=10 \

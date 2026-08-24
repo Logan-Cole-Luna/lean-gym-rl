@@ -13,11 +13,7 @@
 #SBATCH --output=logs/sft_3b_%j.out
 #SBATCH --error=logs/sft_3b_%j.err
 
-set -uo pipefail
-export PROJECT_ROOT=/home/logan03/lean-gym-rl
-source "${PROJECT_ROOT}/hpc/cc_env.sh"
-unset ROCR_VISIBLE_DEVICES
-cd "${PROJECT_ROOT}"
+source /home/logan03/lean-gym-rl/hpc/job_prelude.sh
 mkdir -p logs
 
 MODEL="${MODEL:-/scratch/logan03/ai4math_training_models/qwen2.5-coder-3b-instruct}"
