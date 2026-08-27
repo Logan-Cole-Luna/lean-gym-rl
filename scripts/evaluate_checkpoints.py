@@ -198,7 +198,20 @@ def main() -> None:
             f"--n-eval {args.n_eval} exceeds {args.val_parquet} ({len(_val)} rows). "
             f"Pass --val-parquet data_3b/val.parquet (1000 rows), or lower --n-eval.")
     df = _val.head(args.n_eval)
-    prompts = [row[0]["content"] for row in df["prompt"]]
+    # Take the LAST user turn, not element 0. Element 0 is the user turn for
+    # every dataset built by prepare_dataset.py, but a parquet that carries a
+    # system turn would silently hand the SAME system string to every example.
+    # That failure is invisible in the metrics -- it looks like a collapsed
+    # model, not a broken harness -- so it is worth the two extra lines.
+    # (Observed: eval_sft3blocolib-* scored 999 rows on the string "You are an
+    # expert in Lean 4 and Mathlib.")
+    def _user_turn(row):
+        users = [t for t in row if t.get("role") == "user"]
+        if not users:
+            raise ValueError(f"prompt has no user turn: {[t.get('role') for t in row]}")
+        return users[-1]["content"]
+
+    prompts = [_user_turn(row) for row in df["prompt"]]
     golds = [rm["ground_truth"] for rm in df["reward_model"]]
     print(f"[eval] {len(prompts)} validation examples from {args.val_parquet}")
 

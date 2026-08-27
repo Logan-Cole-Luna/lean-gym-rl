@@ -28,14 +28,33 @@ source /home/logan03/lean-gym-rl/hpc/job_prelude.sh
 
 stage_mathlib "[grpo3b]"
 
-# MULTI-TURN IS NOW ON BY DEFAULT (MULTITURN=0 disables). The policy gets a Lean
-# type-check tool mid-rollout (reward/lean_tool.py) and sees the compiler's real
-# diagnostics before the reward lands -- 23.4% of rollouts fail to elaborate and
-# can never earn BEq+, so those are dead weight in their group.
+# MULTI-TURN IS OFF BY DEFAULT, AND WAS A NO-OP WHEN IT DEFAULTED TO ON.
 #
-# IT CHANGES THE ROLLOUT DISTRIBUTION. Arms trained with and without it are NOT
-# comparable, so a whole comparison set must be run one way or the other.
-MULTITURN="${MULTITURN:-1}"
+# The intent was to give the policy a Lean type-check tool mid-rollout
+# (reward/lean_tool.py) so it sees the compiler's real diagnostics before the
+# reward lands. Setting multi_turn.enable=True and function_tool_path DOES NOT
+# DO THAT. verl picks the agent loop from a per-row `agent_name` field, falling
+# back to rollout.default_agent_loop, which is "single_turn_agent"
+# (repos/verl/verl/workers/config/rollout.py:74) and which nothing here
+# overrides. Our parquet rows carry only data_source/prompt/ability/
+# reward_model/extra_info -- no agent_name, no tools_kwargs -- so
+# SingleTurnAgentLoop applies the chat template with NO `tools=` argument and
+# does one generate call. verl's own e2e test for this feature injects
+# `agent_name = "tool_agent"` per row; see
+# repos/verl/tests/experimental/agent_loop/test_basic_agent_loop.py.
+#
+# The tool schema does reach RLHFDataset's prompt-length filter, so leaving this
+# on is not free: it perturbs which rows survive filtering while buying nothing.
+# It also cannot work at the current budget -- max_response_length is 128 tokens
+# TOTAL across turns, which does not fit a tool call plus a tool response plus a
+# revised theorem.
+#
+# TO ACTUALLY ENABLE IT: set actor_rollout_ref.rollout.agent.default_agent_loop=
+# tool_agent (or add agent_name to the parquet in scripts/prepare_dataset.py),
+# AND raise MAX_RESPONSE_LENGTH well past 128. Then re-run the WHOLE comparison
+# set -- it changes the rollout distribution, so arms run with and without it
+# are not comparable.
+MULTITURN="${MULTITURN:-0}"
 [ "$MULTITURN" = "1" ] && MULTITURN_ON=1 || MULTITURN_ON=""
 ARM="${ARM:?set ARM=gated|placebo|typecheck|selfprove|guided|gated_edge|gated_filtered}"
 # BEST_SFT selects which SFT series the RL arms train from. Default is the
@@ -157,6 +176,23 @@ case "$ARM" in
     # ~3x generation cost, but it attacks the dead-batch problem head-on.
     export FILTER_GROUPS=1 FILTER_GROUPS_METRIC=semantic_signal ;;
   placebo)
+    # RETIRED 2026-08-24. The control answered its question -- paired
+    # gated-vs-placebo is +18.2pp, p=7e-16 -- and that result stands as recorded
+    # in results/. DO NOT run new placebo arms; new arms are paired against SFT
+    # and against their own twin at the previous setting, which is a tighter
+    # control anyway (one variable moves instead of the whole reward).
+    #
+    # Its most useful legacy is a negative result about the OPTIMISER, not any
+    # reward: a zero-information reward should do approximately nothing under
+    # correct regularisation, and instead it took BEq+ 39.4% -> 13.0%. That is
+    # what put ACTOR_LR (1e-5, i.e. 10x the GRPO standard) under suspicion.
+    #
+    # Set PLACEBO_ANYWAY=1 to run it regardless, e.g. to reproduce the recorded
+    # result. Everything below still works.
+    [ "${PLACEBO_ANYWAY:-0}" = "1" ] || {
+      echo "[grpo3b] REFUSING: the placebo arm is retired (see the comment in this file)."
+      echo "[grpo3b] Pair new arms against SFT and their own 1e-5 twin instead."
+      echo "[grpo3b] PLACEBO_ANYWAY=1 overrides."; exit 1; }
     REWARD_FN_NAME=compute_score_placebo
     # The control MUST be fitted to this policy's geometry, not 0.5B's.
     # Per-series: the fit is to a specific policy's geometry, so a mid-trained
@@ -197,7 +233,14 @@ EXPERIMENT_NAME="rl3b${SERIES_SUFFIX}_${ARM}" \
     trainer.resume_mode=auto \
     trainer.test_freq="${TEST_FREQ:-50}" \
     trainer.save_freq=10 \
-    'actor_rollout_ref.actor.checkpoint.save_contents=[model,extra,hf_model]' \
+    # SAVE THE OPTIMIZER. Without it a resumed chunk cold-starts Adam's moment
+    # estimates, and arms here run as chained afterany chunks, so every walltime
+    # boundary was a silent optimiser reset. It already happened once mid-run on
+    # rl3b_lr6_gated_edge (chunk 2 resumed from step 50) with no visible shock,
+    # but a reset is indistinguishable from a real trend change in the metrics,
+    # which matters most on exactly the long runs where resumes are frequent.
+    # Costs disk: checkpoints roughly double. MAX_CKPT_KEEP bounds it.
+    'actor_rollout_ref.actor.checkpoint.save_contents=[model,optimizer,extra,hf_model]' \
     ${EXTRA[@]+"${EXTRA[@]}"}
 
 echo "[grpo3b] arm=${ARM} done"

@@ -83,6 +83,6 @@ EXPERIMENT_NAME="rl3b_bb_${ARM}" \
     trainer.resume_mode=auto \
     trainer.test_freq="${TEST_FREQ:-50}" \
     trainer.save_freq=10 \
-    'actor_rollout_ref.actor.checkpoint.save_contents=[model,extra,hf_model]'
+    'actor_rollout_ref.actor.checkpoint.save_contents=[model,optimizer,extra,hf_model]'
 
 echo "[grpo3b] arm=${ARM} done"

@@ -124,6 +124,44 @@ class BEqCPUResult:
     beql_unidirections: tuple[str | None, str | None] = (None, None)
     beq_plus_unidirections: tuple[str | None, str | None] = (None, None)
 
+    # ── ADDITIVE INSTRUMENTATION — NOT part of the published metric ───────────
+    # These record what the cascade already decided and then discarded. Nothing
+    # below changes a tactic, a timeout, or the control flow: every assignment
+    # sits next to an existing branch, and `beql()` / `beq_plus()` read only the
+    # two original fields. To verify that, re-score a pool and diff `beq_plus`
+    # and `beql` against the previous run -- they must be identical.
+    #
+    # rungs[i]: which cascade rung closed direction i.
+    #   1 = `exact?` (also the ONLY rung that sets beql)   2 = `apply`
+    #   3 = `have <conclusion>`                            4 = `convert`
+    # A lower rung is a tighter match: rung 1 means the statements are
+    # definitionally interchangeable, rung 4 means only the conclusion survives
+    # heavy congruence. This is the closeness ordinal the bools throw away.
+    rungs: tuple[int | None, int | None] = (None, None)
+    # convert_levels[i]: the `using k`, k in 0..4, when rung 4 fired. Higher k =
+    # more tolerance was needed = further apart.
+    convert_levels: tuple[int | None, int | None] = (None, None)
+    # provable_alone[i]: rung 3's `provable_without_have` -- whether the SECOND
+    # theorem of the pair proves on its own, with no reference to the first.
+    # For direction 0 the second theorem is the PREDICTION, so this is a
+    # free self-provability check on exactly the dead-band rollouts.
+    #
+    # IT IS A LOWER BOUND, NOT `self_prove`'s `provable`. Rung 3 proves with
+    # `prove_all(["tauto", "simp_all_arith!", "exact? using this"])`, and there
+    # is no `this` in scope at that point, so it is effectively tauto +
+    # simp_all_arith!. `self_prove` additionally tries `noncomm_ring` and a bare
+    # `exact?`. Expect this to MISS statements only those two can close.
+    # It is also only computed when rungs 1 and 2 both failed and the `sorry`
+    # gate passed -- how often that holds on the dead band is an empirical
+    # question, which is what Phase 0 measures.
+    provable_alone: tuple[bool | None, bool | None] = (None, None)
+    # Why the direction loop stopped, which the bools conflate into n_directions=0:
+    #   "unparseable"  clean_last_theorem_string raised (no theorem in the output)
+    #   "sorry_gate"   the reformulated theorem would not elaborate beside the base
+    #   "no_rung"      it elaborated but no rung closed -- the real dead band
+    #   None           both directions completed
+    stop_reason: str | None = None
+
     def beql(self) -> bool:
         return all(proof is not None for proof in self.beql_unidirections)
 
@@ -171,6 +209,7 @@ def check_theorem_equivalence(
             formal_2_start_line = formal_1_code.count("\n") + 1
             formal_2_code = f"{clean_last_theorem_string(reform_thm, reformulated_thm_name, add_sorry=False)} := by"
         except ValueError:
+            res.stop_reason = "unparseable"  # instrumentation only
             break
 
         def check_proof_sub(proof: str, formal_code: str = formal_1_code + formal_2_code) -> str | None:
@@ -195,6 +234,7 @@ def check_theorem_equivalence(
             return None
 
         if check_proof_sub("sorry") is None:
+            res.stop_reason = "sorry_gate"  # instrumentation only
             break
 
         # 1. `exact?`, and check it uses the base theorem in the proof.
@@ -202,12 +242,14 @@ def check_theorem_equivalence(
         if proof_exact and base_thm_name in proof_exact:
             res.beql_unidirections = update_tuple(res.beql_unidirections, i, proof_exact)
             res.beq_plus_unidirections = update_tuple(res.beq_plus_unidirections, i, proof_exact)
+            res.rungs = update_tuple(res.rungs, i, 1)  # instrumentation only
             continue
 
         # 2. try to apply the base theorem directly
         proof_apply = check_proof_sub(f"apply {base_thm_name}\n" + proof_all_apply)
         if proof_apply:
             res.beq_plus_unidirections = update_tuple(res.beq_plus_unidirections, i, proof_apply)
+            res.rungs = update_tuple(res.rungs, i, 2)  # instrumentation only
             continue
 
         # 3. add the conclusion of the base theorem as a hypothesis
@@ -220,6 +262,11 @@ def check_theorem_equivalence(
                 provable_without_have = res_without_have.lean_code_is_valid(allow_sorry=False)
         except (TimeoutError, ConnectionAbortedError, json.JSONDecodeError):
             pass
+        # instrumentation only -- the free self-provability read. See the field
+        # comment on BEqCPUResult.provable_alone for what this does and does not
+        # mean. Recorded here, BEFORE the `if`, so a True value is captured even
+        # though the vendored code only uses it to skip rung 3.
+        res.provable_alone = update_tuple(res.provable_alone, i, provable_without_have)
 
         if not provable_without_have:
             idx_conclusion = split_conclusion(formal_1_code)
@@ -234,6 +281,7 @@ def check_theorem_equivalence(
                 proof_have = check_proof_sub(have_stmt_proof + proof_all_have)
                 if proof_have:
                     res.beq_plus_unidirections = update_tuple(res.beq_plus_unidirections, i, proof_have)
+                    res.rungs = update_tuple(res.rungs, i, 3)  # instrumentation only
                     continue
 
         # 4. apply with tolerance on the conclusion (`convert`)
@@ -243,9 +291,12 @@ def check_theorem_equivalence(
             )
             if proof_convert:
                 res.beq_plus_unidirections = update_tuple(res.beq_plus_unidirections, i, proof_convert)
+                res.rungs = update_tuple(res.rungs, i, 4)  # instrumentation only
+                res.convert_levels = update_tuple(res.convert_levels, i, max_step)  # instrumentation only
                 break
 
         if not res.beq_plus_unidirections[i]:
+            res.stop_reason = "no_rung"  # instrumentation only
             break
 
     return res
@@ -629,7 +680,13 @@ class BEqPlusScorer:
         out = {"typecheck": False, "beql": False, "beq_plus": False,
                "beq_plus_fwd": False, "beq_plus_bwd": False, "n_directions": 0,
                "gold_implies_pred": False, "pred_implies_gold": False,
-               "semantic_signal": 0, "error": None, "error_kind": None}
+               "semantic_signal": 0, "error": None, "error_kind": None,
+               # Cascade instrumentation; see BEqCPUResult. `rung`/`convert_level`
+               # describe direction 0 (gold => pred), the one that always runs.
+               # `provable_alone` is the free self-provability read on the
+               # PREDICTION and is the signal the dead-band ladder wants.
+               "rung": None, "convert_level": None,
+               "provable_alone": None, "stop_reason": None}
         env = self.get_env(context)
         if env is None:
             self.stats["infra"] += 1
@@ -660,6 +717,11 @@ class BEqPlusScorer:
             # Direction 0 is gold => pred; direction 1 is pred => gold.
             out["gold_implies_pred"] = out["beq_plus_fwd"]
             out["pred_implies_gold"] = out["beq_plus_bwd"]
+            # Cascade instrumentation, direction 0 -- the one that always runs.
+            out["rung"] = res.rungs[0]
+            out["convert_level"] = res.convert_levels[0]
+            out["provable_alone"] = res.provable_alone[0]
+            out["stop_reason"] = res.stop_reason
             # Direction 1 is only ATTEMPTED when direction 0 succeeded, so a
             # strictly stronger prediction reads as 0 directions unless probed.
             if probe_stronger and not out["gold_implies_pred"] and out["typecheck"]:

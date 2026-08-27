@@ -24,6 +24,7 @@ from __future__ import annotations
 import argparse
 import glob
 import json
+import textwrap
 import re
 import sys
 from pathlib import Path
@@ -72,7 +73,7 @@ def fig_arm_trajectories(arms: dict[str, dict[int, list[dict]]], n: int, metric=
                 markevery=list(range(1, len(xs))),
                 ls=st.get("linestyle", "-"), label=st["label"],
                 markeredgecolor="white", markeredgewidth=0.7, zorder=3)
-        ends[st["label"].split(" (")[0]] = (xs[-1], ys[-1], st["color"])
+        ends[st.get("end_label") or st["label"].split(" (")[0]] = (xs[-1], ys[-1], st["color"])
     ax.set_xlabel("GRPO step")
     ax.set_ylabel("BEq+ (%), greedy decode" if metric == "beq_plus"
                   else "type-check (%), greedy decode")
@@ -159,19 +160,21 @@ def fig_retention_gain(arms, n, step_of):
     base_pe = baseline()[:n]
     correct = sum(bool(x["beq_plus"]) for x in base_pe)
     wrong = n - correct
-    names, kept, gained, colors = [], [], [], []
+    names, kept, gained, colors, hatches = [], [], [], [], []
     for arm, step in step_of.items():
         pe = arms.get(arm, {}).get(step)
         if pe is None:
             continue
         pe = pe[:n]
         st = fs.ARM_STYLE[arm]
-        names.append(st["label"].split(" (")[0].replace(" ", "\n"))
+        names.append(textwrap.fill(
+            st.get("end_label") or st["label"].split(" (")[0], width=12))
         kept.append(100 * sum(1 for a, b in zip(base_pe, pe)
                               if a["beq_plus"] and b["beq_plus"]) / correct)
         gained.append(100 * sum(1 for a, b in zip(base_pe, pe)
                                 if not a["beq_plus"] and b["beq_plus"]) / wrong)
         colors.append(st["color"])
+        hatches.append(st.get("hatch", ""))
     fig, axes = plt.subplots(1, 2, figsize=(10.5, 4.6))
     shown = next(iter(step_of.values()))
     # LIMITER IS READ OFF THE ARMS ACTUALLY DRAWN. It used to be read off
@@ -191,7 +194,7 @@ def fig_retention_gain(arms, n, step_of):
         (axes[1], gained, f"Gain — of the {wrong} it got wrong", "converted (%)"),
     ):
         bars = ax.bar(range(len(names)), vals, color=colors, width=0.62,
-                      edgecolor="white", linewidth=1.5, zorder=3)
+                      edgecolor="white", linewidth=1.5, zorder=3, hatch=hatches)
         for b, v in zip(bars, vals):
             ax.annotate(f"{v:.1f}", xy=(b.get_x() + b.get_width() / 2, v),
                         xytext=(0, 3), textcoords="offset points",
@@ -200,7 +203,7 @@ def fig_retention_gain(arms, n, step_of):
         ax.set_xticklabels(names, fontsize=8.5)
         ax.set_ylabel(ylab)
         ax.set_title(title, fontsize=11)
-        ax.set_ylim(0, max(vals) * 1.28 if vals else 1)
+        ax.set_ylim(0, min(max(vals) * 1.28, 108) if vals else 1)
     # The ceiling every 0.5B arm was stuck under -- the point of the right panel.
     axes[1].axhspan(4.9, 7.3, color=fs.ACCENT, alpha=0.10, zorder=1)
     axes[1].annotate("4.9–7.3%: the band every 0.5B\narm and signal sat inside",
@@ -300,7 +303,7 @@ def fig_arm_trajectories_pass1(grid: tuple[int, ...] = evalio.STEP_GRID):
                     ls=st.get("linestyle", "-"), label=st["label"],
                     markevery=list(range(1 if b is not None else 0, len(pts))),
                     markeredgecolor="white", markeredgewidth=0.7, zorder=3)
-            ends[st["label"].split(" (")[0]] = (pts[-1][0], pts[-1][1], st["color"])
+            ends[st.get("end_label") or st["label"].split(" (")[0]] = (pts[-1][0], pts[-1][1], st["color"])
             ys_all += [y for _, y in pts]
             drew = True
         if not ys_all:
@@ -371,7 +374,7 @@ def fig_arm_trajectories_passk(k: int = 32, k_lo: int = 1, metric: str = "beq_pl
                     label=st["label"] if kk == k else None, zorder=3)
             lows += [y for _, y in pts]
             if kk == k:
-                ends[st["label"].split(" (")[0]] = (pts[-1][0], pts[-1][1], st["color"])
+                ends[st.get("end_label") or st["label"].split(" (")[0]] = (pts[-1][0], pts[-1][1], st["color"])
     ax.set_xlabel("GRPO step")
     if metric == "beq_plus":
         ax.set_ylabel("BEq+ (%)")

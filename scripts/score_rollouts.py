@@ -71,6 +71,17 @@ def _score_one(rec: dict) -> dict:
         "pred_implies_gold": bool(r.get("pred_implies_gold", False)),
         "semantic_signal": int(r.get("semantic_signal", 0)),
         "error_kind": r.get("error_kind"),
+        # Cascade instrumentation (see BEqCPUResult in reward/beq_plus.py).
+        # Kept as None/bool rather than the float encoding _diagnostics uses --
+        # this file is read by analysis code, not by verl's metric aggregator,
+        # so `provable_alone: None` ("rung 3 never ran") stays distinguishable
+        # from `False` ("it ran and the statement did not prove") without
+        # needing a companion *_known key.
+        "beql": bool(r.get("beql", False)),
+        "rung": r.get("rung"),
+        "convert_level": r.get("convert_level"),
+        "provable_alone": r.get("provable_alone"),
+        "stop_reason": r.get("stop_reason"),
     }
 
 

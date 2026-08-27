@@ -86,14 +86,14 @@ def main() -> None:
     lines = [
         START,
         "",
-        "## Starting point — every arm resumes from here",
+        "## Starting point: every arm resumes from here",
         "",
         "`sft3b-step93` is the checkpoint all six arms initialise from, so it is",
         "step 0 for all of them.",
         "",
         "| measurement | BEq+ | compiles |",
         "|---|---|---|",
-        f"| **pass@1**, T=1.15, 250 prompts — **the reference** | **{curve['beq_plus'].get(1, 0):.1f}%** "
+        f"| **pass@1**, T=1.15, 250 prompts (**the reference**) | **{curve['beq_plus'].get(1, 0):.1f}%** "
         f"| **{curve['typecheck'].get(1, 0):.1f}%** |",
         f"| pass@32, same rollouts | {curve['beq_plus'].get(32, 0):.1f}% "
         f"| {curve['typecheck'].get(32, 0):.1f}% |",
@@ -102,7 +102,7 @@ def main() -> None:
         "",
         "Greedy beats pass@1 by "
         f"{greedy['beq_plus'][0] - curve['beq_plus'].get(1, 0):+.1f}pp on BEq+ because a single",
-        "T=1.15 sample is worse than the argmax — that gap is the decoder, not training.",
+        "T=1.15 sample is worse than the argmax. That gap is the decoder, not training.",
         f"The n=1000 and n={N_PREFIX} greedy numbers differ by "
         f"{greedy['beq_plus'][0] - greedy['beq_plus'][1]:+.1f}pp on the *same* checkpoint",
         "(the prefix is a slightly easier slice), which is why rates are never differenced",
@@ -114,7 +114,7 @@ def main() -> None:
         "Blank = not run, `–` = that half not measured.",
         "",
         "- Both halves come from the **same** sampled rollouts (T=1.15, 250 pinned",
-        "  prompts, k=32 draws), so the gap within a cell IS meaningful — it is one",
+        "  prompts, k=32 draws), so the gap within a cell IS meaningful: it is one",
         "  policy, one decoder, two verdicts on the same outputs.",
         f"- Rows are the reporting grid, {'/'.join(str(s) for s in GRID)}. Every arm is",
         "  evaluated at these steps and no others, so columns compare like with like.",

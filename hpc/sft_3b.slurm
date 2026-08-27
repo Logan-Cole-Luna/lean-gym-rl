@@ -34,6 +34,13 @@ case "${MODEL}" in
     echo "[sft_3b] resolved auto -> ${MODEL}" ;;
 esac
 
+# TRAIN_FILE / VAL_FILE are overridable so a second corpus does not need a
+# second copy of this file. Defaults reproduce the Lean-Workbook run exactly.
+# A different corpus needs its own TAG *and* its own SFT_SAVE_FREQ: save_freq is
+# in optimizer steps, and steps/epoch = rows / 256.
+#   sbatch --export=ALL,TAG=locolib,\
+#     TRAIN_FILE=$PWD/data_locolib/sft.parquet,\
+#     VAL_FILE=$PWD/data_locolib/val_sft.parquet,SFT_SAVE_FREQ=46 hpc/sft_3b.slurm
 TAG="${TAG:-}"
 SUFFIX="${TAG:+_${TAG}}"
 echo "[sft_3b] model=${MODEL}"
@@ -66,8 +73,8 @@ echo "[sft_3b] saving to checkpoints/sft_3b${SUFFIX}"
 # assuming the last epoch is best -- a 3B model overfits 8k faster than 0.5B did.
 MODEL_PATH="${MODEL}" \
 SAVE_PATH="${PROJECT_ROOT}/checkpoints/sft_3b${SUFFIX}" \
-TRAIN_FILE="${PROJECT_ROOT}/data_3b/sft/train.parquet" \
-VAL_FILE="${PROJECT_ROOT}/data_3b/sft/val.parquet" \
+TRAIN_FILE="${TRAIN_FILE:-${PROJECT_ROOT}/data_3b/sft/train.parquet}" \
+VAL_FILE="${VAL_FILE:-${PROJECT_ROOT}/data_3b/sft/val.parquet}" \
 MICRO_BATCH="${MICRO_BATCH:-1}" \
 LR="${LR:-5e-5}" \
 TOTAL_EPOCHS="${TOTAL_EPOCHS:-3}" \

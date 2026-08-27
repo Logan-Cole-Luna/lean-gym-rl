@@ -50,6 +50,23 @@ ARM_STYLE = {
     "rl3b_gated_edge": dict(color=SKY,     marker="v", label="gated, edge pool"),
     "rl3b_v2_placebo": dict(color=CONTROL, marker="s", label="placebo", linestyle="--"),
     "rl3b_selfprove_t30": dict(color=GREEN, marker="P", label="selfprove (30s probe)", linestyle=":"),
+    # THE lr6 SERIES: same reward, same pool, ACTOR_LR=1e-6 + 0.05 warmup instead
+    # of the accidental 1e-5. Each keeps its twin's colour and marker, because
+    # colour follows the entity, and is dash-dotted so the corrected run is
+    # distinguishable from the one it corrects. Arms at different learning rates
+    # are not comparable as *rewards*; plotting a pair together is a statement
+    # about the LEARNING RATE, which is the one thing that differs.
+    # `end_label` overrides the direct label drawn at the line end. Without it,
+    # make_figures derives one as label.split(" (")[0], which maps both
+    # "gated, edge pool" and "gated, edge pool (lr 1e-6)" onto the SAME key --
+    # they share one dict entry and whichever is plotted last silently erases
+    # the other's label.
+    "rl3b_lr6_gated_edge": dict(color=SKY, marker="v", linestyle="-.",
+                                label="gated, edge pool (lr 1e-6)",
+                                end_label="edge pool, lr 1e-6", hatch="//"),
+    "rl3b_lr6_typecheck": dict(color=ORANGE, marker="s", linestyle="-.",
+                               label="type-check only (lr 1e-6)",
+                               end_label="type-check, lr 1e-6", hatch="//"),
 }
 
 PANEL_TINT = {"blue": "#EAF0F8", "peach": "#FDF0E7", "green": "#EAF4EC", "amber": "#FDF6E3"}
@@ -131,6 +148,21 @@ def finish(ax, *, end_labels: dict[str, tuple[float, float, str]] | None = None,
         while hits(py + dy):          # ran out of headroom -- go down instead
             dy -= h
         placed.append((x0, x1, py + dy))
+        # LEADER LINE when the label has been pushed far from its point. With
+        # three or four arms the de-collision shift is small and the label still
+        # reads as belonging to the nearest line. With six it is not: in the
+        # pass@1 panel the lr6 arms pushed "gated", "guided" and "gated, edge
+        # pool" 8pp above their own line ends, where they sat directly beside
+        # OTHER arms' lines. A displaced label without a connector does not just
+        # look untidy, it attributes the wrong value to the wrong series.
+        # Threshold is one label height: below that the label still touches its
+        # own line and a connector would be visual noise.
+        if abs(dy) > h:
+            ax.annotate("", xy=(x, y), xytext=(pad, dy / scale),
+                        textcoords="offset points",
+                        arrowprops=dict(arrowstyle="-", color=color, lw=0.8,
+                                        alpha=0.55, shrinkA=1.0, shrinkB=2.0),
+                        zorder=2)
         ax.annotate(name, xy=(x, y), xytext=(pad, dy / scale), textcoords="offset points",
                     va="center", ha="left", fontsize=fontsize, fontweight="bold", color=color,
                     path_effects=[pe.withStroke(linewidth=2.6, foreground="white")])

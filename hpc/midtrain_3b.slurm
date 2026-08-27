@@ -33,7 +33,15 @@
 source /home/logan03/lean-gym-rl/hpc/job_prelude.sh
 mkdir -p logs
 
-TRAIN="${REAL}/data_3b/midtrain/train.parquet"
+# TAG scopes the corpus, the save dir and the validation report, so a second
+# mid-training corpus cannot overwrite the first. Empty = the original Mathlib
+# corpus, byte-for-byte.
+#   sbatch --export=ALL,TAG=locolib,MIDTRAIN_DIR=data_locolib/midtrain,\
+#     SFT_SAVE_FREQ=21 hpc/midtrain_3b.slurm
+TAG="${TAG:-}"
+SUFFIX="${TAG:+_${TAG}}"
+MIDTRAIN_DIR="${MIDTRAIN_DIR:-data_3b/midtrain}"
+TRAIN="${REAL}/${MIDTRAIN_DIR}/train.parquet"
 [ -f "${TRAIN}" ] || { echo "[midtrain] FATAL: ${TRAIN} missing -- run scripts/prepare_midtrain_dataset.py"; exit 1; }
 
 # ---- CORPUS QUALITY GATE ---------------------------------------------------
@@ -45,7 +53,7 @@ TRAIN="${REAL}/data_3b/midtrain/train.parquet"
 # corpus useless (it still teaches vocabulary), it makes the claim about
 # statement SHAPE unsupportable, which is a thing we should know before reading
 # the downstream numbers.
-if [ ! -f results/midtrain_corpus_validation.json ]; then
+if [ ! -f "results/midtrain_corpus_validation${SUFFIX}.json" ]; then
   if [ -n "${SLURM_TMPDIR:-}" ] && [ -f /scratch/logan03/mathlib4_v4.8.0-rc1.tar ]; then
     t0=$(date +%s)
     tar -xf /scratch/logan03/mathlib4_v4.8.0-rc1.tar -C "${SLURM_TMPDIR}"
@@ -55,7 +63,7 @@ if [ ! -f results/midtrain_corpus_validation.json ]; then
     echo "[midtrain] staging took $(( $(date +%s) - t0 ))s"
   fi
   BEQ_ENV_TIMEOUT=2400 python3 scripts/validate_midtrain_corpus.py \
-    --sample data_3b/midtrain/sample.jsonl --workers 8 \
+    --sample "${MIDTRAIN_DIR}/sample.jsonl" --workers 8 \
     || echo "[midtrain] corpus validation failed -- continuing, but read the log"
 fi
 
@@ -78,9 +86,9 @@ fi
 # FSDP falls back to NO_SHARD and a 3B model OOMs a 40GB card; at 120G the
 # hf_model checkpoint gather was OOM-killed by slurmstepd. Do not shrink either.
 MODEL_PATH="${MODEL:-/scratch/logan03/ai4math_training_models/qwen2.5-coder-3b-instruct}" \
-SAVE_PATH="${REAL}/checkpoints/midtrain_3b" \
+SAVE_PATH="${REAL}/checkpoints/midtrain_3b${SUFFIX}" \
 TRAIN_FILE="${TRAIN}" \
-VAL_FILE="${REAL}/data_3b/midtrain/val.parquet" \
+VAL_FILE="${REAL}/${MIDTRAIN_DIR}/val.parquet" \
 MICRO_BATCH="${MICRO_BATCH:-2}" \
 MAX_TOKEN_LEN="${MAX_TOKEN_LEN:-4096}" \
 MAX_LENGTH="${MAX_LENGTH:-512}" \
@@ -91,7 +99,7 @@ MAX_CKPT_KEEP="${MAX_CKPT_KEEP:-4}" \
   NPROC=2 bash scripts/run_sft.sh \
     'checkpoint.save_contents=[model,optimizer,extra,hf_model]' \
     trainer.resume_mode=auto \
-    trainer.experiment_name=qwen25_coder_3b_mathlib_midtrain \
+    trainer.experiment_name="qwen25_coder_3b_midtrain${SUFFIX}" \
     engine.param_offload=True \
     engine.optimizer_offload=True
 

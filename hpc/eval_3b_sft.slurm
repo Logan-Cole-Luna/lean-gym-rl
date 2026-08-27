@@ -20,6 +20,12 @@ N_EVAL="${N_EVAL:-1000}"
 # TAG must match the one given to hpc/sft_3b.slurm. It scopes the checkpoint dir,
 # the eval label (and therefore every results/ filename), and the best_sft
 # pointer, so the mid-trained series cannot silently overwrite the original.
+# VAL_PARQUET is overridable so a second corpus can be evaluated on its OWN
+# held-out slice. Default reproduces the Lean-Workbook series exactly. A corpus
+# must be evaluated against the val set it was built from: BEq+ needs a gold,
+# and a LoCoLib model scored against Lean-Workbook golds measures transfer, not
+# fit. Both are worth knowing, but they are different questions.
+VAL_PARQUET="${VAL_PARQUET:-data_3b/val.parquet}"
 TAG="${TAG:-}"
 SUFFIX="${TAG:+_${TAG}}"
 LABEL="sft3b${TAG:+${TAG}}"
@@ -37,7 +43,7 @@ for d in $(ls -d checkpoints/sft_3b${SUFFIX}/global_step_* 2>/dev/null | sort -t
   ln -sfn "${REAL}/${d}/huggingface" "${model}"
   echo "[eval3b] ===== ${LABEL}-step${step} ====="
   python3 scripts/evaluate_checkpoints.py --checkpoint "${model}" \
-    --val-parquet "${REAL}/data_3b/val.parquet" \
+    --val-parquet "${REAL}/${VAL_PARQUET}" \
     --n-eval "${N_EVAL}" --workers "${BEQ_WORKERS:-8}" --out "${out}" \
     || echo "[eval3b] FAILED step${step}"
 done

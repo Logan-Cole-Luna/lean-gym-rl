@@ -215,9 +215,30 @@ def _note_call(error_kind: str | None) -> None:
 # `scorer_error=1` in reward_extra_info so the rate is visible in the run's
 # metrics; if it climbs, the reward is degrading and the run is not measuring
 # what it claims to. Losing a rollout is recoverable, losing the job is not.
+# EVERY reward must emit the SAME key set. verl aggregates each key into a
+# val/train metric, so a reward that omits one gives a ragged schema. This block
+# was hand-copied in three places (_ZERO, selfprove, placebo) and drifted; it is
+# defined once now and spread into all of them.
+#
+# These are the "not applicable" values, NOT measurements. `*_known` companions
+# exist wherever None and False are different facts -- collapsing "the cascade
+# never ran this check" into "the check failed" would silently understate the
+# thing the dead-band ladder is built on.
+_DIAG_DEFAULTS = {
+    "beql": 0.0,
+    "rung": 0.0,
+    "convert_level": -1.0,
+    "provable_alone": 0.0,
+    "provable_alone_known": 0.0,
+    "trivial": 0.0,
+    "trivial_known": 0.0,
+    "stop_reason": 0.0,
+}
+
 _ZERO = {"score": 0.0, "acc": 0.0, "beq_plus": 0.0, "typecheck": 0.0,
          "semantic_signal": 0.0, "n_directions": 0.0, "gold_implies_pred": 0.0,
-         "pred_implies_gold": 0.0, "similarity": 0.0, "scorer_error": 1.0}
+         "pred_implies_gold": 0.0, "similarity": 0.0, "scorer_error": 1.0,
+         **_DIAG_DEFAULTS}
 
 
 def _never_raises(fn):
@@ -232,6 +253,9 @@ def _never_raises(fn):
     return wrapped
 
 
+_STOP_REASON_CODE = {None: 0, "unparseable": 1, "sorry_gate": 2, "no_rung": 3}
+
+
 def _diagnostics(r: dict, similarity_value: float = 0.0) -> dict[str, float]:
     """The per-sample fields every reward forwards into `reward_extra_info`.
 
@@ -240,6 +264,9 @@ def _diagnostics(r: dict, similarity_value: float = 0.0) -> dict[str, float]:
     `acc` key as the run's CORE validation variable, so this makes
     `val-core/<data_source>/acc/mean@1` the true BEq+ rate.
     """
+    provable_alone = r.get("provable_alone")
+    rung = r.get("rung")
+    convert_level = r.get("convert_level")
     return {
         "acc": float(r["beq_plus"]),
         "beq_plus": float(r["beq_plus"]),
@@ -250,6 +277,30 @@ def _diagnostics(r: dict, similarity_value: float = 0.0) -> dict[str, float]:
         "pred_implies_gold": float(r.get("pred_implies_gold", False)),
         "similarity": float(similarity_value),
         "scorer_error": float(bool(r.get("error_kind"))),
+        # trivial/trivial_known are only produced by the self-prove path; the
+        # cascade cannot separate `tauto` from the rest of its disjunction.
+        "trivial": 0.0,
+        "trivial_known": 0.0,
+        # ── cascade instrumentation (see BEqCPUResult in beq_plus.py) ────────
+        # BEqL is strictly tighter than BEq+ (only cascade rung 1 sets it). It
+        # was always returned by score() and never forwarded until now.
+        "beql": float(r.get("beql", False)),
+        # 0 = no rung closed direction 0; 1..4 = which one did. Lower is a
+        # tighter match. Its MEAN mixes "did not close" with "closed at rung k",
+        # so read the histogram per-example, not this aggregate.
+        "rung": float(rung or 0),
+        # -1 when rung 4 did not fire. The mean is NOT meaningful; per-example
+        # only. Kept in the schema because verl needs a stable key set.
+        "convert_level": float(convert_level) if convert_level is not None else -1.0,
+        # THE dead-band signal. Two keys, because None (rung 3 never ran) and
+        # False (it ran and the statement did not prove) are different facts and
+        # collapsing them would silently understate provability. The conditional
+        # rate is mean(provable_alone) / mean(provable_alone_known).
+        "provable_alone": float(provable_alone is True),
+        "provable_alone_known": float(provable_alone is not None),
+        # Why direction 0 stopped, which n_directions=0 conflates.
+        # 0 = ran to completion, 1 = unparseable, 2 = sorry gate, 3 = no rung.
+        "stop_reason": float(_STOP_REASON_CODE.get(r.get("stop_reason"), 0)),
     }
 
 
@@ -392,6 +443,7 @@ def compute_score_selfprove(data_source, solution_str, ground_truth, extra_info=
     # beq_plus is reported for MONITORING only -- it is never paid for here, which
     # is the point of the arm.
     return {
+        **_DIAG_DEFAULTS,
         "score": score,
         "acc": score,
         "beq_plus": 0.0,
@@ -402,6 +454,17 @@ def compute_score_selfprove(data_source, solution_str, ground_truth, extra_info=
         "pred_implies_gold": 0.0,
         "similarity": 0.0,
         "scorer_error": float(bool(r.get("error_kind"))),
+        # `self_prove()` has always returned `provable` and `trivial` and nothing
+        # ever logged them. `trivial` is a direct vacuity detector -- the rate to
+        # watch if a ladder starts paying for the dead band. Reported under the
+        # same names the cascade path uses, but note they are NOT the same
+        # measurement: this ladder tries tauto / simp_all_arith! / noncomm_ring /
+        # exact? at BEQ_PROBE_TIMEOUT, where the cascade's rung 3 tries a shorter
+        # list at timeout_per_proof. Compare rates across arms with that in mind.
+        "provable_alone": float(bool(r.get("provable"))),
+        "provable_alone_known": float(bool(r.get("typecheck"))),
+        "trivial": float(bool(r.get("trivial"))),
+        "trivial_known": float(bool(r.get("typecheck"))),
     }
 
 
@@ -522,6 +585,7 @@ def compute_score_placebo(data_source, solution_str, ground_truth, extra_info=No
     # measured here, and this arm's val-core metric is meaningless by design --
     # evaluate its checkpoints offline with scripts/evaluate_checkpoints.py.
     return {
+        **_DIAG_DEFAULTS,
         "score": score,
         "acc": score,
         "beq_plus": 0.0,
