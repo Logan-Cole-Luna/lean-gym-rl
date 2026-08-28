@@ -6,7 +6,7 @@
 #
 # TAG scopes every output, so two series never share a checkpoint dir, an eval
 # filename, or a best-SFT pointer.
-#SBATCH --account=def-vganesh_gpu
+#SBATCH --account=def-vganesh
 #SBATCH --job-name=sft
 #SBATCH --gpus-per-node=a100:2
 #SBATCH --cpus-per-task=16

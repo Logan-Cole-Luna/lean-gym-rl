@@ -74,7 +74,41 @@ ARM_STYLE = {
     "rl3b_lr6edge_typecheck": dict(color=ORANGE, marker="P", linestyle="-.",
                                    label="type-check, edge pool (lr 1e-6)",
                                    end_label="type-check, edge", hatch="\\\\"),
+    # LoCoLib proof-pair series (current): the model emits a theorem AND its own
+    # proof (data_locolib/*_proof.parquet). Reuses gated's blue / selfprove's
+    # green -- the arms those name are archived, so nothing collides in a drawn
+    # figure -- and a fixed entry keeps each arm one colour across the eval
+    # (arm_trajectories) and training (training_curves) figures both.
+    "rl3b_locolib_proof_typecheck": dict(color=BLUE, marker="D",
+                                         label="locolib proof, type-check",
+                                         end_label="proof, type-check"),
+    "rl3b_locolib_proof_outcome": dict(color=GREEN, marker="o",
+                                       label="locolib proof, outcome ladder",
+                                       end_label="proof, outcome"),
 }
+
+
+# Auto-styling for arms not named in ARM_STYLE. `make figures` reads its roster
+# off results/eval/, so a freshly-trained series nobody has added a hand-tuned
+# entry for still has to draw with a stable, distinct colour and marker.
+# Assignment is by first-seen order and memoised, so an arm keeps one look across
+# every figure in a run. Add an explicit ARM_STYLE entry once an arm is a keeper.
+_AUTO_MARKERS = ("D", "o", "s", "^", "v", "P", "X", "h", "<", ">", "d", "p")
+_AUTO_STYLE: dict[str, dict] = {}
+
+
+def arm_style(arm: str) -> dict:
+    """ARM_STYLE[arm] if it exists, else a stable auto-assigned style."""
+    if arm in ARM_STYLE:
+        return ARM_STYLE[arm]
+    if arm not in _AUTO_STYLE:
+        i = len(_AUTO_STYLE)
+        _AUTO_STYLE[arm] = dict(
+            color=CATEGORICAL[i % len(CATEGORICAL)],
+            marker=_AUTO_MARKERS[i % len(_AUTO_MARKERS)],
+            label=arm.split("_", 1)[-1].replace("_", " "),
+        )
+    return _AUTO_STYLE[arm]
 
 
 def end_label(style: dict) -> str:

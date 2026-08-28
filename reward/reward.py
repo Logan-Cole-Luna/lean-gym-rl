@@ -261,37 +261,45 @@ def proof_follows_argument(informal_proof: str | None, lean_proof: str | None) -
 # This repo's adaptation. Everything above is the shared definition; everything
 # below maps a BEqPlusScorer verdict onto it.
 #
-# The task here is statement autoformalization: the model emits a theorem
-# SIGNATURE and no proof. Three of the table's columns therefore behave
-# differently from the proof-generation setting it was written for:
+# LoCoLib proof-pair task (`typecheck`/`outcome` arms, `data_locolib/*_proof.parquet`):
+# the model emits a full theorem AND its own proof, so every row is reachable.
+# `proof_check` is a `BEqPlusScorer.check_own_proof()` result -- `proved` and
+# `statement_is_trivial` (via BEq+'s own `provable_alone`) are real signals,
+# not placeholders. `proof_follows_argument` has no metric yet (see the
+# PLACEHOLDER note above) and stays None, which scores as 0 -- it never lifts
+# a score, only would cap it lower once implemented.
 #
-#   proved                    a signature has no proof body, so nothing can be
-#                             "finished". Rows 3 and 5 are the reachable ones.
-#   proof_follows_argument    needs a proof to judge; always None here, which
-#                             `reward_for_outcome` already scores as 0.
-#   statement_is_trivial      not separable from the BEq+ cascade, which cannot
-#                             tell `tauto` from the rest of its disjunction.
-#
-# Reachable outcomes, and what each is worth:
-#
-#   no_answer            0.00   unparseable, or the scorer failed
-#   no_elaborate         0.05   Lean rejected it
-#   incomplete           0.15   elaborates, does not match the gold  <- dead band
-#   incomplete_faithful  0.50   BEq+ matches the gold
+# For the older signature-only tasks (Lean-Workbook, LoCoLib statement-only),
+# call this with `proof_check=None`: the ladder tops out at MATCHED_NOT_PROVED
+# (0.50) because there is no proof body to check.
 # ---------------------------------------------------------------------------
 
 
-def signals_from_score(r: dict) -> Signals:
-    """Build `Signals` from a `BEqPlusScorer.score()` result."""
+def signals_from_score(r: dict, proof_check: dict | None = None) -> Signals:
+    """Build `Signals` from a `BEqPlusScorer.score()` result.
+
+    `proof_check`, when given, is a `BEqPlusScorer.check_own_proof()` result
+    for the SAME rollout -- pass it whenever the candidate was asked for a
+    full proof, not just a signature. Omitted (or None), `proved` stays False
+    and `statement_is_trivial` stays unknown, matching the old signature-only
+    behaviour exactly.
+    """
     failed = bool(r.get("error_kind"))
+    proved = bool(proof_check and proof_check.get("proved"))
     return Signals(
         # A Lean or infrastructure failure is not a verdict about the model, so
         # it is ungraded rather than a zero earned by the rollout.
         graded=not failed,
         wrote_something=True,
         type_correct=bool(r.get("typecheck")),
-        # No proof body to finish; the ladder tops out at MATCHED_NOT_PROVED.
-        proved=False,
+        proved=proved,
+        # BEq+'s cascade already computes this as a side effect (rung 3's
+        # `provable_without_have`): whether the SECOND theorem of the pair --
+        # here, the prediction -- proves on its own, with no reference to the
+        # gold. That is exactly what "closed by the automation on its own"
+        # means. Only meaningful once there is a proof to judge triviality
+        # of; left unknown otherwise.
+        statement_is_trivial=(r.get("provable_alone") if proof_check else None),
         statement_matches_reference=bool(r.get("beq_plus")) or None,
         proof_follows_argument=None,
     )

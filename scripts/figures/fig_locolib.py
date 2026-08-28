@@ -38,7 +38,7 @@ SERIES = [
 
 def load(label: str) -> dict[int, list[dict]]:
     out = {}
-    for f in glob.glob(str(REPO / f"results/eval_{label}-step*_n{N_EVAL}.json")):
+    for f in glob.glob(str(REPO / f"results/eval/{label}/eval_{label}-step*_n{N_EVAL}.json")):
         step = int(re.search(r"-step(\d+)_", f).group(1))
         out[step] = next(iter(json.load(open(f)).values()))["per_example"]
     return dict(sorted(out.items()))

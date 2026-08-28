@@ -13,7 +13,7 @@
 #
 # A run of this invalidates the current baseline, so everything downstream of it
 # is a new comparison series.
-#SBATCH --account=def-vganesh_gpu
+#SBATCH --account=def-vganesh
 #SBATCH --job-name=midtrain
 #SBATCH --gpus-per-node=a100:2
 #SBATCH --cpus-per-task=16

@@ -5,7 +5,7 @@
 #
 # Scoring the whole pool at k=8 fits no walltime, hence slices. They are disjoint
 # by construction, so run them in parallel rather than chained.
-#SBATCH --account=def-vganesh_gpu
+#SBATCH --account=def-vganesh
 #SBATCH --job-name=score_pool
 #SBATCH --gpus-per-node=a100:1
 #SBATCH --cpus-per-task=12

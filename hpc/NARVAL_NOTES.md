@@ -28,7 +28,7 @@ The venv is built for **torch 2.11**. Keep this set mutually consistent:
 * Narval exports `ROCR_VISIBLE_DEVICES` alongside `CUDA_VISIBLE_DEVICES` on every
   GPU job; verl's `Worker._setup_env_cuda_visible_devices` hard-errors on that
   combination. Every job script must `unset ROCR_VISIBLE_DEVICES`.
-* `--account=def-vganesh_gpu` (not `def-vganesh`).
+* `--account=def-vganesh` (not `def-vganesh`).
 * A100 40GB, so the 16GB-era constants in `configs/run_grpo.sh` are no longer
   binding. SFT at micro-batch 4 peaks at ~10.2GB allocated.
 

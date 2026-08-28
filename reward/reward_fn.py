@@ -132,6 +132,10 @@ _SCHEMA = {
     # Index into reward.reward.OUTCOMES. Only the outcome arm varies it; the
     # others emit it so every arm has one key set.
     "outcome_code": 0.0,
+    # Only the outcome arm on the proof-pair task sets these for real (from
+    # BEqPlusScorer.check_own_proof); every other arm emits the "not
+    # applicable" default so the schema stays uniform.
+    "proved": 0.0, "sorry_used": 0.0,
 }
 
 _ZERO = {**_SCHEMA, "scorer_error": 1.0}
@@ -159,8 +163,12 @@ def _never_raises(fn):
     return wrapped
 
 
-def _diagnostics(r: dict, similarity_value: float = 0.0) -> dict[str, float]:
-    """Per-sample fields forwarded into `reward_extra_info`. All numeric."""
+def _diagnostics(r: dict, proof_check: dict | None = None) -> dict[str, float]:
+    """Per-sample fields forwarded into `reward_extra_info`. All numeric.
+
+    `proof_check`, when given, is a `check_own_proof()` result for the same
+    rollout -- only `compute_score_outcome` on the proof-pair task passes one.
+    """
     provable_alone = r.get("provable_alone")
     return {
         **_SCHEMA,
@@ -171,7 +179,6 @@ def _diagnostics(r: dict, similarity_value: float = 0.0) -> dict[str, float]:
         "n_directions": float(r.get("n_directions", 0)),
         "gold_implies_pred": float(r.get("gold_implies_pred", False)),
         "pred_implies_gold": float(r.get("pred_implies_gold", False)),
-        "similarity": float(similarity_value),
         "scorer_error": float(bool(r.get("error_kind"))),
         # BEqL is strictly tighter than BEq+; only cascade rung 1 sets it.
         "beql": float(r.get("beql", False)),
@@ -189,7 +196,9 @@ def _diagnostics(r: dict, similarity_value: float = 0.0) -> dict[str, float]:
         # Why direction 0 stopped, which n_directions=0 conflates.
         # 0 = ran to completion, 1 = unparseable, 2 = sorry gate, 3 = no rung.
         "stop_reason": float(_STOP_REASON_CODE.get(r.get("stop_reason"), 0)),
-        "outcome_code": float(OUTCOMES.index(outcome_for(signals_from_score(r)))),
+        "outcome_code": float(OUTCOMES.index(outcome_for(signals_from_score(r, proof_check)))),
+        "proved": float(proof_check.get("proved", False)) if proof_check else 0.0,
+        "sorry_used": float(proof_check.get("sorry_used", False)) if proof_check else 0.0,
     }
 
 
@@ -206,17 +215,27 @@ def _score_pair(solution_str: str, ground_truth: str) -> tuple[dict, str, str]:
 
 @_never_raises
 def compute_score_typecheck_only(data_source, solution_str, ground_truth, extra_info=None) -> dict:
-    """1.0 if the statement elaborates, else 0.0."""
+    """1.0 if the candidate's OWN submission elaborates, else 0.0.
+
+    Uses `check_own_proof`, not `typecheck_ex`: on the proof-pair task the
+    candidate writes a real proof body, and `typecheck_ex` would discard it
+    and re-inject `sorry` before elaborating, silently checking only the
+    signature. `sorry` inside the candidate's own proof still counts as
+    type-correct here (a warning, not an error), so this stays the same
+    exploitable, cheap ablation baseline it always was -- just checking the
+    real submission instead of a forced stand-in.
+    """
     scorer = _get_scorer()
     pred = _clean_solution(solution_str)
     context, _gold_theorem = split_header_and_theorem(ground_truth)
     with _lean_slot:
-        ok, err = scorer.typecheck_ex(pred, context)
-    _note_call(err)
+        p = scorer.check_own_proof(pred, context)
+    _note_call(p["error_kind"])
     # Deliberately no `acc`: this arm never computes BEq+, so there is no honest
     # value to report and verl falls back to the reward mean for val-core.
-    return {"score": typecheck_reward(ok, err), "typecheck": float(ok),
-            "scorer_error": float(bool(err))}
+    return {"score": typecheck_reward(p["type_correct"], p["error_kind"]),
+            "typecheck": float(p["type_correct"]),
+            "scorer_error": float(bool(p["error_kind"]))}
 
 
 W_GATED_ONE_DIR = float(os.environ.get("BEQ_W_GATED_ONE_DIR", "0.25"))
@@ -242,55 +261,32 @@ def compute_score_gated(data_source, solution_str, ground_truth, extra_info=None
 
 @_never_raises
 def compute_score_outcome(data_source, solution_str, ground_truth, extra_info=None) -> dict:
-    """The six-outcome ladder from reward/reward.py, unmodified.
+    """The six-outcome ladder from reward/reward.py, now fully reachable on the
+    proof-pair task (the candidate writes a real proof, not just a signature):
 
         0.00  no answer, or the scorer failed
         0.05  Lean rejected it
-        0.15  elaborates, does not match the gold      <- the dead band
-        0.50  BEq+ matches the gold
+        0.15  elaborates, does not match the gold, proof unfinished/absent
+        0.30  a real finished proof, but of a theorem BEq+ could not match
+        0.50  BEq+ matches the gold, proof still unfinished
+        0.85-1.00  BEq+ matches AND the candidate's own proof is sorry-free
+                   and axiom-clean (`solved`)
 
-    Unlike `gated`, this pays a graded reward below BEq+, so groups with no
-    semantic signal still carry a within-group gradient. That is the property
-    `gated` deliberately removes, so the two are an A/B and this is not yet the
-    default. Emits `outcome_code` for the per-example histogram.
+    `_score_pair` runs BEq+'s statement cascade (ignores proof bodies on both
+    sides, unchanged); `check_own_proof` separately elaborates the candidate's
+    OWN proof, sorry included, to determine `proved`. Unlike `gated`, this
+    pays a graded reward below BEq+, so groups with no semantic signal still
+    carry a within-group gradient. That is the property `gated` deliberately
+    removes, so the two are an A/B and this is not yet the default. Emits
+    `outcome_code` for the per-example histogram.
     """
-    r, _pred, _gold = _score_pair(solution_str, ground_truth)
-    s = signals_from_score(r)
-    return {"score": reward_for(s), **_diagnostics(r)}
-
-
-# DEPRECATED: kept only until the in-flight rl3b_lr6_guided chain finishes.
-# Delete this function and reward/similarity.py together -- the import below is
-# lazy and @_never_raises swallows a missing module, so removing similarity.py
-# alone leaves every rollout silently scoring 0.
-W_G_SIM = float(os.environ.get("BEQ_W_G_SIM", "0.10"))
-W_G_TYPECHECK = float(os.environ.get("BEQ_W_G_TYPECHECK", "0.10"))
-W_G_ONE_DIR = float(os.environ.get("BEQ_W_G_ONE_DIR", "0.15"))
-W_G_BOTH_DIR = float(os.environ.get("BEQ_W_G_BOTH_DIR", "0.65"))
-
-
-@_never_raises
-def compute_score_guided(data_source, solution_str, ground_truth, extra_info=None) -> dict:
-    """Gated ladder plus a type-check-gated similarity term.
-
-    Similarity is multiplied by the type-check indicator. Paid unconditionally
-    it becomes the only climbable gradient for a policy that cannot yet reach
-    BEq+, and the policy learns to copy gold tokens into invalid Lean.
-    """
-    from reward.similarity import similarity
-
-    r, pred, gold_theorem = _score_pair(solution_str, ground_truth)
-    if not r["typecheck"]:
-        return {"score": 0.0, **_diagnostics(r)}
-
-    sim = similarity(pred, gold_theorem)
-    score = W_G_TYPECHECK + W_G_SIM * sim
-    signal = r.get("semantic_signal", r.get("n_directions", 0))
-    if signal >= 1:
-        score += W_G_ONE_DIR
-    if signal >= 2:
-        score += W_G_BOTH_DIR
-    return {"score": score, **_diagnostics(r, sim)}
+    scorer = _get_scorer()
+    r, pred, _gold = _score_pair(solution_str, ground_truth)
+    context, _gold_theorem = split_header_and_theorem(ground_truth)
+    with _lean_slot:
+        proof_check = scorer.check_own_proof(pred, context)
+    s = signals_from_score(r, proof_check)
+    return {"score": reward_for(s), **_diagnostics(r, proof_check=proof_check)}
 
 
 # Used when custom_reward_function.name is left unset. Every job here sets the

@@ -5,7 +5,7 @@
 # One job rather than chunks: results are cached per checkpoint, so a walltime
 # kill loses nothing and a resubmit picks up where it stopped. Output names
 # (eval_<RUN>-step<N>_n<n>.json) are what scripts/eval/compare_arms.py pairs on.
-#SBATCH --account=def-vganesh_gpu
+#SBATCH --account=def-vganesh
 #SBATCH --job-name=grpo_eval
 #SBATCH --gpus-per-node=a100:1
 #SBATCH --cpus-per-task=12
@@ -34,14 +34,16 @@ mkdir -p "${REAL}/checkpoints/merged"
 steps=$(ls -d "${RUNDIR}"/global_step_* 2>/dev/null | sed 's/.*global_step_//' | sort -n)
 echo "[eval] run=${RUN} val=${VAL_PARQUET} steps: ${steps:-NONE}"
 
+EVAL_DIR="${REAL}/results/eval/${RUN}"
+mkdir -p "${EVAL_DIR}"
 for step in ${steps}; do
-  out="${REAL}/results/eval_${RUN}-step${step}_n${N_EVAL}.json"
+  out="${EVAL_DIR}/eval_${RUN}-step${step}_n${N_EVAL}.json"
   [ -f "$out" ] && { echo "[eval] cached: ${RUN}-step${step} (n=${N_EVAL})"; continue; }
   # REUSE_CACHED=1 (default) keeps a result already scored at another n rather
   # than re-scoring: cross-arm comparisons are computed on the shared prefix
   # anyway. Set REUSE_CACHED=0 when the extra rows are actually wanted.
   if [ "${REUSE_CACHED:-1}" = "1" ]; then
-    other=$(ls "${REAL}/results/eval_${RUN}-step${step}_n"*.json 2>/dev/null | head -1)
+    other=$(ls "${EVAL_DIR}/eval_${RUN}-step${step}_n"*.json 2>/dev/null | head -1)
     [ -n "$other" ] && { echo "[eval] cached at another n -> reusing $(basename "$other")"; continue; }
   fi
   src="${RUNDIR}/global_step_${step}/actor/huggingface"

@@ -43,8 +43,10 @@ NOT_A_COMPARISON = {"rung_probe.json"}
 def load_records(results_dir: Path) -> dict[str, dict]:
     """label -> record, newest file wins for duplicate labels."""
     merged: dict[str, dict] = {}
+    # rglob, not glob: eval JSONs now live under results/eval/<model_label>/,
+    # and this function's whole point is to merge labels ACROSS models.
     paths = [
-        p for p in results_dir.glob("eval_*.json")
+        p for p in results_dir.rglob("eval_*.json")
         if p.name not in STALE and p.name not in NOT_A_COMPARISON
     ]
     for p in sorted(paths, key=lambda x: x.stat().st_mtime):

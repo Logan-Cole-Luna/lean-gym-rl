@@ -3,19 +3,20 @@
 # BEq+ RL PoC for Lean 4 autoformalization (Qwen2.5-Coder-0.5B-Instruct, Lean-Workbook).
 #
 # Select the reward function (see reward/reward_fn.py for the full argument):
-#   REWARD_FN_NAME=compute_score_gated           (DEFAULT: semantic signal only)
-#   REWARD_FN_NAME=compute_score_guided          (similarity-shaped; the arm that regressed)
+#   REWARD_FN_NAME=compute_score_outcome         (DEFAULT: graded six-outcome ladder)
+#   REWARD_FN_NAME=compute_score_gated           (BEq+ semantic signal only)
 #   REWARD_FN_NAME=compute_score_typecheck_only  (ablation baseline: exploitable)
 #
 # WHY THESE DEFAULTS (all measured -- results/compare.txt, 400 val examples)
 # --------------------------------------------------------------------------
-# 200 GRPO steps from the SFT policy with the guided reward moved BEq+ from
-# 38.8% DOWN to 29.0% while type-check went 76.2% UP to 84.2% (McNemar p<1e-4).
-# Four things in this file were responsible, and all four defaults changed:
+# 200 GRPO steps from the SFT policy with an earlier similarity-shaped reward
+# (since removed) moved BEq+ from 38.8% DOWN to 29.0% while type-check went
+# 76.2% UP to 84.2% (McNemar p<1e-4). Four things in this file were responsible,
+# and all four defaults changed:
 #
 #   1. The reward paid type-check + similarity, which are the only terms that can
 #      rank rollouts inside a group where nothing proves equivalent -- i.e. most
-#      groups. Fixed in reward/reward_fn.py (compute_score_gated is now default);
+#      groups. Fixed in reward/reward_fn.py (the flat floor in compute_score_gated);
 #      FILTER_GROUPS=1 here is the stronger, more expensive version.
 #   2. norm_adv_by_std_in_grpo renormalised near-tie groups back to full gradient
 #      scale, amplifying scorer noise.        -> NORM_ADV_BY_STD=False
@@ -184,8 +185,8 @@ lr_warmup_ratio=${LR_WARMUP_RATIO:-0.0}
 # below 0.05; WATCH `actor/kl_loss` in the log and raise this if it climbs.
 kl_loss_coef=${KL_LOSS_COEF:-0.01}
 # Exploration. The problem being solved: entropy fell monotonically to 0.015 by
-# step 100 of the guided run, at which point the rollouts in a group are
-# near-duplicates and GRPO has nothing to compare.
+# step 100 of that same similarity-shaped run, at which point the rollouts in a
+# group are near-duplicates and GRPO has nothing to compare.
 #
 # THE ENTROPY BONUS IS OFF, DELIBERATELY -- it cost two runs to 16GB OOMs.
 # A nonzero coefficient makes the training backward hold entropy intermediates
@@ -239,7 +240,7 @@ total_epochs=${TOTAL_EPOCHS:-3}
 save_freq=${SAVE_FREQ:--1}
 test_freq=${TEST_FREQ:-5}
 
-reward_fn_name=${REWARD_FN_NAME:-compute_score_gated}
+reward_fn_name=${REWARD_FN_NAME:-compute_score_outcome}
 reward_num_workers=${REWARD_NUM_WORKERS:-2}
 
 # DAPO-style group filtering: DISCARD rollout groups whose samples all share the
@@ -277,7 +278,7 @@ agent_loop_workers=${AGENT_LOOP_WORKERS:-2}
 # restart -- silently, since the run itself is fine. One file per SLURM job id
 # instead; read a whole arm by globbing the prefix and sorting on "step".
 # Falls back to a timestamp when run outside SLURM.
-export VERL_FILE_LOGGER_ROOT="${VERL_FILE_LOGGER_ROOT:-${REPO_ROOT}/results/train_metrics}"
+export VERL_FILE_LOGGER_ROOT="${VERL_FILE_LOGGER_ROOT:-${REPO_ROOT}/results/train/train_metrics}"
 project_name=${PROJECT_NAME:-beqplus_rl_poc}
 experiment_name=${EXPERIMENT_NAME:-qwen25_coder_0_5b_${reward_fn_name}}
 mkdir -p "${VERL_FILE_LOGGER_ROOT}/${project_name}"

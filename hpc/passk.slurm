@@ -10,7 +10,7 @@
 #
 # The subset is PINNED. Every model measured this way must use the same rows or
 # the curves are not pairable. Do not regenerate it.
-#SBATCH --account=def-vganesh_gpu
+#SBATCH --account=def-vganesh
 #SBATCH --job-name=passk
 #SBATCH --gpus-per-node=a100:1
 #SBATCH --cpus-per-task=12
@@ -76,8 +76,10 @@ python3 scripts/pool/score_rollouts.py --rollouts "${OUT}" --out "${SCORED}" --w
 # score_rollouts already wrote `typecheck` beside `beq_plus`. The _tc suffix
 # keeps it off the beq_plus record; evalio.load_passk filters on the `metric`
 # field inside the file.
+EVAL_DIR="results/eval/${LABEL%-step*}"
+mkdir -p "${EVAL_DIR}"
 python3 scripts/eval/passk_report.py --scored "${SCORED}" --label "${LABEL}" \
-  --out "results/passk_${LABEL}_k${K}.json" || exit 1
+  --out "${EVAL_DIR}/passk_${LABEL}_k${K}.json" || exit 1
 python3 scripts/eval/passk_report.py --scored "${SCORED}" --label "${LABEL}" \
-  --metric typecheck --out "results/passk_${LABEL}_k${K}_tc.json" || exit 1
+  --metric typecheck --out "${EVAL_DIR}/passk_${LABEL}_k${K}_tc.json" || exit 1
 echo "[passk] ${LABEL} done"

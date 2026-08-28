@@ -55,6 +55,17 @@ MATHLIB_TAR="${MATHLIB_TAR:-/scratch/logan03/mathlib4_v4.8.0-rc1.tar}"
 
 # Copy Mathlib to node-local NVMe: 41s against 1984s off shared storage, without
 # which `import Mathlib` exceeds BEQ_ENV_TIMEOUT on compute nodes as well.
+#
+# MATHLIB_TAR_FLAT: tars are not all laid out the same. The default
+# mathlib4_v4.8.0-rc1.tar wraps everything in a `mathlib4/` prefix (built via
+# `tar -cf ... mathlib4/` from its parent), so extracting into SLURM_TMPDIR
+# directly lands MATHLIB_ROOT correctly. mathlib4_v4.23_lake.tar (a second
+# toolchain, staged for the LoCoLib theorem+proof-pair task) was built FROM
+# INSIDE its directory and has no such prefix -- extracting it the same way
+# leaves MATHLIB_ROOT pointing at an empty dir, which lean_interact reports as
+# "Unable to determine Lean version" (no lean-toolchain found), not as a
+# missing-directory error. Set MATHLIB_TAR_FLAT=1 for a tar shaped that way;
+# default 0 preserves the original, extensively-relied-upon behaviour exactly.
 stage_mathlib() {
   local tag="${1:-stage}"
   if [ -z "${SLURM_TMPDIR:-}" ] || [ ! -f "${MATHLIB_TAR}" ]; then
@@ -63,7 +74,12 @@ stage_mathlib() {
     return 0
   fi
   local t0; t0=$(date +%s)
-  tar -xf "${MATHLIB_TAR}" -C "${SLURM_TMPDIR}" || return 1
+  if [ "${MATHLIB_TAR_FLAT:-0}" = "1" ]; then
+    mkdir -p "${SLURM_TMPDIR}/mathlib4"
+    tar -xf "${MATHLIB_TAR}" -C "${SLURM_TMPDIR}/mathlib4" || return 1
+  else
+    tar -xf "${MATHLIB_TAR}" -C "${SLURM_TMPDIR}" || return 1
+  fi
   cp -a "${LEAN_INTERACT_CACHE_DIR}" "${SLURM_TMPDIR}/lean_interact_cache" || return 1
   export MATHLIB_ROOT="${SLURM_TMPDIR}/mathlib4"
   export LEAN_INTERACT_CACHE_DIR="${SLURM_TMPDIR}/lean_interact_cache"

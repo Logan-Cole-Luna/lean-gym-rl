@@ -62,7 +62,7 @@ def main() -> None:
     p1 = {m: pass1_by_arm(m) for m in METRICS}
     curve = {m: baseline_passk(m) for m in METRICS}
 
-    sft = next(iter(json.loads((RESULTS / "eval_sft3b-step93_n1000.json").read_text()).values()))
+    sft = next(iter(json.loads((RESULTS / "eval" / "sft3b" / "eval_sft3b-step93_n1000.json").read_text()).values()))
     pe = sft["per_example"]
     greedy = {
         "beq_plus": (100 * sum(bool(x["beq_plus"]) for x in pe[:N_PREFIX]) / N_PREFIX,

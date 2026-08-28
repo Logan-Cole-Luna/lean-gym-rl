@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # One GRPO arm per job.
 #   sbatch --export=ALL,ARM=gated hpc/grpo.slurm
-#   ARM=gated|typecheck|outcome|gated_edge|gated_filtered|guided
+#   ARM=gated|typecheck|outcome|gated_edge
 #
 # Runs in 11h chunks chained with --dependency=afterany: a walltime kill is the
 # expected end of a chunk, not a failure, and resume_mode=auto continues from the
@@ -9,7 +9,7 @@
 #
 # Corpus and naming come from DATA_DIR / RUN_PREFIX / PROJECT_NAME in
 # job_prelude.sh; override those to run the same arms on another corpus.
-#SBATCH --account=def-vganesh_gpu
+#SBATCH --account=def-vganesh
 #SBATCH --job-name=grpo
 #SBATCH --gpus-per-node=a100:2
 #SBATCH --cpus-per-task=24
@@ -22,7 +22,7 @@ source /home/logan03/lean-gym-rl/hpc/job_prelude.sh
 
 stage_mathlib "[grpo]"
 
-ARM="${ARM:?set ARM=gated|typecheck|outcome|gated_edge|gated_filtered|guided}"
+ARM="${ARM:?set ARM=gated|typecheck|outcome|gated_edge}"
 # Which SFT series the arms train from. Arms resumed from different baselines
 # are not comparable to each other.
 BEST_SFT="${BEST_SFT:-${DATA_DIR}/best_sft.txt}"
@@ -68,23 +68,6 @@ case "$ARM" in
     # signal still carry a within-group gradient. Run it against gated rather
     # than in place of it.
     REWARD_FN_NAME=compute_score_outcome ;;
-  gated_filtered)
-    # Same effect as gated_edge but online: discard groups that cannot produce
-    # an advantage and refill. Roughly 8x generation cost, since verl refills one
-    # prompt at a time.
-    REWARD_FN_NAME=compute_score_gated
-    export FILTER_GROUPS=1 FILTER_GROUPS_METRIC=semantic_signal ;;
-  guided)
-    # DEPRECATED, retained only for the in-flight guided chain. Remove with
-    # compute_score_guided and reward/similarity.py.
-    #
-    # norm_adv_by_std_in_grpo=False matters most here: a group that uniformly
-    # "type-checks only" has a reward spread of ~0.01, and verl's default
-    # renormalises that to full scale, giving a near-noise similarity difference
-    # the same gradient as proving equivalence. Set redundantly; run_grpo.sh
-    # already defaults it off for every arm.
-    REWARD_FN_NAME=compute_score_guided
-    EXTRA+=(algorithm.norm_adv_by_std_in_grpo=False) ;;
   *) echo "[grpo] bad ARM: ${ARM}"; exit 1 ;;
 esac
 

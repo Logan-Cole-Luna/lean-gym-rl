@@ -67,6 +67,20 @@ INSTRUCTION = (
     "Statement:\n{informal}\n\nLean 4 theorem:"
 )
 
+# The proof-pair variant (`--emit-proof`): asks for a complete theorem AND its
+# proof, and additionally feeds the informal proof as input -- LoCoLib's
+# labelled rows carry `informal_proof`/`formal_proof` (a real, unstripped
+# Mathlib proof), unlike Lean-Workbook. Kept as a SEPARATE constant rather than
+# a branch inside INSTRUCTION so neither prompt's wording can drift by editing
+# the other -- see the comment above about the SFT target / RL prompt link.
+INSTRUCTION_PROOF = (
+    "Formalize the following mathematical statement and its proof as a complete "
+    "Lean 4 theorem declaration, including the proof.\n\n"
+    "The following Lean context is already in scope; do not restate it:\n"
+    "```lean\n{context}\n```\n\n"
+    "Statement:\n{informal}\n\nProof:\n{informal_proof}\n\nLean 4 theorem and proof:"
+)
+
 _THEOREM_RE = re.compile(r"^\s*(theorem|lemma)\s", re.M)
 
 
@@ -119,8 +133,29 @@ def load(src: Path) -> tuple[list[dict], Counter]:
             except Exception:
                 dropped["unparseable_json"] += 1
                 continue
-            formal = (r.get("formal_statement") or "").strip()
+            # `formal_statement` is ALWAYS proof-stripped -- every record ends
+            # exactly at `:=` with nothing after, confirmed against source.
+            # `formal_proof` carries the real proof; everything BEFORE its `:=`
+            # is byte-identical to `formal_statement`, so preferring it changes
+            # nothing about the signature/context/dedup key, only recovers the
+            # proof body. Measured: assuming they were duplicate fields (they
+            # looked identical in a single spot-checked sample, which just
+            # hadn't been printed far enough to reach the `:=`) silently built
+            # every SFT/RL target in `--emit-proof` mode from truncated text --
+            # elaboration failed with "unexpected end of input" on 8/8 sampled
+            # failures, at any Mathlib version, because the text had no proof
+            # to elaborate at all.
+            formal_proof_field = (r.get("formal_proof") or "").strip()
+            formal_stmt_field = (r.get("formal_statement") or "").strip()
+            formal = formal_proof_field or formal_stmt_field
             informal = (r.get("informal_statement") or "").strip()
+            # Only read, never filtered on here: `load()` must return the SAME
+            # row population regardless of --emit-proof, so the domain-stratified
+            # split in main() stays byte-identical between the signature-only and
+            # proof-pair runs (comparable results on identical problems). A row
+            # missing informal_proof is dropped later, in main()'s per-item loop,
+            # only when --emit-proof actually needs it.
+            informal_proof = (r.get("informal_proof") or "").strip()
             if not formal or not informal:
                 dropped["missing_field"] += 1
                 continue
@@ -129,6 +164,7 @@ def load(src: Path) -> tuple[list[dict], Counter]:
                 dropped["no_theorem_keyword"] += 1
                 continue
             context, theorem = parts
+            theorem = theorem.strip()
             signature = strip_proof(theorem)
             if not signature:
                 dropped["empty_signature"] += 1
@@ -142,8 +178,16 @@ def load(src: Path) -> tuple[list[dict], Counter]:
                 "uuid": r["uuid"],
                 "domain": r.get("domain", "unknown"),
                 "informal": informal,
+                "informal_proof": informal_proof,
                 "context": clean_context(context),
                 "signature": signature,
+                # The theorem HEAD to the end of the record, proof included
+                # verbatim (source is `formal_statement`, which for LoCoLib's
+                # labelled/mathlib rows is identical to `formal_proof` -- a
+                # real, unstripped Mathlib proof, not a placeholder). Unlike
+                # `gold_full` this carries no surrounding context/imports, the
+                # same convention `signature` already follows.
+                "theorem_with_proof": theorem,
                 "gold_full": formal,
             })
     return rows, dropped
@@ -164,6 +208,14 @@ def main() -> None:
     ap.add_argument("--max-tokens", type=int, default=1024)
     ap.add_argument("--max-prompt-tokens", type=int, default=768)
     ap.add_argument("--tokenizer", default="/scratch/logan03/ai4math_training_models/qwen2.5-coder-3b-instruct")
+    # Builds the theorem+proof-pair variant instead: prompts feed BOTH
+    # informal_statement and informal_proof and ask for a complete Lean
+    # theorem WITH its proof; targets are `theorem_with_proof` (unstripped)
+    # instead of `signature`. Written to *_proof.parquet, alongside (never
+    # overwriting) the signature-only files -- see the module docstring.
+    ap.add_argument("--emit-proof", action="store_true",
+                    help="build the theorem+proof-pair splits (data_locolib/*_proof.parquet) "
+                         "instead of the signature-only ones")
     args = ap.parse_args()
 
     rows, dropped = load(args.src)
@@ -212,12 +264,33 @@ def main() -> None:
     def n_tokens(msgs) -> int:
         return len(tok(tok.apply_chat_template(msgs, tokenize=False)).input_ids)
 
+    def format_prompt(r: dict) -> str:
+        if args.emit_proof:
+            return INSTRUCTION_PROOF.format(context=r["context"] or "-- (none)",
+                                            informal=r["informal"],
+                                            informal_proof=r["informal_proof"])
+        return INSTRUCTION.format(context=r["context"] or "-- (none)", informal=r["informal"])
+
+    def target_of(r: dict) -> str:
+        return r["theorem_with_proof"] if args.emit_proof else r["signature"]
+
+    suffix = "_proof" if args.emit_proof else ""
+
     for name, items in splits.items():
-        kept, over_full, over_prompt = [], 0, 0
+        kept, over_full, over_prompt, missing_proof = [], 0, 0, 0
         for r in items:
-            pr = INSTRUCTION.format(context=r["context"] or "-- (none)", informal=r["informal"])
+            # Only relevant in --emit-proof mode: a row's split membership is
+            # decided above, identically regardless of mode (see load()), so
+            # this is the ONLY place a row can drop out because it lacks an
+            # informal_proof -- keeping the two runs' splits comparable except
+            # for this narrow, counted difference.
+            if args.emit_proof and not r["informal_proof"]:
+                missing_proof += 1
+                continue
+            pr = format_prompt(r)
+            target = target_of(r)
             full = n_tokens([{"role": "user", "content": pr},
-                             {"role": "assistant", "content": r["signature"]}])
+                             {"role": "assistant", "content": target}])
             if full > args.max_tokens:
                 over_full += 1
                 continue
@@ -228,9 +301,10 @@ def main() -> None:
                 over_prompt += 1
                 continue
             kept.append((r, pr))
-        if over_full or over_prompt:
+        if over_full or over_prompt or missing_proof:
             print(f"[locolib] {name}: dropped {over_full} over {args.max_tokens} tok"
-                  + (f", {over_prompt} prompts over {args.max_prompt_tokens}" if over_prompt else ""))
+                  + (f", {over_prompt} prompts over {args.max_prompt_tokens}" if over_prompt else "")
+                  + (f", {missing_proof} missing informal_proof" if missing_proof else ""))
         # Write the filtered rows BACK. This used to rebind a local, leaving
         # splits[name] holding the pre-filter list -- so the disjointness check
         # at the end was run over rows that never reached the parquet.
@@ -243,7 +317,7 @@ def main() -> None:
             # prompt (~40% of tokens).
             df = pd.DataFrame({"messages": [
                 [{"role": "user", "content": p},
-                 {"role": "assistant", "content": r["signature"]}]
+                 {"role": "assistant", "content": target_of(r)}]
                 for p, r in zip(prompts, items)]})
         else:
             df = pd.DataFrame({
@@ -254,18 +328,19 @@ def main() -> None:
                 "extra_info": [{"split": name, "index": i, "id": r["uuid"],
                                 "domain": r["domain"]} for i, r in enumerate(items)],
             })
-        path = args.out_dir / f"{name}.parquet"
+        path = args.out_dir / f"{name}{suffix}.parquet"
         df.to_parquet(path)
         if name == "val":
             # The val slice has to serve two consumers with different schemas:
             # verl's SFT trainer wants `messages`, the RL/eval path wants
             # prompt + reward_model. Same rows either way, so the SFT loss curve
             # and the BEq+ eval are measured on identical data.
+            val_sft_path = args.out_dir / f"val_sft{suffix}.parquet"
             pd.DataFrame({"messages": [
                 [{"role": "user", "content": pr},
-                 {"role": "assistant", "content": r["signature"]}]
-                for pr, r in zip(prompts, items)]}).to_parquet(args.out_dir / "val_sft.parquet")
-            print(f"[locolib] val_sft {len(items):5} rows -> {args.out_dir / 'val_sft.parquet'}")
+                 {"role": "assistant", "content": target_of(r)}]
+                for pr, r in zip(prompts, items)]}).to_parquet(val_sft_path)
+            print(f"[locolib] val_sft {len(items):5} rows -> {val_sft_path}")
         doms = Counter(r["domain"] for r in items)
         print(f"[locolib] {name:4} {len(items):6} rows -> {path}  {dict(doms)}")
 

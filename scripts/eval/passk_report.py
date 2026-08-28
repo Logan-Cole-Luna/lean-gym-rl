@@ -78,7 +78,8 @@ def main() -> None:
     payload = {"label": args.label, "metric": args.metric, "n_prompts": P,
                "n_samples": n, "curve": rows, "ever_solved": solved_ever,
                "success_histogram": dict(sorted(collections.Counter(counts.values()).items()))}
-    out = args.out or f"results/passk_{args.label}.json"
+    base_label = args.label.split("-step")[0]
+    out = args.out or f"results/eval/{base_label}/passk_{args.label}.json"
     Path(out).parent.mkdir(parents=True, exist_ok=True)
     Path(out).write_text(json.dumps(payload, indent=2))
     print(f"wrote {out}")

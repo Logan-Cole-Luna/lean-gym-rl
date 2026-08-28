@@ -22,7 +22,11 @@ import json
 from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
-RESULTS = PROJECT_ROOT / "results"
+# This table's ORDER/DESCRIPTIONS below are 0.5B-era labels (typecheck_only-step30,
+# composite-step30, ...), which now live in the archive after the results/
+# reorg -- not in results/eval/<model_label>/, which holds only the current
+# eval_*/gen_*/passk_* families.
+RESULTS = PROJECT_ROOT / "results" / "_archive" / "pre-reorg"
 
 # Produced before the chat-template fix -- see module docstring.
 STALE = {"ablation_comparison.json"}

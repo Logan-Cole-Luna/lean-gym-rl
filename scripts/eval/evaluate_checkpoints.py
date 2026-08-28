@@ -175,7 +175,7 @@ def main() -> None:
     # every "why did this checkpoint get worse?" question unanswerable without a
     # full re-run. They are small; keep them.
     ap.add_argument("--no-save-generations", dest="save_generations", action="store_false",
-                    help="skip writing results/gen_<label>_n<N>.jsonl")
+                    help="skip writing gen_<label>_n<N>.jsonl next to --out")
     ap.add_argument("--probe-stronger", action="store_true",
                     help="also test pred=>gold on its own when gold=>pred fails "
                          "(see reward/beq_plus.py DIRECTION SEMANTICS); slower")

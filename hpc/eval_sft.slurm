@@ -5,7 +5,7 @@
 #
 # Everything downstream trains from the checkpoint this picks, so it is measured
 # rather than assumed to be the last epoch.
-#SBATCH --account=def-vganesh_gpu
+#SBATCH --account=def-vganesh
 #SBATCH --job-name=eval_sft
 #SBATCH --gpus-per-node=a100:1
 #SBATCH --cpus-per-task=12
@@ -39,9 +39,11 @@ echo "[evalsft] series=${SERIES} label=${LABEL} ckpts=${CKPT_DIR} val=${VAL_PARQ
 rename_job evalsft "${TAG}"
 mkdir -p checkpoints/merged
 
+EVAL_DIR="results/eval/${LABEL}"
+mkdir -p "${EVAL_DIR}"
 for d in $(ls -d ${CKPT_DIR}/global_step_* 2>/dev/null | sort -t_ -k3 -n); do
   step=${d##*global_step_}
-  out="results/eval_${LABEL}-step${step}_n${N_EVAL}.json"
+  out="${EVAL_DIR}/eval_${LABEL}-step${step}_n${N_EVAL}.json"
   [ -f "$out" ] && { echo "[evalsft] cached step${step}"; continue; }
   ls "${d}/huggingface"/*.safetensors >/dev/null 2>&1 || { echo "[evalsft] SKIP step${step}"; continue; }
   # evaluate_checkpoints.py labels records by directory name, so the symlink
@@ -66,7 +68,7 @@ N = os.environ["N_EVAL"]
 # Restrict to the n this job ran: comparing a step evaluated at n=400 against one
 # at n=1000 would pick a winner on rates measured over different example sets.
 best = None
-for f in glob.glob(f"results/eval_{LABEL}-step*_n{N}.json"):
+for f in glob.glob(f"results/eval/{LABEL}/eval_{LABEL}-step*_n{N}.json"):
     step = int(re.search(r"-step(\d+)_", f).group(1))
     r = next(iter(json.load(open(f)).values()))
     if best is None or r["beq_plus_rate"] > best[1]:

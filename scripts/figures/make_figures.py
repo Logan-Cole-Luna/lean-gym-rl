@@ -1,8 +1,16 @@
 #!/usr/bin/env python3
 """Regenerate every figure in results/figures/ from the cached eval JSONs.
 
-Reads only `results/eval_*.json` and `results/passk_*.json`, so it is cheap,
+Reads only `results/eval/<model>/eval_*.json` and `results/eval/<model>/passk_*.json`, so it is cheap,
 deterministic, and safe to re-run after any eval lands: `make figures`.
+
+THE ROSTER IS READ OFF DISK. Arms come from `evalio.discover_arms()` (every
+`results/eval/<RUN_PREFIX>_*/` dir with an eval JSON), the baseline from
+`evalio.discover_baseline_label()` (the newest non-arm `sft*` dir), and the step
+grid from whatever steps those arms were evaluated at. So `make figures` tracks
+the series currently on disk with no code edit; `--steps` and `BASELINE_LABEL` /
+`RUN_PREFIX` in the environment still override. An arm with no hand-tuned
+`figstyle.ARM_STYLE` entry gets a stable auto-assigned colour and marker.
 
 Style is matched to Interplay-LM-Reasoning (arXiv:2512.07783) -- see
 scripts/figures/figstyle.py for how it was recovered and why the palette order is fixed.
@@ -10,6 +18,7 @@ scripts/figures/figstyle.py for how it was recovered and why the palette order i
 Figures, and the paper panel each mirrors:
 
   1. arm_trajectories   BEq+ vs training step, every arm         (their panel 1)
+  1b. compile_rate      same, for the greedy compile (type-check) rate
   2. passk              pass@k, baseline vs mid-trained          (their panel 2)
   3. retention_gain     what each arm kept vs converted          (their panel 4)
   4. proxy_vs_semantic  type-check against BEq+, the exploit     (no direct analogue)
@@ -39,11 +48,22 @@ import matplotlib.pyplot as plt
 
 RESULTS = PROJECT_ROOT / "results"
 FIGDIR = RESULTS / "figures"
+# Fallback only; main() resets this to evalio.discover_baseline_label().
 BASELINE_LABEL = "sft3b-step93"
 
 
 def load_arm(arm: str) -> dict[int, list[dict]]:
     return evalio.load_arm_steps(arm)
+
+
+def _roster() -> list[str]:
+    """The arms every figure draws: `results/eval/<RUN_PREFIX>_*/` dirs that
+    carry an eval JSON, minus HIDE. Anything archived under results/eval/archive/
+    is out until it is moved back. Wrappers that drive individual fig_* functions
+    (fig_gated_vs_typecheck) pick their own arms and never come through here.
+    """
+    hide = globals().get("HIDE", set())
+    return [a for a in evalio.discover_arms() if a not in hide]
 
 
 def baseline() -> list[dict]:
@@ -55,13 +75,15 @@ def rate(pe: list[dict], key: str, n: int) -> float:
 
 
 def fig_arm_trajectories(arms: dict[str, dict[int, list[dict]]], n: int, metric="beq_plus"):
+    if not any(arms.values()):
+        return None
     fig, ax = plt.subplots(figsize=(7.2, 4.4))
     base = rate(baseline(), metric, n)
     ends = {}
     for arm, steps in arms.items():
         if not steps:
             continue
-        st = fs.ARM_STYLE[arm]
+        st = fs.arm_style(arm)
         # Anchor at step 0. Every arm resumes from the SAME SFT checkpoint, so
         # the lines must share a left endpoint; without it each arm appears to
         # start wherever its first eval happens to land and a step-10 drop reads
@@ -77,10 +99,14 @@ def fig_arm_trajectories(arms: dict[str, dict[int, list[dict]]], n: int, metric=
         ends[fs.end_label(st)] = (xs[-1], ys[-1], st["color"])
     ax.set_xlabel("GRPO step")
     ax.set_ylabel("BEq+ (%), greedy decode" if metric == "beq_plus"
-                  else "type-check (%), greedy decode")
-    ax.set_title(f"Semantic accuracy over training  (greedy T=0, paired, n={n})")
-    lo = min(min(rate(st[k], metric, n) for k in st) for st in arms.values() if st)
-    ax.set_ylim(max(0, lo - 6), base + 8)   # fit the data; 0-60 left half the panel empty
+                  else "compiles (%), greedy decode")
+    kind = "Semantic accuracy" if metric == "beq_plus" else "Compile rate (pass@1)"
+    ax.set_title(f"{kind} over training  (greedy T=0, paired, n={n})")
+    # Fit the data AND the baseline in both directions -- an arm can sit above
+    # the SFT line on compile rate even while it sits below it on BEq+.
+    vals = [rate(st[k], metric, n) for st in arms.values() if st for k in st]
+    lo, hi = min(vals + [base]), max(vals + [base])
+    ax.set_ylim(max(0, lo - 6), min(100, hi + 8))
     fs.finish(ax, end_labels=ends, legend_loc="lower left",
               hline=(base, f"SFT baseline {base:.1f}%"))
     return fig
@@ -111,7 +137,7 @@ def fig_greedy_two_panel(arms: dict[str, dict[int, list[dict]]], n: int,
         for arm, steps in sorted(arms.items()):
             if not steps:
                 continue
-            st = fs.ARM_STYLE[arm]
+            st = fs.arm_style(arm)
             # Anchor at step 0: every arm resumes from the same SFT checkpoint,
             # so the lines must share a left endpoint.
             xs = [0] + sorted(steps)
@@ -149,7 +175,7 @@ def fig_passk(grid: tuple[int, ...] = evalio.STEP_GRID, metric: str = "beq_plus"
     """
     by = load_passk_by_step(metric)
     baselines = []
-    for f in sorted(RESULTS.glob("passk_sft3b*_k*.json")):
+    for f in sorted(RESULTS.glob("eval/sft3b*/passk_sft3b*_k*.json")):
         d = json.loads(f.read_text())
         if d.get("metric", "beq_plus") != metric:
             continue
@@ -180,7 +206,7 @@ def fig_passk(grid: tuple[int, ...] = evalio.STEP_GRID, metric: str = "beq_plus"
             continue
         st_i = max(avail)
         d = steps[st_i]
-        stl = fs.ARM_STYLE[arm]
+        stl = fs.arm_style(arm)
         xs = [r["k"] for r in d["curve"]]
         ys = [100 * r["rate"] for r in d["curve"]]
         ks = xs or ks
@@ -215,7 +241,7 @@ def fig_retention_gain(arms, n, step_of):
         if pe is None:
             continue
         pe = pe[:n]
-        st = fs.ARM_STYLE[arm]
+        st = fs.arm_style(arm)
         names.append(textwrap.fill(
             fs.end_label(st), width=12))
         kept.append(100 * sum(1 for a, b in zip(base_pe, pe)
@@ -233,7 +259,7 @@ def fig_retention_gain(arms, n, step_of):
     drawn = [a for a in step_of if arms.get(a, {}).get(shown) is not None]
     limiter = min(drawn, key=lambda a: max(arms[a])) if drawn else None
     cap = (f"step capped by the shortest arm, "
-           f"{fs.ARM_STYLE[limiter]['label'].split(' (')[0]}" if limiter else "")
+           f"{fs.arm_style(limiter)['label'].split(' (')[0]}" if limiter else "")
     fig.suptitle(
         f"All arms at GRPO step {shown}, paired against the SFT baseline"
         + (f"\n({cap})" if cap else ""),
@@ -254,17 +280,20 @@ def fig_retention_gain(arms, n, step_of):
         ax.set_title(title, fontsize=11)
         ax.set_ylim(0, min(max(vals) * 1.28, 108) if vals else 1)
     # The ceiling every 0.5B arm was stuck under -- the point of the right panel.
-    axes[1].axhspan(4.9, 7.3, color=fs.ACCENT, alpha=0.10, zorder=1)
-    axes[1].annotate("4.9–7.3%: the band every 0.5B\narm and signal sat inside",
-                     xy=(0.5, 0.97), xycoords="axes fraction", fontsize=8.5,
-                     fontweight="bold", color=fs.ACCENT, ha="center", va="top")
+    # Only annotate it for the series it describes: on any other roster (read off
+    # disk) the band is a claim about arms not in the frame.
+    if "rl3b_gated" in arms:
+        axes[1].axhspan(4.9, 7.3, color=fs.ACCENT, alpha=0.10, zorder=1)
+        axes[1].annotate("4.9-7.3%: the band every 0.5B\narm and signal sat inside",
+                         xy=(0.5, 0.97), xycoords="axes fraction", fontsize=8.5,
+                         fontweight="bold", color=fs.ACCENT, ha="center", va="top")
     fig.tight_layout(rect=(0, 0, 1, 0.90))   # keep the suptitle off the panel titles
     return fig
 
 
-# The proxy/semantics plane. Hand-picked rather than "every arm", because the
-# figure is an argument and a six-line spaghetti plot does not make it: each arm
-# here is in the frame for a reason.
+# The proxy/semantics plane. When the classic roster is on disk this is a
+# hand-picked cut -- the figure is an argument and a six-line spaghetti plot does
+# not make it:
 #
 #   the 1e-5 pair  -- the original claim: optimising type-check walks DOWN and
 #                     right, away from the goal, while BEq+ holds.
@@ -273,11 +302,15 @@ def fig_retention_gain(arms, n, step_of):
 #                     They land on top of each other, which says the collapse in
 #                     the 1e-5 type-check arm was the LEARNING RATE, not the
 #                     reward being a proxy.
+#
+# `which=None` (the default from main) draws every arm on the current roster
+# instead, so the plane still works for a series nobody has curated here.
 PROXY_ARMS = ("rl3b_typecheck", "rl3b_gated",
               "rl3b_lr6edge_typecheck", "rl3b_lr6_gated_edge")
 
 
-def fig_proxy_vs_semantic(arms, n, which=PROXY_ARMS):
+def fig_proxy_vs_semantic(arms, n, which=None):
+    which = which or [a for a in PROXY_ARMS if a in arms] or list(arms)
     fig, ax = plt.subplots(figsize=(6.6, 5.0))
     for arm in which:
         if arm in globals().get("HIDE", set()):
@@ -285,7 +318,7 @@ def fig_proxy_vs_semantic(arms, n, which=PROXY_ARMS):
         steps = arms.get(arm) or {}
         if not steps:
             continue
-        st = fs.ARM_STYLE[arm]
+        st = fs.arm_style(arm)
         xs = sorted(steps)
         ax.plot([rate(steps[s], "typecheck", n) for s in xs],
                 [rate(steps[s], "beq_plus", n) for s in xs],
@@ -304,7 +337,9 @@ def fig_proxy_vs_semantic(arms, n, which=PROXY_ARMS):
             markersize=16, color=fs.BASELINE, ls="none", label="SFT baseline")
     ax.set_xlabel("type-check (%)  — the cheap proxy")
     ax.set_ylabel("BEq+ (%)  — what we care about")
-    ax.set_title("Proxy vs goal: the collapse was the LR, not the reward")
+    # The specific-claim title only fits the series it was written about.
+    ax.set_title("Proxy vs goal: the collapse was the LR, not the reward"
+                 if "rl3b_typecheck" in arms else "Proxy vs goal: type-check against BEq+")
     # UPPER left, not lower: the placebo's step-30/50/90 points sit at low
     # type-check AND low BEq+, i.e. exactly where a lower-left legend lands, and
     # the box hid most of the control's trajectory.
@@ -355,7 +390,7 @@ def fig_arm_trajectories_pass1(grid: tuple[int, ...] = evalio.STEP_GRID):
         for arm, steps in sorted(arms.items()):
             if not steps:
                 continue
-            st = fs.ARM_STYLE[arm]
+            st = fs.arm_style(arm)
             pts = [(s, evalio.passk_at(steps[s], 1)) for s in sorted(steps)]
             pts = [(s, y) for s, y in pts if y is not None]
             if not pts:
@@ -417,7 +452,7 @@ def fig_arm_trajectories_passk(k: int = 32, k_lo: int = 1, metric: str = "beq_pl
     b_lo = next((100 * r["rate"] for r in base["curve"] if r["k"] == k_lo), None) if base else None
     ends, lows = {}, []
     for arm, steps in arms.items():
-        st = fs.ARM_STYLE[arm]
+        st = fs.arm_style(arm)
         xs = sorted(steps)
         for kk, anchor, ls, alpha, lw in ((k, b, st.get("linestyle", "-"), 1.0, 2.0),
                                           (k_lo, b_lo, ":", 0.75, 1.6)):
@@ -486,7 +521,7 @@ def step_seconds() -> dict[str, list[tuple[int, float]]]:
     import os, glob as _g
     out: dict[str, list[tuple[int, float]]] = {}
     root = PROJECT_ROOT / "checkpoints" / "beqplus_rl_poc"
-    for arm in fs.ARM_STYLE:
+    for arm in _roster():
         ds = []
         for d in _g.glob(str(root / arm / "global_step_*")):
             m = re.search(r"global_step_(\d+)$", d)
@@ -562,9 +597,9 @@ def fig_runtime(max_step: int):
     # stops encoding ratio once the baseline is not zero. A dot encodes by
     # POSITION, which is legitimate on a log axis, and the stem stays decorative.
     ax = axes[0]
-    names = [fs.ARM_STYLE[a]["label"] for a in order]
+    names = [fs.arm_style(a)["label"] for a in order]
     meds = [sorted(v for _, v in data[a])[len(data[a]) // 2] for a in order]
-    colors = [fs.ARM_STYLE[a]["color"] for a in order]
+    colors = [fs.arm_style(a)["color"] for a in order]
     y = range(len(order))
     ax.hlines(list(y), 1, meds, color=colors, lw=2.2, alpha=0.45, zorder=2)
     ax.plot(meds, list(y), "o", ms=11, color="none",
@@ -614,7 +649,7 @@ def fig_runtime(max_step: int):
 
     ax = axes[1]
     for arm, xs in data.items():
-        st = fs.ARM_STYLE[arm]
+        st = fs.arm_style(arm)
         cum, tot = [], 0.0
         prev = 0
         for step, sec in xs:
@@ -636,12 +671,14 @@ def fig_runtime(max_step: int):
 
 def main() -> None:
     ap = argparse.ArgumentParser()
-    ap.add_argument("--n", type=int, default=400,
-                    help="common prefix every rate is computed over")
-    ap.add_argument("--steps", default=",".join(str(s) for s in evalio.STEP_GRID),
-                    help="the reporting grid: only these GRPO steps appear in any figure. "
-                         "Defaults to evalio.STEP_GRID. Off-grid checkpoints stay on disk "
-                         "and stay evaluated -- they are just not what results are shown at.")
+    ap.add_argument("--n", type=int, default=0,
+                    help="common prefix every rate is computed over. 0 (default) "
+                         "= the largest prefix the baseline and every drawn arm "
+                         "share, so nothing is thrown away and nothing is mixed.")
+    ap.add_argument("--steps", default="auto",
+                    help="the reporting grid: only these GRPO steps appear in any "
+                         "figure. 'auto' (default) uses every step present on "
+                         "disk; pass a comma list (e.g. 10,30,50,90) to pin it.")
     ap.add_argument("--hide", default="rl3b_v2_placebo",
                     help="comma-separated arms to omit from every figure. The placebo is "
                          "hidden by default -- `typecheck` now carries the 'what a cheap "
@@ -655,25 +692,48 @@ def main() -> None:
     args = ap.parse_args()
 
     fs.use_style()
-    grid = tuple(int(s) for s in args.steps.split(",") if s.strip())
     hide = {a.strip() for a in args.hide.split(",") if a.strip()}
-    globals()["GRID"] = grid
     globals()["HIDE"] = hide
+
+    # Roster and baseline are read off disk (see module docstring). Load every
+    # arm's steps first, so 'auto' can size the grid from what was evaluated.
+    steps_by_arm = {a: load_arm(a) for a in _roster()}
+    have_all = {a: s for a, s in steps_by_arm.items() if s}
+    if args.steps.strip().lower() == "auto":
+        grid = evalio.union_steps(have_all) or evalio.STEP_GRID
+    else:
+        grid = tuple(int(s) for s in args.steps.split(",") if s.strip())
+    globals()["GRID"] = grid
+
+    base_label = evalio.discover_baseline_label() or BASELINE_LABEL
+    globals()["BASELINE_LABEL"] = base_label
+    print(f"[figures] baseline: {base_label}")
+    print(f"[figures] grid: {','.join(map(str, grid)) or '(empty)'}")
     if hide:
         print(f"[figures] hidden from every figure: {', '.join(sorted(hide))}")
     out = Path(args.out_dir); out.mkdir(parents=True, exist_ok=True)
-    arms = {a: evalio.on_grid(load_arm(a), grid) for a in fs.ARM_STYLE if a not in hide}
+
+    arms = {a: evalio.on_grid(s, grid) for a, s in have_all.items()}
     have = {a: s for a, s in arms.items() if s}
-    print(f"[figures] arms with evals: {', '.join(f'{a}({len(s)})' for a, s in have.items())}")
+    print(f"[figures] arms with evals: "
+          f"{', '.join(f'{a}({len(s)})' for a, s in have.items()) or '(none)'}")
+
+    # The paired prefix: the largest n the baseline and every drawn step share.
+    n = args.n
+    if not n:
+        lens = [len(baseline())] + [len(pe) for s in have.values() for pe in s.values()]
+        n = min(lens) if lens else 400
+    print(f"[figures] rates computed over the first n={n} examples")
 
     figs = {
         "arm_trajectories_pass1": fig_arm_trajectories_pass1(grid),
-        "arm_trajectories": fig_arm_trajectories(have, args.n),
+        "arm_trajectories": fig_arm_trajectories(have, n),
+        "compile_rate": fig_arm_trajectories(have, n, metric="typecheck"),
         "passk": fig_passk(grid),
-        "proxy_vs_semantic": fig_proxy_vs_semantic(have, args.n),
+        "proxy_vs_semantic": fig_proxy_vs_semantic(have, n),
         "arm_trajectories_passk": fig_arm_trajectories_passk(k=32),
         "arm_trajectories_passk_typecheck": fig_arm_trajectories_passk(k=32, metric="typecheck"),
-        "runtime": fig_runtime(max(grid)),
+        "runtime": fig_runtime(max(grid)) if grid else None,
     }
     # Best available step per arm for the decomposition panel.
     # MATCHED STEPS. An earlier version took each arm's best-available step, which
@@ -687,12 +747,12 @@ def main() -> None:
     # grid point are still drawn if they happen to have the chosen step.
     ranked = {a: set(v) for a, v in have.items() if len(v) >= 2} or {
         a: set(v) for a, v in have.items()}
-    common = set.intersection(*ranked.values())
-    step = max(common) if common else min(grid)
-    step_of = {a: step for a in have}
-    print(f"[figures] retention/gain at the latest step all arms share: {step}")
-    if step_of:
-        figs["retention_gain"] = fig_retention_gain(have, args.n, step_of)
+    if ranked and grid:
+        common = set.intersection(*ranked.values())
+        step = max(common) if common else min(grid)
+        step_of = {a: step for a in have}
+        print(f"[figures] retention/gain at the latest step all arms share: {step}")
+        figs["retention_gain"] = fig_retention_gain(have, n, step_of)
 
     for name, fig in figs.items():
         if fig is None:

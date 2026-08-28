@@ -36,6 +36,7 @@ from lean_interact.utils import (
     clean_last_theorem_string,
     extract_last_theorem,
     indent_code,
+    remove_lean_comments,
     split_conclusion,
 )
 
@@ -345,6 +346,59 @@ def split_header_and_theorem(full_snippet: str) -> tuple[str, str]:
     return context, theorem_text
 
 
+# ── candidate's OWN proof, kept intact (not sorry'd away) ──────────────────
+#
+# `clean_theorem_string`/`clean_last_theorem_string` (lean_interact.utils)
+# unconditionally cut at the top-level `:=` via `split_implementation`,
+# regardless of `add_sorry` -- they exist to STATE a theorem, never to check a
+# proof someone wrote for it. Nothing upstream or in this file renames a
+# theorem while leaving its proof body untouched, so `check_own_proof` below
+# needs its own renamer.
+_STANDARD_AXIOMS = {"propext", "Classical.choice", "Quot.sound"}
+_AXIOMS_RE = re.compile(r"depends on axioms:\s*\[(.*?)\]", re.S)
+
+
+def _rename_theorem_keep_proof(lean_code: str, new_name: str) -> str:
+    """Like `clean_theorem_string`, but does NOT touch anything from `:=`
+    onward -- the proof, however long, survives verbatim. Only the
+    declaration keyword's NAME is swapped, so the renamed candidate can
+    coexist in the same env as anything else without a name collision.
+    """
+    idx = extract_last_theorem(lean_code)  # raises ValueError if none found
+    head, tail = lean_code[:idx], lean_code[idx:]
+    clean_tail = remove_lean_comments(tail)
+    if clean_tail is None:
+        raise ValueError("Comment removal failed.")
+    clean_tail = clean_tail.strip()
+    m = re.search(r"\b(theorem|lemma|example)\s", clean_tail)
+    if m is None:
+        raise ValueError("Theorem declaration keyword not found.")
+    clean_tail = clean_tail[m.start():]
+    rest = re.sub(r"^[^\s]+", "", clean_tail).strip()      # drop the keyword
+    if not clean_tail.startswith("example"):
+        rest = re.sub(r"^[^\s:({\[]+", "", rest).strip()   # drop the name
+    return head + f"theorem {new_name} " + rest
+
+
+def _parse_axioms(messages) -> list[str] | None:
+    """Pull the axiom list out of a `#print axioms <name>` info message.
+
+    None means the message was never found (Lean didn't answer as expected,
+    e.g. the declaration failed before `#print axioms` could run) -- treated
+    as "unknown", never as "clean", by every caller.
+    """
+    for msg in messages:
+        if getattr(msg, "severity", None) != "info":
+            continue
+        data = getattr(msg, "data", "")
+        if "does not depend on any axioms" in data:
+            return []
+        match = _AXIOMS_RE.search(data)
+        if match:
+            return [a.strip() for a in match.group(1).split(",") if a.strip()]
+    return None
+
+
 class BEqPlusScorer:
     """Persistent BEq+ / type-check scorer, backed by one long-lived Lean REPL
     server. Safe to call `score()` / `typecheck()` many times in a row --
@@ -571,6 +625,53 @@ class BEqPlusScorer:
                 for m in (getattr(out, "messages", []) or [])
                 if getattr(m, "severity", "") == "error"]
         return False, "\n".join(errs) if errs else "Statement failed to elaborate."
+
+    def check_own_proof(self, theorem_text: str, context: str) -> dict:
+        """Elaborate the candidate's OWN submission as written -- statement
+        AND whatever proof it wrote, never sorry'd away.
+
+        Returns {"type_correct", "proved", "sorry_used", "axioms",
+        "error_kind"}.
+
+        `type_correct` allows `sorry` -- a WARNING in Lean, not an error, so a
+        file whose only proof is `sorry` still elaborates (matches the
+        `type_correct` semantics documented in reward/reward.py:41-43).
+        `proved` is the stronger claim reward/reward.py's table has specified
+        since before this method existed (line 44-46): sorry-free elaboration
+        AND not cheating with a false axiom, checked here via `#print axioms`
+        against Lean/Mathlib's standard trio (`_STANDARD_AXIOMS`). Any axiom
+        outside that set -- e.g. a smuggled `axiom foo : False`-style
+        cheat -- fails `proved` even though Lean accepted the file cleanly.
+        `axioms=None` means the axiom list could not be read (distinct from
+        `[]`, clean), and never counts as clean.
+        """
+        self.stats["typecheck_calls"] += 1
+        env = self.get_env(context)
+        if env is None:
+            self.stats["infra"] += 1
+            return {"type_correct": False, "proved": False, "sorry_used": False,
+                    "axioms": None, "error_kind": "infra"}
+        try:
+            code = _rename_theorem_keep_proof(theorem_text, "candidate_theorem")
+        except ValueError:
+            return {"type_correct": False, "proved": False, "sorry_used": False,
+                    "axioms": None, "error_kind": None}
+        code += "\n\n#print axioms candidate_theorem"
+        out = self._run(code, env, self.timeout_per_proof)
+        if out is None:
+            return {"type_correct": False, "proved": False, "sorry_used": False,
+                    "axioms": None, "error_kind": "infra"}
+        if isinstance(out, LeanError):
+            return {"type_correct": False, "proved": False, "sorry_used": False,
+                    "axioms": None, "error_kind": None}
+        type_correct = out.lean_code_is_valid(allow_sorry=True)
+        sorry_free = out.lean_code_is_valid(allow_sorry=False)
+        axioms = _parse_axioms(out.messages) if sorry_free else None
+        proved = bool(sorry_free and axioms is not None
+                      and set(axioms) <= _STANDARD_AXIOMS)
+        return {"type_correct": type_correct, "proved": proved,
+                "sorry_used": bool(type_correct and not sorry_free),
+                "axioms": axioms, "error_kind": None}
 
     def _prove_direction(self, premise: str, goal: str, env: int) -> bool:
         """True iff `goal` can be proved from `premise` by the BEq+ cascade.

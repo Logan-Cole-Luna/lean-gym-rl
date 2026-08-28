@@ -48,7 +48,7 @@ def load_arm(arm: str, n_eval: int | None) -> dict[int, dict]:
     """
     pattern = f"eval_{arm}-step*_n{n_eval}.json" if n_eval else f"eval_{arm}-step*_n*.json"
     out = {}
-    for p in RESULTS.glob(pattern):
+    for p in (RESULTS / "eval" / arm).glob(pattern):
         m = re.search(r"-step(\d+)_n(\d+)\.json$", p.name)
         if not m:
             continue

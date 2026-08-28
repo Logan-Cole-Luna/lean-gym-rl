@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Build the edge-of-competence RL pool from every k=8 scoring pass available.
 # Runs after hpc/score_pool.slurm; gates the gated_edge arm.
-#SBATCH --account=def-vganesh_gpu
+#SBATCH --account=def-vganesh
 #SBATCH --job-name=build_edge
 #SBATCH --cpus-per-task=2
 #SBATCH --mem=16G

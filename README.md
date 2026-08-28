@@ -4,10 +4,22 @@ A gym for **RL on Lean 4 autoformalization**: swappable reward functions over a
 real Lean/Mathlib verifier, plus a paired-evaluation harness built so reward
 designs can be compared against each other honestly.
 
-The task is informal maths statement to Lean 4 theorem **signature** (no proof).
-The flagship reward is **BEq+** (Poiroux et al., EMNLP 2025), a deterministic,
-LLM-free bidirectional equivalence check, used here as a *training* reward
-rather than only as a metric.
+Two tasks share the same harness:
+
+- **Statement-only** (the default, Lean-Workbook and LoCoLib): informal maths
+  statement to Lean 4 theorem **signature**, no proof. The flagship reward is
+  **BEq+** (Poiroux et al., EMNLP 2025), a deterministic, LLM-free bidirectional
+  equivalence check, used here as a *training* reward rather than only as a
+  metric.
+- **Theorem+proof pair** (LoCoLib, `--emit-proof`): informal statement *and*
+  proof to a complete Lean 4 theorem *with* its proof. `reward/beq_plus.py`'s
+  `check_own_proof` elaborates the candidate's own submitted proof (no forced
+  `sorry`) and checks `#print axioms` against Lean's standard trio, so
+  `reward/reward.py`'s full six-outcome ladder — `proved`, `solved` included —
+  is reachable, not just the signature-only rungs. LoCoLib's native toolchain
+  (Lean 4.23.0) differs from the Lean-Workbook pin (4.8.0-rc1), so this task
+  runs against a second, separately-staged Mathlib checkout — see
+  [datasets.md](datasets.md).
 
 The stack is verl GRPO with a colocated FSDP actor and vLLM rollout, against
 Lean 4 + Mathlib. **No job names a model, a size or a corpus.** Those are knobs
@@ -155,8 +167,10 @@ so arms differ only in what they pay, never in how an outcome is decided.
 `gated` additionally pays 0.25 when BEq+ proves one direction only, a partial
 match the table has no row for.
 
-Two rows of that table (`compiles`, `solved`) exist for proof generation and are
-unreachable here, since a signature has no proof body to finish.
+Two rows of that table (`compiles`, `solved`) exist for proof generation. On the
+signature-only task they are unreachable, since a signature has no proof body to
+finish; on the LoCoLib theorem+proof-pair task (`--emit-proof`) they are real,
+driven by `reward/beq_plus.py`'s `check_own_proof`.
 
 **`gated` is the default, and pays nothing for elaboration.** The gate is
 implicit: nothing that fails to elaborate can prove in either direction. The
@@ -179,7 +193,7 @@ a one-off lives in `scripts/misc/`, so the live path is what you see first.
 | `scripts/data/prepare_sft_dataset.py` | The same corpus as an SFT `messages` parquet. Writes an explicit system turn, because verl's SFT loss mask only covers the system turn and a lone assistant message trains on the tokenizer's injected default. |
 | `scripts/data/prepare_midtrain_dataset.py` | A mid-training corpus of bare Lean statements. |
 | `scripts/data/validate_midtrain_corpus.py` | Elaborates a sample of that corpus. Many library declarations lean on surrounding `variable` lines and open namespaces, so they do not stand alone; this measures how many do. |
-| `scripts/data/prepare_locolib*.py` | The same two builders for a second corpus. |
+| `scripts/data/prepare_locolib*.py` | The same builders for a second corpus (Mathlib, LLM-informalized). `prepare_locolib.py --emit-proof` builds the theorem+proof-pair variant instead of stripping the proof, off the SAME domain-stratified split so the two are directly comparable. |
 
 ### Train
 
@@ -189,7 +203,7 @@ a one-off lives in `scripts/misc/`, so the live path is what you see first.
 | `configs/run_grpo.sh` | GRPO entrypoint. Wraps `verl.trainer.main_ppo` and points it at one `compute_score_*`. Read the header before tuning: each constant records the failure that set it. |
 | `reward/reward.py` | The outcome vocabulary and the per-arm reward tables. One definition of what a rollout is worth. |
 | `reward/reward_fn.py` | The verl `custom_reward_function` entry points, one per arm, each delegating to `reward.py`. All carry `@_never_raises`, because a reward that raises loses the JOB, not the rollout. |
-| `reward/beq_plus.py` | The verifier. The vendored BEq+ cascade behind a persistent Lean REPL, plus `typecheck_ex`. All Lean traffic goes through `_run()`, which restarts a dead REPL and clears the env cache. |
+| `reward/beq_plus.py` | The verifier. The vendored BEq+ cascade behind a persistent Lean REPL, plus `typecheck_ex` (signature only, forces `sorry`) and `check_own_proof` (elaborates the candidate's OWN proof as submitted, plus an axiom-cleanliness check). All Lean traffic goes through `_run()`, which restarts a dead REPL and clears the env cache. |
 
 ### Curating the RL pool
 
@@ -207,7 +221,7 @@ fixed changed an outcome more than changing the reward did.
 
 | file | what it does |
 |---|---|
-| `scripts/eval/evaluate_checkpoints.py` | Generate with vLLM, score with BEq+, write `results/eval_<label>-step<N>_n<n>.json` with a `per_example` array. |
+| `scripts/eval/evaluate_checkpoints.py` | Generate with vLLM, score with BEq+, write `results/eval/<model_label>/eval_<label>-step<N>_n<n>.json` with a `per_example` array. |
 | `scripts/eval/select_checkpoint.py` | Pick the best SFT checkpoint by validation BEq+, with the paired test that says whether the winner is actually ahead. |
 | `scripts/eval/compare_arms.py` | Arm vs arm at matched steps, paired McNemar exact. |
 | `scripts/eval/passk_report.py` | pass@k curve from a scored k-sample file. |
@@ -290,8 +304,8 @@ flowchart TB
     BP -. scores .-> EC
     GR --> PK
 
-    EC --> JSON[("results/eval_*.json")]
-    PK --> PKJ[("results/passk_*.json")]
+    EC --> JSON[("results/eval/&lt;model&gt;/eval_*.json")]
+    PK --> PKJ[("results/eval/&lt;model&gt;/passk_*.json")]
 
     JSON --> CA["eval/compare_arms.py<br/>paired McNemar"]
     JSON --> SEL
@@ -350,3 +364,10 @@ wraps `run_grpo.sh`, `eval_sft` and `grpo_eval` wrap `evaluate_checkpoints.py`,
 `checkpoints/` and `repos/` are **symlinks into `$SCRATCH`**. `/home` is 50GB and
 cannot hold them; a truncated optimizer write once killed a run at 46/50GB.
 Checkpoints run tens of GB each with optimizer state, so budget accordingly.
+
+`results/` is organized by task and model: `results/eval/<model_label>/` holds
+every eval/gen/passk artifact for one checkpoint series, `results/train/` holds
+training-time artifacts, `results/figures/` holds generated figures, and
+`results/_archive/pre-reorg/` holds everything from before this layout existed
+(untouched, kept for provenance). See CLAUDE.md's "Results layout" note for the
+full convention.

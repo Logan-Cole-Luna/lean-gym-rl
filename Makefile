@@ -431,7 +431,7 @@ train-rl: _check-init
 	 EXPERIMENT_NAME=$${EXPERIMENT_NAME:-rl_$(_INIT_TAG)_$${REWARD_FN_NAME:-compute_score_$${REWARD:-gated}}} \
 	 ROLLOUT_N=$${ROLLOUT_N:-8} AGENT_LOOP_WORKERS=$${AGENT_LOOP_WORKERS:-1} \
 	 TRAIN_BATCH_SIZE=$$tbs PPO_MINI_BATCH_SIZE=$${PPO_MINI_BATCH_SIZE:-$$tbs} \
-	 VALIDATION_DATA_DIR=$${VALIDATION_DATA_DIR:-$(PROJECT)/results/val_generations/$${EXPERIMENT_NAME:-rl_$(_INIT_TAG)}} \
+	 VALIDATION_DATA_DIR=$${VALIDATION_DATA_DIR:-$(PROJECT)/results/train/$${EXPERIMENT_NAME:-rl_$(_INIT_TAG)}/val_generations} \
 	 PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True \
 	 HF_HOME=$(MODELS_ROOT)/.hf_cache \
 	 MAX_CKPT_KEEP=$${MAX_CKPT_KEEP:-$$(( $${TOTAL_STEPS:-$${STEPS:-100}} / $${SAVE_FREQ:-20} + 2 ))} \
@@ -525,7 +525,7 @@ rft-data:
 	   --scored $(ROLLOUT_DIR)/$(ROLLOUT_TAG).scored.jsonl \
 	   --rollouts $(ROLLOUT_DIR)/$(ROLLOUT_TAG).jsonl \
 	   --filter beq_plus --out-dir $(PROJECT)/data/rft_beq \
-	   --stats-out $(PROJECT)/results/rollout_stats.json; \
+	   --stats-out $(PROJECT)/results/train/rollout_stats.json; \
 	 n=$$(python3 -c "import pandas as pd,sys; print(len(pd.read_parquet('$(PROJECT)/data/rft_beq/train.parquet'))+len(pd.read_parquet('$(PROJECT)/data/rft_beq/val.parquet')))"); \
 	 echo "[rft] size-matching type-check arm to $$n pairs"; \
 	 python3 scripts/misc/build_rft_dataset.py \
@@ -588,15 +588,28 @@ merge-checkpoints:
 arms-table:
 	@$(ACTIVATE) && python3 scripts/figures/make_arms_table.py
 
+# Roster, baseline and step grid are all discovered from results/eval/ at run
+# time (see make_figures.py), so this tracks whatever series is on disk. Override
+# with N=<prefix> (paired example count), STEPS=10,30,50,90 (pin the grid), or
+# BASELINE_LABEL=/RUN_PREFIX= in the environment.
 .PHONY: figures
 figures:
-	@$(ACTIVATE) && python3 scripts/figures/make_figures.py --n $${N:-400}
+	@$(ACTIVATE) && python3 scripts/figures/make_figures.py \
+	  $${N:+--n $$N} $${STEPS:+--steps $$STEPS}
 
-# `plots` now just runs `figures`. The old scripts/plot_results.py parsed verl's
-# stdout for per-step metrics, which only three arms ever wrote there; it is in
-# git history with the reason (the archive/ directories were removed).
+# Training-time curves (reward + loss per GRPO step) from verl's FileLogger
+# output under results/train/train_metrics/. Runs are discovered off disk and
+# share the eval figures' palette. ARMS=a,b limits it; MAX_STEP clips the x-axis.
+.PHONY: train-figures
+train-figures:
+	@$(ACTIVATE) && python3 scripts/figures/fig_training.py \
+	  $${ARMS:+--arms $$ARMS} $${MAX_STEP:+--max-step $$MAX_STEP}
+
+# `plots` = every figure: the eval trajectories AND the training curves. The old
+# scripts/plot_results.py parsed verl's stdout for per-step metrics, which only
+# three arms ever wrote there; it is in git history with the reason.
 .PHONY: plots
-plots: figures
+plots: figures train-figures
 
 .PHONY: eval-ckpt
 eval-ckpt:
@@ -632,7 +645,9 @@ eval-ckpt:
 	       --local_dir "$$shard" --target_dir "$$merged"; \
 	   fi; \
 	 fi; \
-	 out="$(PROJECT)/results/eval_$$(basename $$merged)_n$${N_EVAL:-80}.json"; \
+	 bn=$$(basename $$merged); label=$${bn%-step*}; \
+	 mkdir -p "$(PROJECT)/results/eval/$$label"; \
+	 out="$(PROJECT)/results/eval/$$label/eval_$${bn}_n$${N_EVAL:-80}.json"; \
 	 echo "[eval] $$merged -> $$out"; \
 	 PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True HF_HOME=$(MODELS_ROOT)/.hf_cache \
 	 python3 scripts/eval/evaluate_checkpoints.py --checkpoint "$$merged" \
@@ -647,8 +662,9 @@ eval-sweep:
 	@test -n "$(RUN)" || { echo "Usage: make eval-sweep RUN=<verl run dir> [N_EVAL=400]"; exit 1; }
 	@set -e; skipped=0; \
 	 for step in $$(ls -d $(RUN)/global_step_* 2>/dev/null | sed 's/.*global_step_//' | sort -n); do \
-	   name=$$(basename $(RUN))-step$$step; \
-	   out="$(PROJECT)/results/eval_$${name}_n$${N_EVAL:-400}.json"; \
+	   name=$$(basename $(RUN))-step$$step; label=$${name%-step*}; \
+	   mkdir -p "$(PROJECT)/results/eval/$$label"; \
+	   out="$(PROJECT)/results/eval/$$label/eval_$${name}_n$${N_EVAL:-400}.json"; \
 	   if [ -f "$$out" ]; then echo "[eval-sweep] cached: $$name"; continue; fi; \
 	   d=$(RUN)/global_step_$$step; \
 	   if [ ! -f "$$d/actor/huggingface/config.json" ] && [ ! -f "$$d/huggingface/config.json" ]; then \
@@ -790,7 +806,9 @@ help:
 	@echo "  make evaluate          Score checkpoints on BOTH metrics"
 	@echo "  make eval-sweep RUN=…  Score every saved step of a run, then select"
 	@echo "  make select            Best checkpoint by BEq+ + paired McNemar vs SFT"
-	@echo "  make figures           Regenerate every figure in results/figures/"
+	@echo "  make plots             Every figure: eval trajectories + training curves"
+	@echo "  make figures           Eval figures only (results/figures/)"
+	@echo "  make train-figures     Training reward + loss per GRPO step"
 	@echo "  make arms-table        Refresh the checkpoint table in arms.md"
 	@echo ""
 	@echo "SLURM (the 3B series — these are where the real runs happen)"
