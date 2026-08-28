@@ -1,24 +1,13 @@
 #!/usr/bin/env bash
-# Common prelude for every SLURM job in this repo.  Source it as the first thing
-# after the #SBATCH block:
+# Common prelude for every SLURM job. Source it first, after the #SBATCH block:
 #
 #     source /home/logan03/lean-gym-rl/hpc/job_prelude.sh    # then use $REAL
 #     stage_mathlib "[tag]"                                  # only if you need Lean
 #
-# Each line below is load-bearing and each one records a failure:
-#
-#   unset ROCR_VISIBLE_DEVICES   Narval sets it alongside CUDA_VISIBLE_DEVICES and
-#                                verl's worker init hard-errors on it.
-#   cc_env.sh                    module stack + the venv on $SCRATCH. pyarrow comes
-#                                from the arrow/23.0.1 MODULE, not pip, so anything
-#                                run without this wrongly reports it missing.
-#   PYTHONPATH=$REAL             reward/ and scripts/ are imported by absolute
-#                                package path from inside Ray workers, whose cwd is
-#                                not this directory.
-#
-# stage_mathlib() copies Mathlib to node-local NVMe: 41s vs 1984s off Lustre.
-# Without it `import Mathlib` exceeds the Lean timeout on COMPUTE nodes too, not
-# just login nodes -- this is not a login-node-only problem.
+# ROCR_VISIBLE_DEVICES must be unset: Narval sets it alongside
+# CUDA_VISIBLE_DEVICES and verl's worker init rejects it. PYTHONPATH must point
+# at the repo root because reward/ and scripts/ are imported by package path
+# from Ray workers, whose cwd is elsewhere.
 
 set -uo pipefail
 export PROJECT_ROOT=/home/logan03/lean-gym-rl
@@ -28,8 +17,44 @@ unset ROCR_VISIBLE_DEVICES
 cd "${REAL}" || exit 1
 export PYTHONPATH="${REAL}:${PYTHONPATH:-}"
 
+# Corpus and run naming. Nothing below hardcodes a model or a size; override
+# these to point the same jobs at another corpus or another series. Defaults
+# reproduce the existing on-disk paths exactly.
+: "${DATA_DIR:=data_3b}"          # splits, rollouts and pool parquets
+: "${SFT_DIR:=sft_3b}"            # checkpoints/<SFT_DIR><TAG>
+: "${SFT_LABEL:=sft3b}"           # eval label and merged-checkpoint prefix
+: "${RUN_PREFIX:=rl3b}"           # GRPO experiment name: <RUN_PREFIX>_<ARM>
+: "${PROJECT_NAME:=beqplus_rl_poc}"
+# The model SFT starts from. The only place a specific model is named.
+: "${BASE_MODEL:=/scratch/logan03/ai4math_training_models/qwen2.5-coder-3b-instruct}"
+# Short tags for job names. Derived from the knobs above so they follow a
+# corpus or model switch automatically; override either directly.
+: "${DATA_TAG:=${DATA_DIR#data_}}"     # data_locolib -> locolib
+: "${MODEL_TAG:=${RUN_PREFIX#rl}}"     # rl3b         -> 3b
+export DATA_DIR SFT_DIR SFT_LABEL RUN_PREFIX PROJECT_NAME BASE_MODEL DATA_TAG MODEL_TAG
+
+
+# Fallback naming for a job submitted with plain sbatch. This runs at job START,
+# so the job carries its placeholder name for its whole time in the queue --
+# which is when you are reading squeue. Prefer hpc/submit.sh, which sets the
+# name at submit time; this only catches direct sbatch calls.
+rename_job() {
+  local task="$1" arm="${2:-}"
+  # The default corpus is named after the model, so the two tags collide there
+  # and "sft_3b_3b" says nothing twice. Emit the dataset only when it differs.
+  local suffix=""
+  [ "${DATA_TAG}" != "${MODEL_TAG}" ] && suffix="_${DATA_TAG}"
+  local name="${task}_${MODEL_TAG}${arm:+-${arm}}${suffix}"
+  if [ -n "${SLURM_JOB_ID:-}" ]; then
+    scontrol update JobId="${SLURM_JOB_ID}" JobName="${name}" 2>/dev/null \
+      && echo "[job] renamed to ${name}"
+  fi
+}
+
 MATHLIB_TAR="${MATHLIB_TAR:-/scratch/logan03/mathlib4_v4.8.0-rc1.tar}"
 
+# Copy Mathlib to node-local NVMe: 41s against 1984s off shared storage, without
+# which `import Mathlib` exceeds BEQ_ENV_TIMEOUT on compute nodes as well.
 stage_mathlib() {
   local tag="${1:-stage}"
   if [ -z "${SLURM_TMPDIR:-}" ] || [ ! -f "${MATHLIB_TAR}" ]; then

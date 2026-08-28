@@ -1,60 +1,20 @@
 #!/usr/bin/env python3
-"""verl `custom_reward_function` entry points for the BEq+ RL PoC.
+"""verl `custom_reward_function` entry points.
 
-Selected per training run via `custom_reward_function.name`
-(see repos/verl/docs/preparation/reward_function.rst):
+Selected per run via `custom_reward_function.name`:
 
-- `compute_score_typecheck_only`: the ablation baseline from the source paper --
-  reward = 1 iff the generated statement type-checks. Expected to be exploitable.
-- `compute_score_composite`: 0.1*typecheck + 0.9*BEq+, the paper's composite.
-- `compute_score_shaped`: graded ladder over BEq+'s per-direction results.
-- `compute_score_guided`: shaped + a continuous structural-similarity term.
-- `compute_score_gated`: **the current default.** Semantic-signal-only ladder;
-  see "WHY GATED IS THE DEFAULT" below.
+- `compute_score_outcome` (default): the six-outcome ladder from reward/reward.py.
+- `compute_score_gated`: pays only for BEq+ equivalence, flat floor below it.
+- `compute_score_typecheck_only`: pays for elaboration alone. Exploitable, and
+  kept as the ablation baseline.
 
-All of them return a DICT, not a float. verl's reward managers accept
-`{"score": float, ...}` and forward every other key into `reward_extra_info`,
-which buys three things this project needs:
+Each returns a dict, not a float. verl forwards every key other than `score`
+into `reward_extra_info` and aggregates it into a train/val metric. Emitting
+`acc` = BEq+ makes `val-core/<data_source>/acc/mean@1` the true BEq+ rate rather
+than the mean of whatever reward the run happens to use.
 
-  1. `val-core/<data_source>/acc/mean@1` becomes the **BEq+ rate itself**,
-     because we emit `acc` = BEq+. Previously that metric was the mean of
-     whatever reward the run used, on a per-run scale, and the README had to
-     warn people not to compare arms with it. Now it is the real objective, so
-     checkpoint selection and early stopping can key off it directly.
-  2. DAPO-style group filtering can key off `semantic_signal`
-     (`algorithm.filter_groups.metric`), which is how a run drops rollout
-     groups that carry no semantic gradient.
-  3. Lean scorer failures become a visible, logged rate instead of silently
-     poisoning the reward.
-
-Both share one process-wide, lazily-initialized `BEqPlusScorer` (one persistent
-Lean REPL server per worker process) so repeated calls don't re-import Mathlib.
-
-
-WHY GATED IS THE DEFAULT (measured, results/compare.txt)
--------------------------------------------------------
-SFT reaches 38.8% BEq+ / 76.2% type-check. 200 steps of GRPO on top with
-`compute_score_guided` moved that to 29.0% BEq+ / 84.2% type-check -- type-check
-UP, semantics DOWN, p < 1e-4 by McNemar at n=400. Of the 56 examples the RL
-policy lost, 48 still type-check: valid Lean that no longer means the right
-thing.
-
-The mechanism is GRPO's within-group advantage. In a rollout group where NO
-sample achieves BEq+ -- the majority of prompts for a policy at ~35% -- the only
-terms that can differentiate the samples are `typecheck` and `similarity`. The
-group's "winner" is therefore whichever rollout elaborates and looks most like
-the gold, and the gradient teaches exactly that. Summed over a run, the
-non-semantic terms are the dominant signal, and they point away from the target.
-
-The gated reward removes the differentiator: every rollout with no semantic
-signal scores the SAME flat floor, so those groups produce an advantage of
-exactly zero and contribute no gradient at all. That is the intended
-"train only on the learnable window" behaviour, obtained inside the reward
-function at zero extra compute -- as opposed to `algorithm.filter_groups`, which
-achieves the same thing by DISCARDING those groups and generating replacements
-(correct, but it multiplies generation cost by 1/keep_rate, ~3x here). Both are
-wired up; the reward-side gate is on by default and the sampler-side filter is
-opt-in via FILTER_GROUPS=1 in configs/run_grpo.sh.
+All entry points share one lazily built `BEqPlusScorer` per process, so repeated
+calls reuse a single Lean REPL instead of re-importing Mathlib.
 """
 from __future__ import annotations
 
@@ -64,58 +24,30 @@ import re
 import threading
 
 from reward.beq_plus import BEqPlusScorer, split_header_and_theorem
-
-W_TYPECHECK = 0.1
-W_BEQ_PLUS = 0.9
+from reward.reward import (OUTCOMES, gated_reward, outcome_for, reward_for,
+                           signals_from_score, typecheck_reward)
 
 _scorer: BEqPlusScorer | None = None
 _scorer_failures = 0
+_scorer_lock = threading.Lock()
 
-# Serialises access to the shared scorer. DEFAULT 1 -- THIS IS A CORRECTNESS
-# REQUIREMENT, not just a memory knob.
-#
-# verl dispatches `compute_score` through a thread pool (reward_manager's
-# `run_in_executor`), so every thread in this process shares the one module-global
-# BEqPlusScorer and its AutoLeanServer. `lean_interact`'s session cache is NOT
-# thread-safe: two threads materialising the same base env race and raise
-#     RuntimeError: Session state -1 is already being materialized.
-# which fails the rollout. Observed with a value of 4: `failure: 14` and a wedged
-# run. Keep this at 1 unless lean_interact gains thread-safe session handling.
-#
-# It also happens to cap memory, which matters because AutoLeanServer keeps pooled
-# REPL processes with Mathlib resident (~4.3GB each), and neither
-# `reward.num_workers` nor `rollout.agent.num_workers` bounds that count
-# (measured: 30-46 REPLs, ~50GB host RAM).
-#
-# To get parallel Lean scoring, add PROCESSES (raise rollout.agent.num_workers),
-# each of which gets its own serialised scorer -- and budget ~4.3GB of host RAM
-# per process for Mathlib.
+# Serialises Lean access. Must stay at 1: verl calls the reward from a thread
+# pool, and lean_interact's session cache is not thread-safe -- two threads
+# materialising the same base env raise "Session state -1 is already being
+# materialized". For parallel scoring add processes (rollout.agent.num_workers),
+# each of which gets its own scorer and its own ~4.3GB resident Mathlib.
 BEQ_MAX_CONCURRENT = int(os.environ.get("BEQ_MAX_CONCURRENT", "1"))
 _lean_slot = threading.Semaphore(BEQ_MAX_CONCURRENT)
 
-# Constructing a BEqPlusScorer spawns a Lean REPL and imports Mathlib (~4.3GB,
-# tens of seconds). If that construction FAILS, the naive `if _scorer is None`
-# cache never gets populated, so every subsequent reward call retries it -- and
-# each retry spawns another Lean process. Observed in practice: a too-small
-# memory cap killed the REPL at startup and the retry storm left **38 concurrent
-# Lean REPLs** alive, which exhausted host RAM and got the Ray workers
-# OOM-killed. The memory symptom looked like the cause; it was the consequence.
-#
-# So: bound the retries. After this many consecutive construction failures, give
-# up and score 0 rather than keep forking Lean processes. A run whose Lean
-# environment is broken should degrade to "no reward signal", not take the
-# machine down with it.
+# Building a scorer spawns a Lean REPL and imports Mathlib. A plain
+# `if _scorer is None` cache retries that on every call when construction fails,
+# and each retry leaks another REPL until the host runs out of RAM. Bound the
+# retries and degrade to "no reward signal" instead.
 _MAX_SCORER_FAILURES = 3
 
 
 class ScorerUnavailable(RuntimeError):
-    """Raised when the Lean scorer could not be constructed after repeated tries."""
-
-
-# Construction must be serialised too: verl calls the reward from a thread pool,
-# so without this two threads can both observe `_scorer is None` and each build a
-# Lean server (doubling Mathlib's ~4.3GB, and racing inside lean_interact).
-_scorer_lock = threading.Lock()
+    """The Lean scorer could not be constructed after repeated attempts."""
 
 
 def _get_scorer() -> BEqPlusScorer:
@@ -123,15 +55,13 @@ def _get_scorer() -> BEqPlusScorer:
     if _scorer is not None:
         return _scorer
     with _scorer_lock:
-        # Re-check inside the lock: another thread may have built it while we
-        # waited.
-        if _scorer is not None:
+        if _scorer is not None:      # another thread built it while we waited
             return _scorer
         if _scorer_failures >= _MAX_SCORER_FAILURES:
             raise ScorerUnavailable(
-                f"BEqPlusScorer failed to start {_scorer_failures}x; refusing to spawn more "
-                "Lean processes. Check BEQ_MEMORY_LIMIT_MB (must exceed Mathlib's ~4.5GB "
-                "baseline) and available host RAM."
+                f"BEqPlusScorer failed to start {_scorer_failures}x. Check "
+                "BEQ_MEMORY_LIMIT_MB (must exceed Mathlib's ~4.5GB baseline) "
+                "and available host RAM."
             )
         try:
             _scorer = BEqPlusScorer()
@@ -146,22 +76,15 @@ _CODE_FENCE_RE = re.compile(r"```(?:lean4?|Lean4?)?\s*(.*?)```", re.DOTALL)
 
 
 def _clean_solution(solution_str: str) -> str:
-    """Strip a ```lean ... ``` fence if the model wrapped its answer in one;
-    otherwise pass the raw completion through (BEqPlusScorer's own
-    `extract_last_theorem`/`clean_last_theorem_string` already locate and
-    isolate the theorem declaration within surrounding text)."""
+    """Strip a ```lean fence if the model wrapped its answer in one.
+
+    Otherwise pass the completion through; the scorer's own
+    `extract_last_theorem` isolates the declaration from surrounding text.
+    """
     m = _CODE_FENCE_RE.search(solution_str)
     return m.group(1).strip() if m else solution_str.strip()
 
 
-# ── Scorer-failure instrumentation ────────────────────────────────────────────
-# A Lean timeout or a dead REPL scores a rollout 0, exactly like a wrong answer.
-# For a CORRECT rollout that is a gradient pointing away from correctness, and it
-# is invisible in every metric the run currently logs. verl gives a reward
-# function no way to say "skip this sample", so we cannot fix it here -- but an
-# unmeasured version of this bug is much worse than a measured one. Every reward
-# emits `scorer_error` per sample (so it shows up as a val/train mean), and the
-# counters below print a summary line every _ERROR_LOG_EVERY calls.
 _ERROR_LOG_EVERY = int(os.environ.get("BEQ_ERROR_LOG_EVERY", "200"))
 _calls = 0
 _errors = 0
@@ -169,6 +92,14 @@ _counter_lock = threading.Lock()
 
 
 def _note_call(error_kind: str | None) -> None:
+    """Count Lean-scorer failures and log the rate periodically.
+
+    A timeout or a dead REPL scores a rollout 0, indistinguishably from a wrong
+    answer, so for a correct rollout it is a gradient pointing the wrong way.
+    verl offers no way to skip a sample, so the rate is measured instead: every
+    reward emits `scorer_error`, and a high rate means the run is not measuring
+    what it claims to.
+    """
     global _calls, _errors
     with _counter_lock:
         _calls += 1
@@ -179,69 +110,44 @@ def _note_call(error_kind: str | None) -> None:
     if due:
         rate = 100.0 * errors / max(calls, 1)
         stats = getattr(_scorer, "stats", {})
-        print(
-            f"[reward] {calls} scored, {errors} Lean-scorer failures ({rate:.1f}%) "
-            f"timeout={stats.get('timeout', 0)} infra={stats.get('infra', 0)} "
-            f"other={stats.get('other_error', 0)}",
-            flush=True,
-        )
+        print(f"[reward] {calls} scored, {errors} Lean-scorer failures ({rate:.1f}%) "
+              f"timeout={stats.get('timeout', 0)} infra={stats.get('infra', 0)} "
+              f"other={stats.get('other_error', 0)}", flush=True)
         if rate > 5.0:
-            print(
-                "[reward] WARNING: >5% of rewards come from a FAILED Lean call, not a "
-                "real verdict. Those rollouts are scored 0 regardless of correctness, "
-                "which biases the gradient. Raise BEQ_TIMEOUT_PER_PROOF or reduce "
-                "concurrency.",
-                flush=True,
-            )
+            print("[reward] WARNING: >5% of rewards come from a failed Lean call "
+                  "rather than a real verdict. Raise BEQ_TIMEOUT_PER_PROOF or "
+                  "reduce concurrency.", flush=True)
 
 
-# ── nothing in this module may raise ─────────────────────────────────────────
-# A reward function that raises does NOT just lose its rollout. verl's agent loop
-# marks the task failed and the enclosing GRPO step never closes, so the job sits
-# on a GPU doing nothing until walltime. That is exactly how `rl3b_selfprove`
-# (job 1586327) burned an allocation: a recycled Lean REPL surfaced as
-# `AttributeError: 'NoneType' object has no attribute 'stdin'`, which
-# `typecheck_ex` did not catch, and the step froze at
-# `running: 1, finished: 5, failure: 10` for 20 minutes.
-#
-# beq_plus.py now recovers from that specific fault at the Lean boundary. This
-# decorator is the SECOND line: whatever else goes wrong -- an unparseable gold,
-# a scorer that will not construct, a bug introduced later in this file -- the
-# rollout is scored 0 and the step still closes.
-#
-# SCORING 0 IS NOT NEUTRAL and is not pretended to be. A correct rollout lost to
-# an infrastructure fault contributes a gradient against correctness, the same
-# bias already documented for Lean timeouts in BEqPlusScorer.__init__. It is
-# `scorer_error=1` in reward_extra_info so the rate is visible in the run's
-# metrics; if it climbs, the reward is degrading and the run is not measuring
-# what it claims to. Losing a rollout is recoverable, losing the job is not.
-# EVERY reward must emit the SAME key set. verl aggregates each key into a
-# val/train metric, so a reward that omits one gives a ragged schema. This block
-# was hand-copied in three places (_ZERO, selfprove, placebo) and drifted; it is
-# defined once now and spread into all of them.
-#
-# These are the "not applicable" values, NOT measurements. `*_known` companions
-# exist wherever None and False are different facts -- collapsing "the cascade
-# never ran this check" into "the check failed" would silently understate the
-# thing the dead-band ladder is built on.
-_DIAG_DEFAULTS = {
-    "beql": 0.0,
-    "rung": 0.0,
-    "convert_level": -1.0,
-    "provable_alone": 0.0,
-    "provable_alone_known": 0.0,
-    "trivial": 0.0,
-    "trivial_known": 0.0,
-    "stop_reason": 0.0,
+# Every reward must emit the same key set: verl aggregates each key into a
+# metric, and an omitted key gives a ragged schema. These are the "not
+# applicable" values, not measurements.
+_SCHEMA = {
+    "score": 0.0, "acc": 0.0, "beq_plus": 0.0, "typecheck": 0.0,
+    "semantic_signal": 0.0, "n_directions": 0.0,
+    "gold_implies_pred": 0.0, "pred_implies_gold": 0.0,
+    "similarity": 0.0, "scorer_error": 0.0,
+    "beql": 0.0, "rung": 0.0, "convert_level": 0.0,
+    "provable_alone": 0.0, "provable_alone_known": 0.0, "stop_reason": 0.0,
+    # Index into reward.reward.OUTCOMES. Only the outcome arm varies it; the
+    # others emit it so every arm has one key set.
+    "outcome_code": 0.0,
 }
 
-_ZERO = {"score": 0.0, "acc": 0.0, "beq_plus": 0.0, "typecheck": 0.0,
-         "semantic_signal": 0.0, "n_directions": 0.0, "gold_implies_pred": 0.0,
-         "pred_implies_gold": 0.0, "similarity": 0.0, "scorer_error": 1.0,
-         **_DIAG_DEFAULTS}
+_ZERO = {**_SCHEMA, "scorer_error": 1.0}
+
+_STOP_REASON_CODE = {"unparseable": 1, "sorry_gate": 2, "no_rung": 3}
 
 
 def _never_raises(fn):
+    """Score 0 rather than propagating an exception.
+
+    A reward that raises does not just lose its rollout: verl marks the agent
+    task failed, the GRPO step never closes, and the job holds a GPU until
+    walltime. Scoring 0 is not neutral -- a correct rollout lost to an
+    infrastructure fault pushes the gradient the wrong way -- so it is reported
+    as `scorer_error=1` rather than hidden.
+    """
     @functools.wraps(fn)
     def wrapped(data_source, solution_str, ground_truth, extra_info=None):
         try:
@@ -253,21 +159,11 @@ def _never_raises(fn):
     return wrapped
 
 
-_STOP_REASON_CODE = {None: 0, "unparseable": 1, "sorry_gate": 2, "no_rung": 3}
-
-
 def _diagnostics(r: dict, similarity_value: float = 0.0) -> dict[str, float]:
-    """The per-sample fields every reward forwards into `reward_extra_info`.
-
-    Keys must be numeric: verl aggregates each one into a val/train metric, and
-    a string would break that. `acc` is emitted deliberately -- verl treats an
-    `acc` key as the run's CORE validation variable, so this makes
-    `val-core/<data_source>/acc/mean@1` the true BEq+ rate.
-    """
+    """Per-sample fields forwarded into `reward_extra_info`. All numeric."""
     provable_alone = r.get("provable_alone")
-    rung = r.get("rung")
-    convert_level = r.get("convert_level")
     return {
+        **_SCHEMA,
         "acc": float(r["beq_plus"]),
         "beq_plus": float(r["beq_plus"]),
         "typecheck": float(r["typecheck"]),
@@ -277,35 +173,28 @@ def _diagnostics(r: dict, similarity_value: float = 0.0) -> dict[str, float]:
         "pred_implies_gold": float(r.get("pred_implies_gold", False)),
         "similarity": float(similarity_value),
         "scorer_error": float(bool(r.get("error_kind"))),
-        # trivial/trivial_known are only produced by the self-prove path; the
-        # cascade cannot separate `tauto` from the rest of its disjunction.
-        "trivial": 0.0,
-        "trivial_known": 0.0,
-        # ── cascade instrumentation (see BEqCPUResult in beq_plus.py) ────────
-        # BEqL is strictly tighter than BEq+ (only cascade rung 1 sets it). It
-        # was always returned by score() and never forwarded until now.
+        # BEqL is strictly tighter than BEq+; only cascade rung 1 sets it.
         "beql": float(r.get("beql", False)),
-        # 0 = no rung closed direction 0; 1..4 = which one did. Lower is a
-        # tighter match. Its MEAN mixes "did not close" with "closed at rung k",
-        # so read the histogram per-example, not this aggregate.
-        "rung": float(rung or 0),
-        # -1 when rung 4 did not fire. The mean is NOT meaningful; per-example
-        # only. Kept in the schema because verl needs a stable key set.
-        "convert_level": float(convert_level) if convert_level is not None else -1.0,
-        # THE dead-band signal. Two keys, because None (rung 3 never ran) and
-        # False (it ran and the statement did not prove) are different facts and
-        # collapsing them would silently understate provability. The conditional
-        # rate is mean(provable_alone) / mean(provable_alone_known).
+        # Which cascade rung closed direction 0, 0 if none. Lower is a tighter
+        # match. Read the per-example histogram, not the mean, which mixes
+        # "did not close" with "closed at rung k".
+        "rung": float(r.get("rung") or 0),
+        # `convert ... using k`; only meaningful when rung == 4.
+        "convert_level": float(r.get("convert_level") or 0),
+        # Two keys because None (rung 3 never ran) and False (it ran and the
+        # statement did not prove) are different facts. The conditional rate is
+        # mean(provable_alone) / mean(provable_alone_known).
         "provable_alone": float(provable_alone is True),
         "provable_alone_known": float(provable_alone is not None),
         # Why direction 0 stopped, which n_directions=0 conflates.
         # 0 = ran to completion, 1 = unparseable, 2 = sorry gate, 3 = no rung.
         "stop_reason": float(_STOP_REASON_CODE.get(r.get("stop_reason"), 0)),
+        "outcome_code": float(OUTCOMES.index(outcome_for(signals_from_score(r)))),
     }
 
 
 def _score_pair(solution_str: str, ground_truth: str) -> tuple[dict, str, str]:
-    """Run the full BEq+ scorer once. Returns (result, pred, gold_theorem)."""
+    """Run the BEq+ scorer once. Returns (result, prediction, gold theorem)."""
     scorer = _get_scorer()
     pred = _clean_solution(solution_str)
     _gold_context, gold_theorem = split_header_and_theorem(ground_truth)
@@ -317,212 +206,81 @@ def _score_pair(solution_str: str, ground_truth: str) -> tuple[dict, str, str]:
 
 @_never_raises
 def compute_score_typecheck_only(data_source, solution_str, ground_truth, extra_info=None) -> dict:
+    """1.0 if the statement elaborates, else 0.0."""
     scorer = _get_scorer()
     pred = _clean_solution(solution_str)
     context, _gold_theorem = split_header_and_theorem(ground_truth)
     with _lean_slot:
         ok, err = scorer.typecheck_ex(pred, context)
     _note_call(err)
-    # No `acc` key: this arm never computes BEq+, so there is no honest value to
-    # report and verl correctly falls back to the reward mean for val-core.
-    return {"score": 1.0 if ok else 0.0, "typecheck": float(ok), "scorer_error": float(bool(err))}
+    # Deliberately no `acc`: this arm never computes BEq+, so there is no honest
+    # value to report and verl falls back to the reward mean for val-core.
+    return {"score": typecheck_reward(ok, err), "typecheck": float(ok),
+            "scorer_error": float(bool(err))}
 
 
-@_never_raises
-def compute_score_composite(data_source, solution_str, ground_truth, extra_info=None) -> dict:
-    r, _pred, _gold = _score_pair(solution_str, ground_truth)
-    score = W_TYPECHECK * float(r["typecheck"]) + W_BEQ_PLUS * float(r["beq_plus"])
-    return {"score": score, **_diagnostics(r)}
-
-
-# ── Shaped / "process-level" reward ───────────────────────────────────────────
-# BEq+ internally proves equivalence in TWO directions and only calls it
-# equivalent when both succeed. Those per-direction results are real intermediate
-# progress that the binary metric discards, so this ladder turns them into graded
-# credit. Deliberately monotone: every rung is a strict superset of the one
-# below, so the argmax is still exact BEq+ equivalence.
-#
-# READ reward/beq_plus.py's DIRECTION SEMANTICS note before touching the
-# one-direction rung. Because the vendored cascade short-circuits, the ONLY
-# observable one-direction state is "prediction is strictly WEAKER than the
-# gold" -- a strictly stronger prediction scores 0 directions, same as garbage.
-# So this rung pays exclusively for weakening, which is also the direction that
-# trends toward vacuity. Its weight is deliberately smaller than it used to be
-# (0.35 -> 0.20, with the difference moved onto full equivalence). Set
-# BEQ_PROBE_STRONGER=1 to make the signal direction-symmetric at the cost of an
-# extra Lean cascade per non-equivalent rollout.
-W_SHAPED_TYPECHECK = float(os.environ.get("BEQ_W_SHAPED_TYPECHECK", "0.10"))
-W_SHAPED_ONE_DIR = float(os.environ.get("BEQ_W_SHAPED_ONE_DIR", "0.20"))
-W_SHAPED_BOTH_DIR = float(os.environ.get("BEQ_W_SHAPED_BOTH_DIR", "0.70"))
-
-
-@_never_raises
-def compute_score_shaped(data_source, solution_str, ground_truth, extra_info=None) -> dict:
-    r, _pred, _gold = _score_pair(solution_str, ground_truth)
-    if not r["typecheck"]:
-        return {"score": 0.0, **_diagnostics(r)}
-    signal = r.get("semantic_signal", r.get("n_directions", 0))
-    score = W_SHAPED_TYPECHECK
-    if signal >= 1:
-        score += W_SHAPED_ONE_DIR
-    if signal >= 2:
-        score += W_SHAPED_BOTH_DIR
-    return {"score": score, **_diagnostics(r)}
-
-
-# ── Gated reward: semantic signal only (DEFAULT) ──────────────────────────────
-# See "WHY GATED IS THE DEFAULT" in the module docstring. The rule is one line:
-#
-#     no semantic signal  ->  a FLAT floor, identical for every such rollout
-#
-# so a rollout group in which nothing proves anything has zero reward variance,
-# hence zero GRPO advantage, hence no gradient. Type-check and similarity are
-# deliberately NOT paid here. They are the terms that let a hard prompt's group
-# rank its rollouts by "valid and superficially similar", which is the measured
-# failure mode this reward exists to remove. Their pedagogical value (teaching
-# Lean syntax from a cold start) is real but belongs to the SFT stage, which
-# already delivers 76% type-check before RL begins.
-#
-# The floor is 0.0 rather than a positive constant only for readability -- any
-# constant gives the same advantage, since GRPO subtracts the group mean.
 W_GATED_ONE_DIR = float(os.environ.get("BEQ_W_GATED_ONE_DIR", "0.25"))
 
 
 @_never_raises
 def compute_score_gated(data_source, solution_str, ground_truth, extra_info=None) -> dict:
+    """BEq+ ladder: 1.0 for both directions, W_GATED_ONE_DIR for one, else 0.
+
+    Type-check is not paid. The gate is implicit, since nothing that fails to
+    elaborate can prove in either direction, and paying for elaboration is the
+    measured failure mode this reward exists to avoid.
+
+    The flat floor is the point. Under GRPO the advantage is the reward minus
+    the group mean, so a group with no semantic signal produces an advantage of
+    exactly zero and contributes no gradient. Any term that varies within such a
+    group -- similarity, type-check -- becomes the only climbable signal there,
+    and the policy learns to farm it.
+    """
     r, _pred, _gold = _score_pair(solution_str, ground_truth)
-    signal = r.get("semantic_signal", r.get("n_directions", 0))
-    if signal >= 2:
-        score = 1.0
-    elif signal >= 1:
-        score = W_GATED_ONE_DIR
-    else:
-        score = 0.0
-    return {"score": score, **_diagnostics(r)}
-
-
-# ── Self-prove reward: the strongest GOLD-FREE signal, i.e. no BEq+ ──────────
-# The decisive opponent for BEq+. Everything else in this file that works either
-# consults the gold (BEq+, similarity) or is trivially gameable (type-check).
-# This one is the best a compiler-only reward can do for autoformalization, and
-# it is modelled on project-numina/kimina-prover-rl.
-#
-# Why theirs is sound and this is not, structurally: kimina does PROOF
-# GENERATION, so the statement arrives as an input (reward/proof_utils.py does
-# extract_proof_from_text(output, formal_statement)) and the model can only fill
-# in a proof body. "It compiles" therefore means "you proved the given theorem".
-# In autoformalization the statement IS the output, so no compiler-only reward
-# can pin the semantics. This reward buys back what it can:
-#
-#   type-check  -- necessary, trivially gamed on its own
-#   provable    -- the statement must be TRUE, not merely well-formed
-#   non-trivial -- and not closed by `tauto` alone, so `theorem x : 1 = 1` earns 0
-#
-# It still cannot tell whether the statement says what the INFORMAL TEXT said --
-# only the gold can, which is the whole argument for BEq+. Expect this arm to
-# drift toward true-but-unrelated statements. That prediction is the experiment:
-# if BEq+ holds semantic accuracy while this degrades it, the case for a
-# gold-referenced semantic reward is made against the strongest alternative
-# rather than against a strawman.
-W_SP_TYPECHECK = float(os.environ.get("BEQ_W_SP_TYPECHECK", "0.2"))
+    return {"score": gated_reward(r, W_GATED_ONE_DIR), **_diagnostics(r)}
 
 
 @_never_raises
-def compute_score_selfprove(data_source, solution_str, ground_truth, extra_info=None) -> dict:
-    scorer = _get_scorer()
-    pred = _clean_solution(solution_str)
-    r = scorer.self_prove(ground_truth, pred)
-    if r.get("self_prove"):
-        score = 1.0
-    elif r.get("typecheck"):
-        score = W_SP_TYPECHECK          # well-formed but vacuous or unproved
-    else:
-        score = 0.0
-    _note_call(r.get("error_kind"))
-    # Same key set as _diagnostics so verl's metric aggregation sees one schema.
-    # beq_plus is reported for MONITORING only -- it is never paid for here, which
-    # is the point of the arm.
-    return {
-        **_DIAG_DEFAULTS,
-        "score": score,
-        "acc": score,
-        "beq_plus": 0.0,
-        "typecheck": float(bool(r.get("typecheck"))),
-        "semantic_signal": 2.0 * float(bool(r.get("self_prove"))),
-        "n_directions": 0.0,
-        "gold_implies_pred": 0.0,
-        "pred_implies_gold": 0.0,
-        "similarity": 0.0,
-        "scorer_error": float(bool(r.get("error_kind"))),
-        # `self_prove()` has always returned `provable` and `trivial` and nothing
-        # ever logged them. `trivial` is a direct vacuity detector -- the rate to
-        # watch if a ladder starts paying for the dead band. Reported under the
-        # same names the cascade path uses, but note they are NOT the same
-        # measurement: this ladder tries tauto / simp_all_arith! / noncomm_ring /
-        # exact? at BEQ_PROBE_TIMEOUT, where the cascade's rung 3 tries a shorter
-        # list at timeout_per_proof. Compare rates across arms with that in mind.
-        "provable_alone": float(bool(r.get("provable"))),
-        "provable_alone_known": float(bool(r.get("typecheck"))),
-        "trivial": float(bool(r.get("trivial"))),
-        "trivial_known": float(bool(r.get("typecheck"))),
-    }
+def compute_score_outcome(data_source, solution_str, ground_truth, extra_info=None) -> dict:
+    """The six-outcome ladder from reward/reward.py, unmodified.
+
+        0.00  no answer, or the scorer failed
+        0.05  Lean rejected it
+        0.15  elaborates, does not match the gold      <- the dead band
+        0.50  BEq+ matches the gold
+
+    Unlike `gated`, this pays a graded reward below BEq+, so groups with no
+    semantic signal still carry a within-group gradient. That is the property
+    `gated` deliberately removes, so the two are an A/B and this is not yet the
+    default. Emits `outcome_code` for the per-example histogram.
+    """
+    r, _pred, _gold = _score_pair(solution_str, ground_truth)
+    s = signals_from_score(r)
+    return {"score": reward_for(s), **_diagnostics(r)}
 
 
-# ── Guided reward: continuous similarity + BEq+ certification ────────────────
-# Kept for ablation against `compute_score_gated`. This is the reward the
-# 200-step SFT->RL run used, and the one whose measured result motivated the
-# gate: it is the version WITH a similarity term, re-weighted so the non-semantic
-# terms it pays are a smaller share of the total.
-#
-# Old weights (the ones that produced the 38.8% -> 29.0% BEq+ regression):
-#   sim 0.20, typecheck 0.15, one-dir 0.20, both 0.45
-#     -> a rollout that proves NOTHING could still bank up to 0.35.
-# New weights: sim 0.10, typecheck 0.10, one-dir 0.15, both 0.65
-#     -> the same rollout banks at most 0.20, and full equivalence is worth 5x
-#        the best non-semantic score instead of under 3x.
-# To reproduce the old behaviour exactly, set the four BEQ_W_G_* env vars back.
-#
-# This re-weighting only shrinks the biased gradient; it does not remove it, and
-# on its own it is NOT expected to fix the regression. It matters mainly in
-# combination with `algorithm.norm_adv_by_std_in_grpo=False`, which is what makes
-# a small reward spread produce a correspondingly small gradient instead of being
-# renormalised back to full scale.
-#
-# CRITICAL ORDERING CONSTRAINT: structural similarity cannot detect semantic
-# inversion -- flipping `<` to `>` is one token and scores ~0.98, the same as a
-# harmless typo. So the similarity weight is deliberately kept small enough that
-# NO amount of structural resemblance can outscore actually proving equivalence.
-# Similarity guides the search; BEq+ certifies the answer.
+# DEPRECATED: kept only until the in-flight rl3b_lr6_guided chain finishes.
+# Delete this function and reward/similarity.py together -- the import below is
+# lazy and @_never_raises swallows a missing module, so removing similarity.py
+# alone leaves every rollout silently scoring 0.
 W_G_SIM = float(os.environ.get("BEQ_W_G_SIM", "0.10"))
 W_G_TYPECHECK = float(os.environ.get("BEQ_W_G_TYPECHECK", "0.10"))
 W_G_ONE_DIR = float(os.environ.get("BEQ_W_G_ONE_DIR", "0.15"))
 W_G_BOTH_DIR = float(os.environ.get("BEQ_W_G_BOTH_DIR", "0.65"))
 
 
-# GATING (learned the hard way -- do not remove). The first version of this
-# reward paid the similarity term UNCONDITIONALLY, so it was available to
-# outputs that never elaborate. Trained from the base model -- where BEq+ is
-# effectively unreachable -- similarity became the ONLY climbable gradient, and
-# the policy promptly learned to farm it: it copied the gold's tokens into
-# invalid Lean. Actual step-30 generation, against a gold of
-# `(f : ℝ → ℝ) (C : ℝ) (h₁ : f = fun x => -x^4 / 2 - C * x + x / 2)`:
-#     lemma (x: ℝ): f(x) = -x^4/2 - C*x + x/2
-# -- no theorem name, `f(x)` is not Lean application, `f`/`C` unbound. Entropy
-# collapsed to 0.127, response length fell 107 -> 54, and mean reward sat at
-# 0.186, just under the 0.20 similarity cap: almost pure similarity credit with
-# essentially no type-checking. Shaping had created a NEW, easier hack than the
-# one it was designed to prevent.
-#
-# So similarity is multiplied by the type-check indicator. Structural
-# resemblance is only worth anything once the statement is actually valid Lean.
 @_never_raises
 def compute_score_guided(data_source, solution_str, ground_truth, extra_info=None) -> dict:
+    """Gated ladder plus a type-check-gated similarity term.
+
+    Similarity is multiplied by the type-check indicator. Paid unconditionally
+    it becomes the only climbable gradient for a policy that cannot yet reach
+    BEq+, and the policy learns to copy gold tokens into invalid Lean.
+    """
     from reward.similarity import similarity
 
     r, pred, gold_theorem = _score_pair(solution_str, ground_truth)
-
     if not r["typecheck"]:
-        # No credit for resembling the target in invalid Lean.
         return {"score": 0.0, **_diagnostics(r)}
 
     sim = similarity(pred, gold_theorem)
@@ -535,100 +293,31 @@ def compute_score_guided(data_source, solution_str, ground_truth, extra_info=Non
     return {"score": score, **_diagnostics(r, sim)}
 
 
-# ── Placebo reward: the drift control ─────────────────────────────────────────
-# Deterministic pseudo-random reward with NO semantic content and NO Lean cost,
-# statistically matched to what compute_score_gated actually produced on the
-# clean disjoint run (group informative rate ~0.37 -> ~16% dead steps at batch 4;
-# within informative groups, 0/1 rewards at p~0.3 -> advantage magnitudes like a
-# 2-3-winners-of-8 group).
-#
-# WHY THIS EXISTS. The clean gated run has a live gradient on 84% of steps, a
-# flat training reward (r=+0.010), KL drift to 0.21, and a significant val BEq+
-# decline -- a policy that moves without learning. Two hypotheses fit:
-#   (a) GRPO's per-update gradient here (~1 informative group of 8 rollouts,
-#       Adam-rescaled to full-lr parameter movement) is noise-dominated, and
-#       100 such updates erode a good policy REGARDLESS of what the reward means;
-#   (b) the BEq+ gradient itself teaches something harmful.
-# This reward decides between them: it reproduces the gated arm's advantage
-# GEOMETRY exactly (sparsity, magnitudes, determinism-in-text) while carrying
-# zero information. If val BEq+ decays the same way under it, the decay is (a)
-# and the fix is variance reduction, not reward design. If the placebo arm stays
-# flat, the decay is (b) and the gated reward needs surgery.
-#
-# Determinism in text is deliberate: BEq+ is a deterministic function of the
-# rollout text, so the placebo is too (identical rollouts score identically,
-# within AND across steps). Each prompt is seen at most once in a 100-step
-# batch-4 run, so the policy cannot learn to farm lucky texts; the signal is
-# structured noise by construction.
-def _placebo_hash(s: str) -> int:
-    import hashlib
-
-    return int.from_bytes(hashlib.md5(s.encode("utf-8")).digest()[:8], "big")
-
-
-PLACEBO_GROUP_INFORMATIVE_P = float(os.environ.get("BEQ_PLACEBO_GROUP_P", "0.37"))
-PLACEBO_ROLLOUT_P = float(os.environ.get("BEQ_PLACEBO_ROLLOUT_P", "0.30"))
-
-
-@_never_raises
-def compute_score_placebo(data_source, solution_str, ground_truth, extra_info=None) -> dict:
-    # Per-PROMPT gate (hash of the gold): mimics "this prompt is at the policy's
-    # ability edge" being a persistent property of the prompt, as it is for BEq+.
-    gate = (_placebo_hash("gate::" + ground_truth) % 10_000) < PLACEBO_GROUP_INFORMATIVE_P * 10_000
-    if gate:
-        roll = _placebo_hash("roll::" + ground_truth + "##" + solution_str) % 10_000
-        score = 1.0 if roll < PLACEBO_ROLLOUT_P * 10_000 else 0.0
-    else:
-        score = 0.0
-    # Same key set as _diagnostics so verl's metric aggregation and group
-    # filtering see an identical schema. beq_plus/typecheck are 0: they are NOT
-    # measured here, and this arm's val-core metric is meaningless by design --
-    # evaluate its checkpoints offline with scripts/evaluate_checkpoints.py.
-    return {
-        **_DIAG_DEFAULTS,
-        "score": score,
-        "acc": score,
-        "beq_plus": 0.0,
-        "typecheck": 0.0,
-        "semantic_signal": 2.0 * score,
-        "n_directions": 0.0,
-        "gold_implies_pred": 0.0,
-        "pred_implies_gold": 0.0,
-        "similarity": 0.0,
-        "scorer_error": 0.0,
-    }
-
-
-# alias expected when custom_reward_function.name is left unset
-compute_score = compute_score_gated
+# Used when custom_reward_function.name is left unset. Every job here sets the
+# name explicitly, so this alias is a fallback rather than what the arms run.
+compute_score = compute_score_outcome
 
 
 if __name__ == "__main__":
-    gold = "theorem lean_workbook_plus_2 (x : ℝ) : x^2 - 2*x - 24 < 0 ↔ x ∈ Set.Ioo (-4) 6 := by sorry"
-    pred_good = "theorem restated (x : ℝ) : x^2 - 2*x - 24 < 0 ↔ x ∈ Set.Ioo (-4) 6"
-    pred_wrong = "theorem restated (x : ℝ) : x^2 - 2*x - 24 > 0 ↔ x ∈ Set.Ioo (-4) 6"
-    pred_fenced = f"Here is the formalization:\n```lean\n{pred_good}\n```"
-
-    # A strictly stronger statement: implies the gold but is not implied by it.
-    # NOTE it lands on 0 directions unless BEQ_PROBE_STRONGER=1 -- see the
-    # DIRECTION SEMANTICS note in reward/beq_plus.py. Running this self-test both
-    # ways is the quickest demonstration of that asymmetry.
-    pred_one_way = "theorem restated (x : ℝ) : x^2 - 2*x - 24 < 0 ∧ x > -4 ↔ x ∈ Set.Ioo (-4) 6"
-    # Trivially-true boilerplate -- the exact reward hack the typecheck-only arm
-    # learned. Should score 1.0 on typecheck-only but bottom out elsewhere.
-    pred_hack = "theorem hack (x : ℝ) : x - 1 = -1 + x"
-
-    # A near-miss that still elaborates.
-    pred_near = "theorem restated (x : ℝ) : x^2 - 2*x - 25 < 0 ↔ x ∈ Set.Ioo (-4) 6"
+    gold = ("theorem lean_workbook_plus_2 (x : ℝ) : "
+            "x^2 - 2*x - 24 < 0 ↔ x ∈ Set.Ioo (-4) 6 := by sorry")
+    cases = [
+        ("good", "theorem restated (x : ℝ) : x^2 - 2*x - 24 < 0 ↔ x ∈ Set.Ioo (-4) 6"),
+        ("wrong", "theorem restated (x : ℝ) : x^2 - 2*x - 24 > 0 ↔ x ∈ Set.Ioo (-4) 6"),
+        ("fenced", "Here is the formalization:\n```lean\ntheorem restated (x : ℝ) : "
+                   "x^2 - 2*x - 24 < 0 ↔ x ∈ Set.Ioo (-4) 6\n```"),
+        # Strictly stronger: implies the gold but is not implied by it. Lands on
+        # 0 directions unless BEQ_PROBE_STRONGER=1; see beq_plus.py.
+        ("one_way", "theorem restated (x : ℝ) : x^2 - 2*x - 24 < 0 ∧ x > -4 ↔ "
+                    "x ∈ Set.Ioo (-4) 6"),
+        ("near_miss", "theorem restated (x : ℝ) : x^2 - 2*x - 25 < 0 ↔ x ∈ Set.Ioo (-4) 6"),
+        # Trivially true. Should score 1.0 on typecheck-only and 0 on gated.
+        ("hack", "theorem hack (x : ℝ) : x - 1 = -1 + x"),
+    ]
 
     print(f"probe_stronger={os.environ.get('BEQ_PROBE_STRONGER', '0')}")
-    print(f"{'case':12s} {'typecheck':>9} {'composite':>9} {'shaped':>7} {'guided':>7} {'gated':>7}")
-    for name, pred in [("good", pred_good), ("wrong", pred_wrong),
-                       ("fenced", pred_fenced), ("one_way", pred_one_way),
-                       ("near_miss", pred_near), ("hack", pred_hack)]:
+    print(f"{'case':12s} {'typecheck':>9} {'gated':>7}")
+    for name, pred in cases:
         tc = compute_score_typecheck_only("lean_workbook", pred, gold)["score"]
-        comp = compute_score_composite("lean_workbook", pred, gold)["score"]
-        shaped = compute_score_shaped("lean_workbook", pred, gold)["score"]
-        guided = compute_score_guided("lean_workbook", pred, gold)["score"]
         gated = compute_score_gated("lean_workbook", pred, gold)["score"]
-        print(f"{name:12s} {tc:>9.2f} {comp:>9.2f} {shaped:>7.2f} {guided:>7.2f} {gated:>7.2f}")
+        print(f"{name:12s} {tc:>9.2f} {gated:>7.2f}")

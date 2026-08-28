@@ -98,6 +98,10 @@ if BEQ_MEMORY_LIMIT_MB is not None and BEQ_MEMORY_LIMIT_MB < BEQ_MATHLIB_BASELIN
 # upstream default and is far too generous for an online reward loop.
 BEQ_TIMEOUT_PER_PROOF = int(os.environ.get("BEQ_TIMEOUT_PER_PROOF", "30"))
 
+# Repairs the stage-3 independence guard, which cannot fire without it. Changes
+# BEq+ verdicts, so runs with and without it are not comparable.
+BEQ_HAVE_GUARD_PATCH = os.environ.get("BEQ_HAVE_GUARD_PATCH", "0") == "1"
+
 # BEq+ IMPLIES type-check -- verified with zero exceptions across 9,528 scored
 # rollouts. So when the prediction does not elaborate, the equivalence cascade
 # (up to ~18 Lean calls) cannot possibly fire and is pure waste. 23.4% of
@@ -255,8 +259,26 @@ def check_theorem_equivalence(
         # 3. add the conclusion of the base theorem as a hypothesis
         provable_without_have = False
         try:
+            # LOCAL PATCH vs upstream. `formal_2_code` ends in ":= by" and
+            # `proof_all_have` begins with "all_goals intros", so upstream's bare
+            # concatenation yields ":= byall_goals intros ...", which Lean
+            # rejects. `lean_code_is_valid` is therefore always False without the
+            # newline, `provable_without_have` always False, and this guard --
+            # whose whole purpose is to suppress a `have`-stage false positive --
+            # can never fire. With it, gold `forall n, n + 0 = n` vs the strictly
+            # weaker `0 + 0 = 0` stops scoring equivalent at this stage.
+            #
+            # It does NOT close the whole false-positive class: only stage 3
+            # consults the guard, and stage 4 (`convert`) has no independence
+            # check, so such a pair can move one stage down and still score
+            # equivalent.
+            #
+            # OFF BY DEFAULT because it changes BEq+ verdicts, and every recorded
+            # number was produced without it. Turn it on together with the reward
+            # default, under a new series tag.
+            _sep = "\n" if BEQ_HAVE_GUARD_PATCH else ""
             res_without_have = lean_server.run(
-                Command(cmd=formal_2_code + proof_all_have, env=context_env), timeout=timeout_per_proof
+                Command(cmd=formal_2_code + _sep + proof_all_have, env=context_env), timeout=timeout_per_proof
             )
             if isinstance(res_without_have, CommandResponse):
                 provable_without_have = res_without_have.lean_code_is_valid(allow_sorry=False)
@@ -550,12 +572,6 @@ class BEqPlusScorer:
                 if getattr(m, "severity", "") == "error"]
         return False, "\n".join(errs) if errs else "Statement failed to elaborate."
 
-    def typecheck(self, theorem_text: str, context: str = "") -> bool:
-        """True iff `theorem_text` elaborates (with `sorry` closing the proof)
-        against Mathlib + `context`. This is the syntactic / type-check reward
-        signal -- it does NOT check semantic equivalence to anything."""
-        return self.typecheck_ex(theorem_text, context)[0]
-
     def _prove_direction(self, premise: str, goal: str, env: int) -> bool:
         """True iff `goal` can be proved from `premise` by the BEq+ cascade.
 
@@ -566,83 +582,6 @@ class BEqPlusScorer:
         self.stats["probe_calls"] += 1
         res = check_theorem_equivalence(premise, goal, self.server, env, self.timeout_per_proof)
         return res.beq_plus_unidirections[0] is not None
-
-    def self_prove(self, gold_full_snippet: str, pred_theorem_text: str) -> dict:
-        """GOLD-FREE check: does `pred` type-check, and is it TRUE on its own?
-
-        This is the autoformalization analogue of project-numina/kimina-prover-rl's
-        compile reward. Theirs is sound because the statement is an INPUT and the
-        model only supplies a proof body; ours is not, because the statement is
-        the OUTPUT. So provability alone is worse than useless -- `theorem x :
-        1 = 1` type-checks AND proves instantly.
-
-        The guard: a statement counts only if it is provable AND not provable by
-        `tauto` alone, i.e. it has some content. That cannot certify the
-        statement means the RIGHT thing (only the gold can do that, which is
-        BEq+), but it does raise the price of gaming from one token to something
-        non-trivial, which is what makes this a fair opponent for BEq+ rather
-        than a strawman.
-
-        The gold is taken ONLY for its header/context so `pred` elaborates in the
-        same environment; its theorem body is never consulted.
-        """
-        self.stats["score_calls"] += 1
-        context, _gold_theorem = split_header_and_theorem(gold_full_snippet)
-        out = {"typecheck": False, "provable": False, "trivial": False,
-               "self_prove": False, "error": None, "error_kind": None}
-        env = self.get_env(context)
-        if env is None:
-            self.stats["infra"] += 1
-            out["error"], out["error_kind"] = "header_env_failed", "infra"
-            return out
-        out["typecheck"], tc_err = self.typecheck_ex(pred_theorem_text, context)
-        if tc_err:
-            out["error_kind"] = tc_err
-        if not out["typecheck"]:
-            return out
-        try:
-            # Cheapest tactic first: if `tauto` alone closes it, the statement is
-            # vacuous and earns nothing.
-            out["trivial"] = self._prove_with(pred_theorem_text, env, ["tauto"])
-            out["provable"] = out["trivial"] or self._prove_with(
-                pred_theorem_text, env, ["simp_all_arith!", "noncomm_ring", "exact?"])
-            out["self_prove"] = bool(out["provable"] and not out["trivial"])
-        except Exception as e:
-            out["error"] = f"{type(e).__name__}: {e}"[:200]
-            out["error_kind"] = self._note_error(e)
-            if out["error_kind"] == "infra":
-                self._restart()
-        return out
-
-    def _prove_with(self, theorem_text: str, env: int, tactics: list[str]) -> bool:
-        """True iff any of `tactics` closes `theorem_text` in `env`.
-
-        PROBE TIMEOUT IS SEPARATE FROM `timeout_per_proof` -- and it is what makes
-        this arm affordable. The ladder short-circuits on the first success, so
-        the cost is paid in full on statements NOTHING proves, which is most of
-        them: tauto, simp_all_arith!, noncomm_ring, then `exact?`, a search over
-        all of Mathlib that reliably burns its entire budget. At the BEq+ timeout
-        of 30s that is ~120s per unprovable rollout, which measured out at ~4.5x
-        gated's cost per GRPO step: the arm reached step 20 in 22h while gated
-        reached step 90 in the same budget, i.e. it could not finish.
-
-        10s cuts the worst case to ~40s. It does change the metric -- a proof
-        needing more than 10s of `exact?` search no longer counts -- but the
-        metric was already "provable within a budget", and an unfinishable arm
-        measures nothing at all. Set BEQ_PROBE_TIMEOUT to restore the old
-        behaviour; runs with different values are NOT comparable.
-        """
-        stmt = clean_last_theorem_string(theorem_text, "thm") or theorem_text
-        for tac in tactics:
-            self.stats["probe_calls"] += 1
-            out = self._run(f"{stmt} := by {tac}", env, self.probe_timeout)
-            if out is None:
-                continue
-            msgs = getattr(out, "messages", []) or []
-            if isinstance(out, CommandResponse) and not any(
-                    getattr(m, "severity", "") == "error" for m in msgs):
-                return True
-        return False
 
     def score(self, gold_full_snippet: str, pred_theorem_text: str, probe_stronger: bool | None = None) -> dict:
         """gold_full_snippet: full record text (imports+namespace+...+theorem),

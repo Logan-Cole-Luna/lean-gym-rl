@@ -45,7 +45,7 @@ echo "=== Step 3: Warm the lean-interact REPL cache ==="
 cd "${PROJECT_ROOT}"
 source "${SCRATCH}/ai4math_training_venv_hpc/bin/activate"
 export LEAN_INTERACT_CACHE_DIR="${SCRATCH}/ai4math_training_lean_interact_cache"
-python3 scripts/test_lean_interact.py || echo "WARNING: lean-interact smoke test failed — check .venv_hpc setup"
+python3 scripts/misc/test_lean_interact.py || echo "WARNING: lean-interact smoke test failed — check .venv_hpc setup"
 
 echo ""
 echo "=== Done ==="

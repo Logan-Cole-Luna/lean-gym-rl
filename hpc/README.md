@@ -15,7 +15,11 @@ a tested pipeline, and work through the checklist below before your first submis
 | `python_login.sh` | login node | Module-loading `python` wrapper, used by the Makefile's `$(PYTHON)` on CC |
 | `lean_cache_and_build.sh` | login node, once | Downloads Mathlib4's prebuilt oleans, builds, warms the lean-interact REPL cache |
 | `prefetch_models.py` | login node, once | Downloads the base model + Lean-Workbook dataset for offline compute-node access |
-| `train.slurm` | `sbatch`'d | The actual training job — sources `cc_env.sh`, runs `configs/run_grpo.sh` |
+| `job_prelude.sh` | sourced by every job | Env, `unset ROCR_VISIBLE_DEVICES`, `stage_mathlib()`, and the `DATA_DIR`/`RUN_PREFIX`/`BASE_MODEL` knobs |
+| `sft.slurm`, `eval_sft.slurm` | `sbatch`'d | SFT, then the checkpoint sweep that picks the best by BEq+ |
+| `grpo.slurm`, `grpo_eval.slurm` | `sbatch`'d | One GRPO arm per job, then the eval sweep over its checkpoints |
+| `score_pool.slurm`, `build_edge_pool.slurm` | `sbatch`'d | Score a pool slice, then build the edge-of-competence pool |
+| `passk.slurm` | `sbatch`'d | pass@k for one checkpoint |
 
 ## One-time setup
 
@@ -49,15 +53,18 @@ make dataset                       # build data/train.parquet, data/val.parquet
 ## Submitting a job
 
 ```bash
-make submit-composite   # sbatch hpc/train.slurm --export=REWARD_FN_NAME=compute_score_composite
-make submit-typecheck   # sbatch hpc/train.slurm --export=REWARD_FN_NAME=compute_score_typecheck_only
+make submit ARM=gated STEPS=90     # sbatch hpc/grpo.slurm
 # or directly, with more control:
-TOTAL_STEPS=200 sbatch hpc/train.slurm --export=ALL,REWARD_FN_NAME=compute_score_composite,TOTAL_STEPS=200
+sbatch --export=ALL,ARM=gated_edge,SERIES_TAG=lr6,ACTOR_LR=1e-6,TOTAL_STEPS=90 hpc/grpo.slurm
 ```
+
+Corpus and naming come from `DATA_DIR`, `SFT_DIR`, `RUN_PREFIX` and `BASE_MODEL`
+in `job_prelude.sh`. Override them to run the same jobs against another corpus or
+another base model; nothing in `*.slurm` names a model or a size.
 
 ## Before your first real submission, check
 
-1. **`--account`.** `train.slurm` defaults to `def-vganesh` (same as
+1. **`--account`.** The jobs default to `def-vganesh` (same as
    `MixtureOfMathExperts`, since this is a sibling project) — confirm that's still the
    right allocation, or change it.
 
@@ -84,7 +91,7 @@ TOTAL_STEPS=200 sbatch hpc/train.slurm --export=ALL,REWARD_FN_NAME=compute_score
    nodes (some clusters separate home/scratch visibility) — `cc_env.sh` already adds
    `~/.elan/bin` to `PATH`.
 
-6. **`#SBATCH` sizing.** `train.slurm`'s `--time=04:00:00`/`--mem=64G`/
+6. **`#SBATCH` sizing.** The jobs' `--time`/`--mem`/
    `--cpus-per-task=8` are sized for the PoC-scale `TOTAL_STEPS=30` default in
    `configs/run_grpo.sh`. Raise them together with `TOTAL_STEPS` for a longer real run.
 

@@ -13,8 +13,7 @@
 # make train-composite   — real GRPO run, BEq+ composite reward (local/interactive)
 # make train-typecheck   — real GRPO run, type-check-only reward (ablation baseline)
 # make train             — both of the above, sequentially (single GPU)
-# make submit-composite  — sbatch hpc/train.slurm with the composite reward
-# make submit-typecheck  — sbatch hpc/train.slurm with the typecheck-only reward
+# make submit ARM=…      — sbatch hpc/grpo.slurm for one arm
 # make check-toolchain   — verify elan/Mathlib4/lean-interact all agree on the Lean version
 # make clean             — remove Python cache artifacts
 # make clean-lean        — remove Mathlib4 build artifacts
@@ -136,7 +135,7 @@ setup-hpc: env-hpc
 	@$(MAKE) --no-print-directory dataset
 	@echo ""
 	@echo "HPC setup complete. See hpc/README.md — adapt module loads / #SBATCH"
-	@echo "values to your cluster before submitting hpc/train.slurm."
+	@echo "values to your cluster before submitting hpc/grpo.slurm."
 
 # ── Python environment ───────────────────────────────────────────────────────
 # Uses `uv` (https://astral.sh/uv) for venv + package management. Falls back to
@@ -266,7 +265,7 @@ dataset:
 	 if [ -f data/train.parquet ] && [ "$$(cat data/.stamp 2>/dev/null)" = "$$want" ]; then \
 	   echo "[dataset] up to date ($$want)"; \
 	 else \
-	   HF_HOME=$(MODELS_ROOT)/.hf_cache $(PYTHON) scripts/prepare_dataset.py \
+	   HF_HOME=$(MODELS_ROOT)/.hf_cache $(PYTHON) scripts/data/prepare_dataset.py \
 	     --n-train $(RL_N_TRAIN) --n-val $(RL_N_VAL) && echo "$$want" > data/.stamp; \
 	 fi
 
@@ -274,7 +273,7 @@ dataset:
 
 .PHONY: smoke
 smoke:
-	@$(ACTIVATE) && $(PYTHON) scripts/prepare_dataset.py --out-dir data/smoke --n-train 8 --n-val 4
+	@$(ACTIVATE) && $(PYTHON) scripts/data/prepare_dataset.py --out-dir data/smoke --n-train 8 --n-val 4
 	@$(ACTIVATE) && \
 	 TRAIN_BATCH_SIZE=8 PPO_MINI_BATCH_SIZE=8 ROLLOUT_N=2 TOTAL_EPOCHS=1 \
 	 PROJECT_NAME=beqplus_smoke EXPERIMENT_NAME=smoke \
@@ -337,7 +336,7 @@ sft-dataset: dataset
 	   echo "[sft-dataset] up to date ($$want)"; \
 	 else \
 	   $(ACTIVATE) && HF_HOME=$(MODELS_ROOT)/.hf_cache \
-	     python3 scripts/prepare_sft_dataset.py \
+	     python3 scripts/data/prepare_sft_dataset.py \
 	       --n-train $(SFT_N_TRAIN) --n-val $(SFT_N_VAL) && \
 	   echo "$$want" > data/sft/.stamp; \
 	 fi
@@ -389,7 +388,7 @@ _check-init:
 train-sft: sft-dataset _check-init
 	@MODEL_PATH=$(_INIT_MODEL) \
 	 SAVE_PATH=$${SAVE_PATH:-$(SFT_CKPT)} \
-	 bash scripts/run_sft.sh $(SFT_EXTRA)
+	 bash scripts/train/run_sft.sh $(SFT_EXTRA)
 
 # Defaults reflect the post-mortem of the 200-step guided run (BEq+ 38.8% ->
 # 29.0%); configs/run_grpo.sh's header explains each one. The knobs that changed
@@ -472,7 +471,7 @@ merge-sft:
 # Pass REWARD_FN_NAME directly if you need a name that does not fit the pattern.
 #
 # NOTE these are LOCAL single-GPU runs, kept for smoke tests and 0.5B work. The
-# 3B series runs on SLURM -- see hpc/grpo_3b.slurm.
+# 3B series runs on SLURM -- see hpc/grpo.slurm.
 
 # ── Rejection-sampling (RFT) arm ──────────────────────────────────────────────
 # The control that separates "BEq+ is a bad training signal" from "GRPO is the
@@ -500,7 +499,7 @@ SCORE_WORKERS ?= 4
 rollouts:
 	@$(ACTIVATE) && \
 	 PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True HF_HOME=$(MODELS_ROOT)/.hf_cache \
-	 python3 scripts/generate_rollouts.py \
+	 python3 scripts/pool/generate_rollouts.py \
 	   --checkpoint $${INIT:-$(SFT_MERGED)} --parquet $(PROJECT)/data/train.parquet \
 	   --k $(ROLLOUT_K) --temperature $(ROLLOUT_TEMP) \
 	   --out $(ROLLOUT_DIR)/$(ROLLOUT_TAG).jsonl
@@ -509,7 +508,7 @@ rollouts:
 # interruption must not throw the completed work away.
 .PHONY: score-rollouts
 score-rollouts:
-	@$(ACTIVATE) && python3 scripts/score_rollouts.py \
+	@$(ACTIVATE) && python3 scripts/pool/score_rollouts.py \
 	   --rollouts $(ROLLOUT_DIR)/$(ROLLOUT_TAG).jsonl \
 	   --out $(ROLLOUT_DIR)/$(ROLLOUT_TAG).scored.jsonl \
 	   --workers $(SCORE_WORKERS)
@@ -522,14 +521,14 @@ score-rollouts:
 .PHONY: rft-data
 rft-data:
 	@$(ACTIVATE) && set -e; \
-	 python3 scripts/build_rft_dataset.py \
+	 python3 scripts/misc/build_rft_dataset.py \
 	   --scored $(ROLLOUT_DIR)/$(ROLLOUT_TAG).scored.jsonl \
 	   --rollouts $(ROLLOUT_DIR)/$(ROLLOUT_TAG).jsonl \
 	   --filter beq_plus --out-dir $(PROJECT)/data/rft_beq \
 	   --stats-out $(PROJECT)/results/rollout_stats.json; \
 	 n=$$(python3 -c "import pandas as pd,sys; print(len(pd.read_parquet('$(PROJECT)/data/rft_beq/train.parquet'))+len(pd.read_parquet('$(PROJECT)/data/rft_beq/val.parquet')))"); \
 	 echo "[rft] size-matching type-check arm to $$n pairs"; \
-	 python3 scripts/build_rft_dataset.py \
+	 python3 scripts/misc/build_rft_dataset.py \
 	   --scored $(ROLLOUT_DIR)/$(ROLLOUT_TAG).scored.jsonl \
 	   --rollouts $(ROLLOUT_DIR)/$(ROLLOUT_TAG).jsonl \
 	   --filter typecheck --out-dir $(PROJECT)/data/rft_tc --match-size $$n
@@ -548,7 +547,7 @@ train-rft:
 	 TRAIN_FILE=$(PROJECT)/$(RFT_DATA)/train.parquet \
 	 VAL_FILE=$(PROJECT)/$(RFT_DATA)/val.parquet \
 	 LR=$${LR:-1e-5} TOTAL_EPOCHS=$${TOTAL_EPOCHS:-2} SFT_SAVE_FREQ=$${SFT_SAVE_FREQ:-100} \
-	 bash scripts/run_sft.sh
+	 bash scripts/train/run_sft.sh
 
 # ── Evaluation ────────────────────────────────────────────────────────────────
 # The head-to-head comparison the PoC exists to produce. NOTE: verl's own
@@ -587,15 +586,15 @@ merge-checkpoints:
 # Regenerate the checkpoint table at the top of arms.md from cached results.
 .PHONY: arms-table
 arms-table:
-	@$(ACTIVATE) && python3 scripts/make_arms_table.py
+	@$(ACTIVATE) && python3 scripts/figures/make_arms_table.py
 
 .PHONY: figures
 figures:
-	@$(ACTIVATE) && python3 scripts/make_figures.py --n $${N:-400}
+	@$(ACTIVATE) && python3 scripts/figures/make_figures.py --n $${N:-400}
 
 # `plots` now just runs `figures`. The old scripts/plot_results.py parsed verl's
 # stdout for per-step metrics, which only three arms ever wrote there; it is in
-# scripts/archive/ with the reason.
+# git history with the reason (the archive/ directories were removed).
 .PHONY: plots
 plots: figures
 
@@ -636,7 +635,7 @@ eval-ckpt:
 	 out="$(PROJECT)/results/eval_$$(basename $$merged)_n$${N_EVAL:-80}.json"; \
 	 echo "[eval] $$merged -> $$out"; \
 	 PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True HF_HOME=$(MODELS_ROOT)/.hf_cache \
-	 python3 scripts/evaluate_checkpoints.py --checkpoint "$$merged" \
+	 python3 scripts/eval/evaluate_checkpoints.py --checkpoint "$$merged" \
 	   --n-eval $${N_EVAL:-80} --out "$$out"
 
 # Evaluate EVERY saved step of one run dir, so checkpoint selection has
@@ -671,36 +670,36 @@ eval-sweep:
 # Aggregate every cached result JSON into one table (no re-scoring).
 .PHONY: compare
 compare:
-	@$(ACTIVATE) && python3 scripts/compare_results.py
+	@$(ACTIVATE) && python3 scripts/misc/compare_results.py
 
 # Pick the best checkpoint by BEq+ AND say whether the difference is real.
 # `make compare` tabulates; this one applies the paired test, which is what
 # stops a within-noise argmax from being reported as an improvement.
 .PHONY: select
 select:
-	@$(ACTIVATE) && python3 scripts/select_checkpoint.py $(SELECT_ARGS)
+	@$(ACTIVATE) && python3 scripts/eval/select_checkpoint.py $(SELECT_ARGS)
 
 .PHONY: evaluate
 evaluate: merge-checkpoints
 	@$(ACTIVATE) && \
 	 PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True \
 	 HF_HOME=$(MODELS_ROOT)/.hf_cache \
-	 python3 scripts/evaluate_checkpoints.py \
+	 python3 scripts/eval/evaluate_checkpoints.py \
 	   --checkpoint base \
 	   --checkpoint $(MERGED)/typecheck_only-step$(STEP) \
 	   --checkpoint $(MERGED)/composite-step$(STEP) \
 	   --n-eval $${N_EVAL:-80}
 
 # ── HPC submission (SLURM) ────────────────────────────────────────────────────
-# train-composite/train-typecheck above are for local/interactive runs (they
-# always activate $(VENV), not $(VENV_HPC)). On a cluster, submit hpc/train.slurm
+# The train-* targets above are for local/interactive runs (they always activate
+# $(VENV), not $(VENV_HPC)). On a cluster, submit hpc/grpo.slurm
 # instead — these targets are just a one-line convenience wrapper for it.
 
-# One submit target instead of one per reward.
-#   make submit REWARD=gated STEPS=200
+# One submit target instead of one per arm.
+#   make submit ARM=gated STEPS=90
 .PHONY: submit
 submit:
-	sbatch --export=ALL,REWARD_FN_NAME=compute_score_$${REWARD:-gated},TOTAL_STEPS=$${STEPS:-200} hpc/train.slurm
+	sbatch --export=ALL,ARM=$${ARM:-gated},TOTAL_STEPS=$${STEPS:-90} hpc/grpo.slurm
 
 # ── Clean ─────────────────────────────────────────────────────────────────────
 
@@ -776,7 +775,7 @@ help:
 	@echo "  make smoke             ~1 step, 8 examples; proves the loop runs"
 	@echo "  make sft               SFT from the base model"
 	@echo "  make train-rl          GRPO. Flags:"
-	@echo "                           REWARD=gated|guided|selfprove|typecheck_only|composite"
+	@echo "                           REWARD=gated|typecheck_only"
 	@echo "                           STEPS=100  INIT=<merged dir>  FILTER_GROUPS=1"
 	@echo "  make train             The two 30-step ablation arms, sequentially"
 	@echo "  make train-rft         Rejection-sampling arm (RFT_DATA=... TAG=...)"
@@ -795,9 +794,9 @@ help:
 	@echo "  make arms-table        Refresh the checkpoint table in arms.md"
 	@echo ""
 	@echo "SLURM (the 3B series — these are where the real runs happen)"
-	@echo "  sbatch --export=ALL,ARM=gated hpc/grpo_3b.slurm"
+	@echo "  sbatch --export=ALL,ARM=gated hpc/grpo.slurm"
 	@echo "  sbatch --export=ALL,RUN=rl3b_gated,N_EVAL=1000 hpc/grpo_eval.slurm"
-	@echo "  make submit            sbatch hpc/train.slurm (REWARD=… STEPS=…)"
+	@echo "  make submit            sbatch hpc/grpo.slurm (ARM=… STEPS=…)"
 	@echo ""
 	@echo "HOUSEKEEPING"
 	@echo "  make clean | clean-lean | clean-all | prune-checkpoints | kill-stale"

@@ -1,286 +1,352 @@
 # lean-gym-rl
 
-**A gym for reinforcement learning on Lean 4 autoformalization.**
+A gym for **RL on Lean 4 autoformalization**: swappable reward functions over a
+real Lean/Mathlib verifier, plus a paired-evaluation harness built so reward
+designs can be compared against each other honestly.
 
-Autoformalization — turning an informal mathematical statement into a formal
-Lean 4 theorem — is unusually hard to reward. The statement is the model's
-*output*, so "it compiles" is satisfied by `theorem x : 1 = 1`. Every reward that
-is cheap is exploitable, and every reward that is sound is expensive. This repo
-exists to make that trade-off **measurable**: swappable rewards, a real
-Lean/Mathlib scoring backend, and an evaluation harness that insists on paired
-tests against a *calibrated noise control*.
+The task is informal maths statement to Lean 4 theorem **signature** (no proof).
+The flagship reward is **BEq+** (Poiroux et al., EMNLP 2025), a deterministic,
+LLM-free bidirectional equivalence check, used here as a *training* reward
+rather than only as a metric.
 
-The flagship experiment is **BEq+** as a training-time RL reward. It is one arm
-among several, and the harness is the point.
+The stack is verl GRPO with a colocated FSDP actor and vLLM rollout, against
+Lean 4 + Mathlib. **No job names a model, a size or a corpus.** Those are knobs
+set in [hpc/job_prelude.sh](hpc/job_prelude.sh), so the same jobs run any
+model against any corpus:
 
-```
-informal statement ──▶ policy ──▶ Lean statement ──▶ [ reward ] ──▶ GRPO
-                                                        ▲
-                          type-check · self-prove · BEq+ · similarity · placebo
-```
+| knob | what it names | default |
+|---|---|---|
+| `BASE_MODEL` | the model SFT starts from | an instruct-tuned coder model |
+| `DATA_DIR` | corpus root: splits, rollouts, pool parquets | `data_3b` |
+| `SFT_DIR` | `checkpoints/<SFT_DIR><TAG>` | `sft_3b` |
+| `SFT_LABEL` | eval label and merged-checkpoint prefix | `sft3b` |
+| `RUN_PREFIX` | GRPO run name, `<RUN_PREFIX>_<ARM>` | `rl3b` |
+| `PROJECT_NAME` | checkpoint project directory | `beqplus_rl_poc` |
 
----
+Defaults reproduce the series currently on disk, so nothing already recorded
+moves. A second corpus needs no second copy of any job.
 
-## Why a gym, and not just a training script
+## Pipeline
 
-Three things kept going wrong often enough to be designed against:
+```mermaid
+flowchart TB
+    LW["informal + gold Lean statement"]
+    LW --> PREP["scripts/data/prepare_dataset.py, splits are content-disjoint"]
 
-1. **A reward that looks like it works usually isn't working.** Type-check-only
-   RL drives its own metric from 76.7% → 98.0% while semantic accuracy collapses
-   41.2% → 8.0%. Any harness that reports only the reward would call that a
-   success.
-2. **GRPO with no signal at all is destructive**, so "RL made it worse" is not
-   evidence about your reward. A run must be compared to a *fitted* placebo, not
-   to the SFT baseline.
-3. **Net accuracy hides the mechanism.** Arms differ mostly in how much they
-   destroy. Splitting retention from gains is what separates "protects the
-   policy" from "teaches it something".
+    PREP --> SFT["SFT (verl) target = signature only"]
+    SFT --> CKPT["SFT checkpoint every arm resumes from"]
 
-So the harness ships a reward zoo, a calibrated control, and paired statistics as
-first-class pieces.
+    CKPT --> GRPO
+    PREP --> GRPO
 
----
+    subgraph GRPO["GRPO loop (verl, colocated actor + rollout)"]
+        direction TB
+        ROLL["vLLM rollout<br/>k per prompt, sampled"]
+        REW["reward/reward_fn.py<br/>one reward ladder"]
+        LEAN["Lean + Mathlib REPL<br/>BEq+ cascade"]
+        ADV["advantage = r - mean(group)<br/>FSDP actor update"]
+        ROLL --> REW --> LEAN --> REW --> ADV --> ROLL
+    end
 
-## The reward zoo
+    GRPO --> EVAL["paired eval on a pinned slice<br/>McNemar: retention, gain-rate, pass@k"]
+    CKPT -.baseline.-> EVAL
 
-`reward/reward_fn.py`. All share one signature and one diagnostic schema, so any
-of them drops into `configs/run_grpo.sh` via `REWARD_FN_NAME`.
-
-| reward | what it checks | Lean cost | exploitable? |
-|---|---|---|---|
-| `typecheck_only` | statement elaborates | 1 call | **yes, badly** |
-| `selfprove` | elaborates + provable + not closed by `tauto` alone | ~4 calls | partially — drifts to true-but-unrelated |
-| `gated` | BEq+ ladder: 0 / one direction / both directions | up to ~18 calls | no (gold-referenced) |
-| `guided` | `gated` + type-check-gated structural similarity | same + CPU | similarity is capped below the semantic step |
-| `shaped`, `composite` | weighted blends of the above | varies | — |
-| `placebo` | deterministic pseudo-random on the rollout hash | **none** | n/a — it is the control |
-
-**BEq+** (`reward/beq_plus.py`) is deterministic, LLM-free, bidirectional Lean
-tactic equivalence (Poiroux et al., EMNLP'25), vendored from
-`augustepoiroux/RLMEval` and wrapped in a persistent Mathlib-resident REPL
-(~4.3GB per worker) so it can score rollouts online.
-
-### The control is the load-bearing piece
-
-`compute_score_placebo` invokes no Lean and carries zero information. Its
-constants are **fitted to each policy** by `scripts/calibrate_placebo.py`, which
-matches three measured statistics: the informative-group rate, the within-group
-standard deviation, and the mean reward.
-
-All three are necessary. Fitting only the first two leaves the problem
-degenerate — within-group sd is symmetric under `p ↔ 1−p` — and the two
-solutions have *mirrored advantage skew*, which changes how destructive the
-control is. We shipped the wrong branch once and only caught it when a second
-policy fitted to the opposite one.
-
----
-
-## Experiments
-
-A decisive per-arm breakdown — what each reward computes, where they overlap,
-where they diverge — is in [`arms.md`](arms.md).
-
-Each is a slurm arm plus an analysis. Results in
-[`logook.md`](logook.md) and [`results/FINDINGS.md`](results/FINDINGS.md).
-
-### 1. Does a gold-referenced semantic reward beat noise? *(flagship)*
-
-`gated` vs the calibrated placebo, paired McNemar on a pinned 400-example slice.
-
-| step | placebo | **gated** | diff | p |
-|---|---|---|---|---|
-| 30 | 22.2% | **40.5%** | **+18.2pp** | 7e-16 |
-| 50 | 23.8% | 36.2% | +12.5pp | 6e-7 |
-| 70 | 18.8% | 34.0% | +15.2pp | 2e-10 |
-
-`gated-step30` is statistically **indistinguishable from the SFT baseline**
-(40.5% vs 41.2%, p=0.78, retention 83.6%) while pure noise at the same step keeps
-only 51.5% of the baseline's correct answers. BEq+ does not teach the policy much
-— it very nearly fully protects it.
-
-### 2. Is a type-check-only reward exploitable? *(reproduced, decisively)*
-
-| step | 10 | 50 | 90 | 110 |
-|---|---|---|---|---|
-| BEq+ | 40.0% | 22.0% | 22.0% | **8.0%** |
-| type-check | 88.0% | 93.5% | 97.2% | **98.0%** |
-
-Monotone in both directions. By step 150 the training reward is exactly 1.000 and
-`critic/advantages` has max = min = 0 — the objective is dead. Crucially this
-ends up *below the placebo* on semantics while far above it on the proxy, which
-is the difference between "an optimiser aimed at the wrong target" and "drift".
-
-### 3. Can a gold-free reward substitute? *(open)*
-
-`selfprove` is the strongest reward obtainable without ever consulting the gold.
-If it keeps pace with `gated`, the case for gold-referenced semantics weakens a
-lot. Two checkpoints so far: retention 82.4% / 78.2%, gain-rate 7.2% / 7.7%.
-Running.
-
-### 4. Does mid-training help? *(negative, and instructive)*
-
-Following *On the Interplay of Pre-Training, Mid-Training, and RL*
-(arXiv:2512.07783). Continued LM pre-training on Mathlib statements before SFT
-moved nothing: 38.9% vs 39.4% BEq+, informative 42.9% vs 46.0%, pass@32 56.4% vs
-55.2%.
-
-The reason is worth knowing: **only ~2.3% of Mathlib declarations elaborate
-standalone.** Mathlib is factored through `variable`/`section`/`namespace`
-precisely so statements need not restate their context; autoformalization targets
-are self-contained one-liners. The distributions barely intersect.
-
-### 5. Curating RL data to the "edge of competence" *(running)*
-
-GRPO's advantage is `A_i = r_i − mean(r_group)`, so a group scoring 0/8 and one
-scoring 8/8 both contribute exactly zero. `gated_edge` restricts the pool to
-prompts measured at 1–7/8, taking the informative fraction from 46% to ~100% by
-construction.
-
-### 6. Capability vs exploration *(settled)*
-
-At k=32 on prompts the policy never solves at k=8, only **14.5%** are ever
-recovered — and **84.3% type-check**. The model reliably writes well-formed Lean
-that means the wrong thing. That is a capability limit, not an exploration one,
-and it bounds what any reward can do.
-
----
-
-## What the harness measures
-
-Net accuracy is reported, but it is the least informative number.
-
-**Retention vs gains.** Every arm is scored against the SFT baseline
-example-by-example: how many correct answers it *kept*, and how many previously
-wrong ones it *converted*.
-
-**Gain-rate** (converted ÷ previously-wrong) separates the arms far better than
-the headline does:
-
-| reward class | gain-rate |
-|---|---|
-| gold-referenced semantics (`gated`) | **7.7–10.6%** |
-| gold-free compiler signal (`selfprove`) | 7.2–7.7% |
-| exploitable proxy (`typecheck`), decaying | 7.7% → 2.1% |
-| pure noise (`placebo`) | 1.7–4.3% |
-
-**pass@k.** `scripts/passk_report.py` uses the unbiased estimator (Chen et al.
-2021). Differences visible at pass@1 but not at pass@32 are sharpening, not
-capability.
-
-**Always paired.** Same pinned slice, McNemar exact. Never difference two
-headline rates — a subset can be easier than the whole.
-
----
-
-## Figures
-
-`make figures` regenerates everything in `results/figures/` from the cached eval
-JSONs — no Lean, no GPU, deterministic.
-
-Every step-indexed figure is drawn on the **reporting grid, `evalio.STEP_GRID` =
-10/30/50/90**, and starts at step 0 on the SFT baseline all arms resume from.
-Off-grid checkpoints are still trained and still evaluated — they are just not
-what results are shown at. Override with `--steps`. `runtime.png` is the one
-exception: per-step cost comes from mtime deltas between *consecutive*
-checkpoints, so subsetting would degrade the estimate.
-
-The **placebo is hidden by default** (`--hide rl3b_v2_placebo`). That is a
-presentation choice, not a claim that `typecheck` replaces it: type-check is an
-informative-but-exploitable reward, the placebo is calibrated zero-information
-noise, and only the placebo can separate "RL helped" from "the policy drifted".
-Its numbers stay in `arms.md` and `compare_arms.py`; `--hide ''` draws it again.
-
-| figure | shows |
-|---|---|
-| `arm_trajectories_pass1.png` | **the reference figure.** pass@1 on BEq+ (left) and on compiling (right), same rollouts, same decoder — the only sound way to read the two verdicts against each other |
-| `arm_trajectories.png` | BEq+ vs training step, every arm, against the SFT line. **Greedy decode (T=0)** — what the McNemar tests use, but not comparable point-for-point with any pass@k figure |
-| `arm_trajectories_passk.png` | sampled at T=1.15: pass@1 (dotted) vs pass@32 (solid) on **BEq+**, same arms — sharpening vs capability |
-| `arm_trajectories_passk_typecheck.png` | the same, on the **compiling** verdict. pass@32 is saturated (84.7–100%) so it cannot rank arms; pass@1 spans 40.8–94.6% and is where type-check RL's gain actually shows |
-| `passk.png` | pass@k curves for the SFT baselines and every arm |
-| `runtime.png` | seconds per GRPO step and cumulative GPU-hours, per reward, against the measured **Lean-free floor** (~32 s). Lean is 97% of a `gated` step and 1% of a `typecheck` step |
-| `retention_gain.png` | what each arm kept vs converted, with the 4.9–7.3% ceiling band |
-| `proxy_vs_semantic.png` | type-check on x, BEq+ on y: reward hacking as a trajectory |
-
-Style follows Interplay-LM-Reasoning (arXiv:2512.07783), recovered by sampling
-their published figure — they use **Okabe-Ito**. The series order in
-`scripts/figstyle.py` is validated for colourblind separation and must not be
-reshuffled; see that file's header.
-
----
-
-## Layout
-
-```
-reward/
-  beq_plus.py       BEq+ behind a persistent Lean REPL
-  reward_fn.py      the reward zoo
-  similarity.py     GTED-style structural + symbol similarity
-  lean_tool.py      verl function_tool: gives the policy Lean's real diagnostics
-configs/run_grpo.sh GRPO entrypoint; every constant's header records the failure
-                    that produced it
-scripts/
-  prepare_dataset.py / prepare_sft_dataset.py / prepare_midtrain_dataset.py
-  generate_rollouts.py / score_rollouts.py       rollout + offline BEq+ scoring
-  build_rft_dataset.py / make_difficulty_subset.py / make_starved_subset.py
-  calibrate_placebo.py                           fit the control to a policy
-  evaluate_checkpoints.py / compare_arms.py / select_checkpoint.py
-  passk_report.py / probe_gradient_signal.py
-hpc/*.slurm         SLURM jobs; cluster fixes baked in (see hpc/NARVAL_NOTES.md)
+    POOL["scripts/pool/make_difficulty_subset.py<br/>prompts at 1-7/8 = the learnable window"]
+    CKPT --> POOL --> GRPO
 ```
 
----
+Two properties of that loop drive most of the design:
 
-## Quickstart
+- **Lean dominates a GRPO step.** A BEq+ arm spends ~97% of each step in the
+  verifier; the verifier is the bottleneck, not the trainer.
+- **A rollout group scoring 0/k or k/k contributes exactly zero.** GRPO
+  subtracts the group mean, so only *spread within a group* produces gradient.
+  That is why the reward ladders and the curated prompt pool both exist.
+
+## Setup
 
 ```bash
-make setup                                   # env + verl + Mathlib4 + model + data
-source hpc/cc_env.sh                         # never run bare `python`
-
-# 1. splits
-python scripts/prepare_sft_dataset.py --n-train 8000
-python scripts/prepare_dataset.py --out-dir data_3b --n-val 1000 --n-train 4300
-
-# 2. SFT baseline, then evaluate and pick the best epoch
-sbatch hpc/sft_3b.slurm
-sbatch hpc/eval_3b_sft.slurm
-
-# 3. measure the group geometry and FIT THE CONTROL to this policy
-sbatch hpc/rollouts_3b.slurm                 # also a go/no-go gate
-
-# 4. arms
-sbatch --export=ALL,ARM=gated   hpc/grpo_3b.slurm
-sbatch --export=ALL,ARM=placebo hpc/grpo_3b.slurm
-
-# 5. paired comparison
-sbatch --export=ALL,RUN=rl3b_gated,N_EVAL=1000 hpc/grpo_eval.slurm
-python scripts/compare_arms.py rl3b_gated rl3b_v2_placebo
+make setup          # local: venv + verl + Lean/Mathlib + model + data
+make setup-hpc      # Compute Canada / DRAC
+make check-toolchain
 ```
 
-Adding a reward is one function in `reward/reward_fn.py` returning
-`{"score": float, ...diagnostics}` and one case in `hpc/grpo_3b.slurm`.
+On a cluster, source the environment before anything else. Never run bare
+`python`:
 
----
+```bash
+source hpc/cc_env.sh
+```
 
-## Stack
+## Train
 
-| piece | choice | why |
+Local, single GPU:
+
+```bash
+make smoke                 # ~1 step, proves the loop runs
+make sft                   # SFT from the base model
+make submit ARM=gated STEPS=90
+```
+
+On SLURM, one arm is one job. Arms differ in **one thing at a time**.
+`hpc/submit.sh` wraps `sbatch` and names the job `<task>_<model>-<arm>_<dataset>`
+before it queues, so `squeue` is readable while jobs are still pending:
+
+```bash
+bash hpc/submit.sh hpc/grpo.slurm ARM=outcome DATA_DIR=data_locolib
+#   -> grpo_3b-outcome_locolib
+```
+
+Plain `sbatch` still works; the job then renames itself when it starts.
+
+```bash
+# SFT, then pick the best epoch by validation BEq+ rather than assuming the last.
+sbatch --export=ALL hpc/sft.slurm
+sbatch --export=ALL hpc/eval_sft.slurm
+
+# Optional: continued pre-training on Lean statements, before the task SFT.
+sbatch --export=ALL hpc/midtrain.slurm
+
+# Curate the prompt pool, then train an arm on it.
+sbatch --export=ALL,SLICE=1 hpc/score_pool.slurm
+sbatch --export=ALL hpc/build_edge_pool.slurm
+sbatch --export=ALL,ARM=gated_edge,SERIES_TAG=lr6,\
+ACTOR_LR=1e-6,LR_WARMUP_RATIO=0.05,TOTAL_STEPS=90 hpc/grpo.slurm
+
+# Evaluate every checkpoint of a run against the pinned validation slice.
+sbatch --export=ALL,RUN=<run name>,N_EVAL=1000 hpc/grpo_eval.slurm
+
+# pass@k for one checkpoint (capability, as opposed to pass@1 sharpening).
+sbatch --export=ALL,CKPT_DIR=checkpoints/merged/<label>,LABEL=<label> hpc/passk.slurm
+```
+
+Point the same jobs at another corpus by overriding the knobs:
+
+```bash
+sbatch --export=ALL,DATA_DIR=data_other,SFT_DIR=sft_other,SFT_LABEL=sftother,\
+TAG=other,TRAIN_FILE=$PWD/data_other/sft.parquet hpc/sft.slurm
+```
+
+Runs are chained 11h chunks. `resume_mode=auto` picks up from the last
+checkpoint, so chain with `--dependency=afterany:` (**afterany**, not afterok:
+a walltime kill is the expected end of a chunk, not a failure).
+
+Compare and select:
+
+```bash
+python scripts/eval/compare_arms.py <arm a> <arm b>
+python scripts/eval/select_checkpoint.py --baseline <sft label>
+python scripts/figures/make_figures.py
+```
+
+## Rewards
+
+One outcome vocabulary, six rungs, defined once in
+[reward/reward.py](reward/reward.py). An arm is a **table over those outcomes**,
+so arms differ only in what they pay, never in how an outcome is decided.
+
+| outcome | meaning for a signature | `outcome` arm | `gated` | `typecheck` |
+|---|---|---|---|---|
+| `no_answer` | nothing usable, or the scorer failed | 0.00 | 0.00 | 0.00 |
+| `no_elaborate` | Lean rejected it | 0.05 | 0.00 | 0.00 |
+| `incomplete` | elaborates, no gold match (**the dead band**) | 0.15 | 0.00 | 1.00 |
+| `incomplete_faithful` | BEq+ matches the gold | 0.50 | 1.00 | 1.00 |
+
+`gated` additionally pays 0.25 when BEq+ proves one direction only, a partial
+match the table has no row for.
+
+Two rows of that table (`compiles`, `solved`) exist for proof generation and are
+unreachable here, since a signature has no proof body to finish.
+
+**`gated` is the default, and pays nothing for elaboration.** The gate is
+implicit: nothing that fails to elaborate can prove in either direction. The
+flat floor is the point, because under GRPO a group with no semantic signal
+produces zero advantage, so any term that varies inside such a group becomes the
+only climbable signal there and the policy learns to farm it. `outcome` pays a
+graded reward below BEq+ and so does not have that property; run it **against**
+`gated`, not in place of it.
+
+## Repo Breakdown
+
+`scripts/` is grouped by pipeline stage. Anything from a closed investigation or
+a one-off lives in `scripts/misc/`, so the live path is what you see first.
+
+### Data
+
+| file | what it does |
+|---|---|
+| `scripts/data/prepare_dataset.py` | Source corpus to verl parquet: RL and val splits, content-disjoint. Dedupes on the statement, not the id; ignoring that measured 93.4% content overlap across distinct ids and a 34.9pp generalisation gap. |
+| `scripts/data/prepare_sft_dataset.py` | The same corpus as an SFT `messages` parquet. Writes an explicit system turn, because verl's SFT loss mask only covers the system turn and a lone assistant message trains on the tokenizer's injected default. |
+| `scripts/data/prepare_midtrain_dataset.py` | A mid-training corpus of bare Lean statements. |
+| `scripts/data/validate_midtrain_corpus.py` | Elaborates a sample of that corpus. Many library declarations lean on surrounding `variable` lines and open namespaces, so they do not stand alone; this measures how many do. |
+| `scripts/data/prepare_locolib*.py` | The same two builders for a second corpus. |
+
+### Train
+
+| file | what it does |
+|---|---|
+| `scripts/train/run_sft.sh` | SFT and mid-training. Wraps `verl.trainer.sft_trainer`. |
+| `configs/run_grpo.sh` | GRPO entrypoint. Wraps `verl.trainer.main_ppo` and points it at one `compute_score_*`. Read the header before tuning: each constant records the failure that set it. |
+| `reward/reward.py` | The outcome vocabulary and the per-arm reward tables. One definition of what a rollout is worth. |
+| `reward/reward_fn.py` | The verl `custom_reward_function` entry points, one per arm, each delegating to `reward.py`. All carry `@_never_raises`, because a reward that raises loses the JOB, not the rollout. |
+| `reward/beq_plus.py` | The verifier. The vendored BEq+ cascade behind a persistent Lean REPL, plus `typecheck_ex`. All Lean traffic goes through `_run()`, which restarts a dead REPL and clears the env cache. |
+
+### Curating the RL pool
+
+Optional, and the part that has moved results most: holding the prompt pool
+fixed changed an outcome more than changing the reward did.
+
+| file | what it does |
+|---|---|
+| `scripts/pool/generate_rollouts.py` | Sample k rollouts per prompt from a checkpoint, unscored. |
+| `scripts/pool/score_rollouts.py` | Score them with BEq+ across parallel Lean REPLs. Resumable, flushed per result. |
+| `scripts/pool/leanpool.py` | The worker-pool machinery those two share. A `Pool` hangs forever if a worker dies holding a task, so the iterator is driven by hand with a per-result timeout. |
+| `scripts/pool/make_difficulty_subset.py` | Keep only prompts the policy gets 1 to k-1 of k right. A group scoring 0/k or k/k contributes exactly zero gradient under GRPO. Joins on prompt TEXT, never position. |
+
+### Eval
+
+| file | what it does |
+|---|---|
+| `scripts/eval/evaluate_checkpoints.py` | Generate with vLLM, score with BEq+, write `results/eval_<label>-step<N>_n<n>.json` with a `per_example` array. |
+| `scripts/eval/select_checkpoint.py` | Pick the best SFT checkpoint by validation BEq+, with the paired test that says whether the winner is actually ahead. |
+| `scripts/eval/compare_arms.py` | Arm vs arm at matched steps, paired McNemar exact. |
+| `scripts/eval/passk_report.py` | pass@k curve from a scored k-sample file. |
+| `scripts/eval/evalio.py` | Canonical readers for cached eval and pass@k JSON. Recomputes rates on a prefix rather than trusting a stored `*_rate`. `RUN_PREFIX` and `BASELINE_LABEL` are env-overridable. |
+
+`compare_arms.py` and `select_checkpoint.py` each carry their own McNemar and
+depend on nothing else in `scripts/`.
+
+### Figures
+
+| file | what it does |
+|---|---|
+| `scripts/figures/make_figures.py` | Regenerate everything in `results/figures/`. |
+| `scripts/figures/figstyle.py` | Shared style. `ARM_STYLE` is the registry: an arm missing from it is silently absent from every figure. |
+| `scripts/figures/fig_gated_vs_typecheck.py` | The two-arm presentation cut. Warns, loudly, about any arm it cannot draw. |
+| `scripts/figures/read_train_metrics.py` | verl's per-step training metrics for an arm. |
+| `scripts/figures/make_arms_table.py` | Regenerate the results table at the top of `arms.md`. |
+
+### Cluster
+
+Every job sources `hpc/job_prelude.sh` first and names no model, size or corpus.
+
+| file | what it does |
+|---|---|
+| `hpc/setup_cc.sh`, `hpc/lean_cache_and_build.sh` | One-time setup: venv, then Mathlib's prebuilt olean cache. The hard part of standing this up. |
+| `hpc/cc_env.sh` | Module stack, venv, HF and Lean cache paths. Source before anything. |
+| `hpc/job_prelude.sh` | Shared prelude: env, `unset ROCR_VISIBLE_DEVICES`, `stage_mathlib()`, and the naming knobs. |
+| `hpc/sft.slurm`, `hpc/eval_sft.slurm` | SFT, and the eval sweep that picks the best epoch. |
+| `hpc/midtrain.slurm` | Continued pre-training on Lean statements, before the task SFT. Runs the corpus gate first. |
+| `hpc/grpo.slurm`, `hpc/grpo_eval.slurm` | One arm per job, and the eval sweep over its checkpoints. |
+| `hpc/score_pool.slurm`, `hpc/build_edge_pool.slurm` | Score a pool slice, then build the edge-of-competence pool. |
+| `hpc/passk.slurm` | pass@k for one checkpoint. |
+
+
+## How the files connect
+
+```mermaid
+flowchart TB
+    HF["source corpus<br/>informal + gold Lean"]
+    PD["data/prepare_dataset.py"]
+    PS["data/prepare_sft_dataset.py"]
+    HF --> PD
+    HF --> PS
+
+    PS --> RS["train/run_sft.sh<br/>verl sft_trainer"]
+    RS --> SFTCK[("SFT checkpoints")]
+    SFTCK --> SEL["eval/select_checkpoint.py<br/>best by val BEq+"]
+
+    subgraph POOL["curating the RL pool (optional)"]
+        direction TB
+        GR["pool/generate_rollouts.py"]
+        SR["pool/score_rollouts.py"]
+        LP["pool/leanpool.py"]
+        MD["pool/make_difficulty_subset.py"]
+        GR --> SR --> MD
+        LP -. worker pool .-> SR
+    end
+
+    SEL --> GR
+    PD --> GR
+    MD --> EDGE[("train_edge.parquet")]
+
+    RG["configs/run_grpo.sh<br/>verl main_ppo"]
+    SEL --> RG
+    PD --> RG
+    EDGE --> RG
+
+    RG --> RF["reward/reward_fn.py<br/>compute_score_*"]
+    RF --> RR["reward/reward.py<br/>outcomes + arm tables"]
+    RR --> RF
+    RF --> BP["reward/beq_plus.py<br/>Lean REPL + BEq+"]
+    BP --> RF
+    RF --> RG
+    RG --> RLCK[("RL checkpoints")]
+
+    EC["eval/evaluate_checkpoints.py"]
+    PK["eval/passk_report.py"]
+    RLCK --> EC
+    SFTCK --> EC
+    BP -. scores .-> EC
+    GR --> PK
+
+    EC --> JSON[("results/eval_*.json")]
+    PK --> PKJ[("results/passk_*.json")]
+
+    JSON --> CA["eval/compare_arms.py<br/>paired McNemar"]
+    JSON --> SEL
+    JSON --> IO["eval/evalio.py"]
+    PKJ --> IO
+    IO --> MF["figures/make_figures.py<br/>+ figstyle.py"]
+    MF --> FIGS[("results/figures/")]
+```
+## Documentation
+
+| file | what |
+|---|---|
+| [arms.md](arms.md) | every reward, the results table, related work |
+| [datasets.md](datasets.md) | the corpora, and the OOD / mid-training case |
+| [logook.md](logook.md) | the running lab notebook, newest entry first |
+| [CLAUDE.md](CLAUDE.md) | conventions and the traps that have actually cost time |
+| `hpc/NARVAL_NOTES.md` | cluster gotchas; read before running anything |
+
+## Where things stand
+
+The current series runs a 3B instruct-tuned coder model on a Lean-Workbook
+split. Its SFT baseline is **39.4% BEq+ / 76.7% type-check** greedy at n=1000.
+
+The learning rate was the dominant variable. `ACTOR_LR` defaulted to `1e-5`, ten
+times the GRPO standard, and every early arm decayed under it. At **1e-6 with
+warmup**, the gated arm on the curated pool reaches **42.0% BEq+ at step 90
+(retention 96.7%, p=0.0004)**, the first arm to beat SFT.
+
+**But pass@32 is flat** (55.5% against a 55.2% baseline, p=1.0). The LR fix
+stopped RL destroying capability; it did not add any. The gain is concentration
+of existing ability.
+
+**And the reward is not what produced it.** Run pool-controlled, with the same
+pool and LR on both sides so the reward is the only variable, BEq+ and the
+known-exploitable type-check reward are indistinguishable at every one of nine
+steps:
+
+| step 90 | BEq+ | compiles |
 |---|---|---|
-| RL framework | [verl](https://github.com/volcengine/verl) | native GRPO, pluggable `custom_reward_function`, colocated FSDP + vLLM |
-| algorithm | GRPO, full-parameter | no LoRA — see `configs/run_grpo.sh` |
-| policy | `Qwen2.5-Coder-3B-Instruct` | code-pretrained; 0.5B series kept for cross-scale paired tests |
-| data | [`internlm/Lean-Workbook`](https://huggingface.co/datasets/internlm/Lean-Workbook) | 13,297 unique NL↔Lean4 pairs after dedup |
-| Lean | Mathlib4 @ `v4.8.0-rc1` | pinned to Lean-Workbook's target toolchain |
+| gated, curated pool | 42.0% | 79.8% |
+| type-check, same pool | 42.0% | 82.3% |
 
-Compute notes, including why every job stages Mathlib to node-local NVMe, are in
-[`hpc/NARVAL_NOTES.md`](hpc/NARVAL_NOTES.md).
+Paired, 25 wins each, p=1.0; no step separated by more than 0.7pp. An earlier
++3.2pp read as a reward effect was the **prompt pool**, not the reward. At this
+scale the semantic reward is not yet buying anything over the cheap proxy, and
+the proxy costs a small fraction of the Lean time.
 
----
 
-## Status
+Each SLURM job wraps one box: `sft` and `midtrain` wrap `run_sft.sh`, `grpo`
+wraps `run_grpo.sh`, `eval_sft` and `grpo_eval` wrap `evaluate_checkpoints.py`,
+`score_pool` wraps the rollout and scoring pair, `build_edge_pool` wraps
+`make_difficulty_subset.py`, and `passk` wraps `passk_report.py`.
 
-`sft3b-step93` = **41.2% BEq+ / 79.0% type-check** on the pinned 400 slice. No RL
-arm has *beaten* it; `gated` **ties** it while the calibrated control loses half
-the baseline's correct answers. Running: `selfprove`, `guided`, `gated_edge`.
+## Storage
 
-Full history, including the negative results and the bugs that produced them, is
-in [`logook.md`](logook.md).
+`checkpoints/` and `repos/` are **symlinks into `$SCRATCH`**. `/home` is 50GB and
+cannot hold them; a truncated optimizer write once killed a run at 46/50GB.
+Checkpoints run tens of GB each with optimizer state, so budget accordingly.

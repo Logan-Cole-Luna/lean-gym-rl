@@ -8,7 +8,7 @@
 # `make model` / `make dataset` work without manually loading modules first.
 #
 # Usage (via Makefile):
-#   bash hpc/python_login.sh scripts/prepare_dataset.py
+#   bash hpc/python_login.sh scripts/data/prepare_dataset.py
 #   bash hpc/python_login.sh -c "import torch; print(torch.__version__)"
 # ============================================================
 

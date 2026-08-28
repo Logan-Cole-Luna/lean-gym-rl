@@ -5,8 +5,6 @@
 # Select the reward function (see reward/reward_fn.py for the full argument):
 #   REWARD_FN_NAME=compute_score_gated           (DEFAULT: semantic signal only)
 #   REWARD_FN_NAME=compute_score_guided          (similarity-shaped; the arm that regressed)
-#   REWARD_FN_NAME=compute_score_shaped          (graded BEq+ ladder, no similarity)
-#   REWARD_FN_NAME=compute_score_composite       (the paper's 0.1*tc + 0.9*BEq+)
 #   REWARD_FN_NAME=compute_score_typecheck_only  (ablation baseline: exploitable)
 #
 # WHY THESE DEFAULTS (all measured -- results/compare.txt, 400 val examples)
@@ -146,7 +144,38 @@ log_prob_max_token_len_per_gpu=${LOG_PROB_MAX_TOKEN_LEN_PER_GPU:-896}
 use_fused_kernels=${USE_FUSED_KERNELS:-False}
 fused_kernels_backend=${FUSED_KERNELS_BACKEND:-torch}
 
+# THE LEARNING RATE IS 10x THE GRPO STANDARD AND THAT IS NOT DELIBERATE.
+# verl's own default, TRL's GRPOConfig, and DeepSeek's GRPO all use 1e-6. Every
+# 3B arm in results/ ran at this 1e-5 -- confirmed by `'lr': 1e-05` in the config
+# dump of logs/grpo_3b_1586330.out and 1586332.out. logook.md's next-step note
+# ("try 1e-6 -> 3e-7") was written assuming the LR was ALREADY 1e-6; it was not.
+#
+# Combine that with train_batch_size=16 (32x smaller than the 512-prompt batches
+# GRPO is normally run at), ~46% informative groups, and ppo_epochs=1, and each
+# Adam update is a full-size parameter step driven by roughly 7 prompts. That is
+# the mechanism behind the placebo arm being CATASTROPHIC (39.4% -> 13.0% BEq+)
+# rather than inert: a zero-information reward should do approximately nothing
+# under correct regularisation.
+#
+# DO NOT change this default without re-running the whole comparison set -- arms
+# at different LRs are not comparable. Pass ACTOR_LR=1e-6 and a new SERIES_TAG.
 actor_lr=${ACTOR_LR:-1e-5}
+# verl's optim defaults are lr_warmup_steps_ratio=0.0 and
+# lr_scheduler_type=constant (repos/verl/verl/trainer/config/optim/fsdp.yaml), so
+# step 1 lands at the full LR on a 16-prompt batch. That matches the observation
+# that EVERY arm is already below the SFT baseline by step 10, including the ones
+# that later recover. The reference autoformalization-GRPO implementation we
+# compared against (sorgfresser/conjectureextraction) warms up over 1000 steps,
+# i.e. its first updates are effectively LR 0. 0.05 of a 90-step run is ~5 steps.
+#
+# This IS honoured under lr_scheduler_type=constant -- verl branches to
+# get_constant_schedule_with_warmup(num_warmup_steps=...) either way
+# (repos/verl/verl/workers/engine/fsdp/transformer_impl.py:502-503), and warmup
+# steps are derived from trainer.total_training_steps at runtime. It also
+# survives the chained afterany chunks: the scheduler state is written into the
+# `extra` shard (fsdp_checkpoint_manager.py:356-358), which every arm already
+# saves, so warmup does not restart on each resume.
+lr_warmup_ratio=${LR_WARMUP_RATIO:-0.0}
 
 # ---- the anti-drift settings (see "Why these defaults" below) ----
 # KL anchor. Was 0.001, which let measured actor/kl_loss reach 0.5 over 200
@@ -241,8 +270,19 @@ validation_data_dir=${VALIDATION_DATA_DIR:-}
 # agent-loop workers buy little here while costing a full Mathlib each.
 agent_loop_workers=${AGENT_LOOP_WORKERS:-2}
 
+# WHERE THE FILE LOGGER WRITES, AND WHY IT CARRIES THE JOB ID.
+# FileLogger opens its path with mode "wb" (verl/utils/tracking.py:431), which
+# TRUNCATES. Arms here run as chained afterany chunks with resume_mode=auto, so
+# a single per-experiment path would have chunk 2 wipe chunk 1's metrics on
+# restart -- silently, since the run itself is fine. One file per SLURM job id
+# instead; read a whole arm by globbing the prefix and sorting on "step".
+# Falls back to a timestamp when run outside SLURM.
+export VERL_FILE_LOGGER_ROOT="${VERL_FILE_LOGGER_ROOT:-${REPO_ROOT}/results/train_metrics}"
 project_name=${PROJECT_NAME:-beqplus_rl_poc}
 experiment_name=${EXPERIMENT_NAME:-qwen25_coder_0_5b_${reward_fn_name}}
+mkdir -p "${VERL_FILE_LOGGER_ROOT}/${project_name}"
+export VERL_FILE_LOGGER_PATH="${VERL_FILE_LOGGER_PATH:-${VERL_FILE_LOGGER_ROOT}/${project_name}/${experiment_name}.${SLURM_JOB_ID:-$(date +%Y%m%d_%H%M%S)}.jsonl}"
+echo "[run_grpo] step metrics -> ${VERL_FILE_LOGGER_PATH}"
 # ---- end user-adjustable ----
 
 # Fail fast, before Ray/vLLM spin up, if either token-budget knob can't
@@ -298,6 +338,7 @@ MODEL=(
 
 ACTOR=(
     actor_rollout_ref.actor.optim.lr=${actor_lr}
+    actor_rollout_ref.actor.optim.lr_warmup_steps_ratio=${lr_warmup_ratio}
     actor_rollout_ref.actor.ppo_mini_batch_size=${ppo_mini_batch_size}
     actor_rollout_ref.actor.use_dynamic_bsz=True
     actor_rollout_ref.actor.ppo_max_token_len_per_gpu=${ppo_max_token_len_per_gpu}
@@ -346,14 +387,28 @@ TRAINER=(
     # replaces such groups instead of crashing.
     trainer.v1.sampler.sync_refill_failed_groups=True
     trainer.balance_batch=True
-    trainer.logger='["console"]'
+    # STEP METRICS GO TO A FILE, NOT JUST STDOUT.
+    # The console backend prints one `step:N - key:val - ...` line per step from
+    # inside the TaskRunner Ray actor. Ray's log forwarding dedups and drops
+    # those under load, which is why most arms have no readable reward, KL,
+    # entropy or clip_ratio trace at all and plot_results.py had nothing to
+    # parse. verl's `file` backend writes {"step": N, "data": {...}} JSONL
+    # unbuffered (verl/utils/tracking.py:419-435) -- structured, complete, and
+    # immune to whatever Ray does to stdout. Console stays on for live eyeballs.
+    trainer.logger='["console","file"]'
     trainer.project_name=${project_name}
     trainer.experiment_name=${experiment_name}
     trainer.n_gpus_per_node=${NGPUS_PER_NODE}
     trainer.nnodes=1
     trainer.val_before_train=False
     trainer.save_freq=${save_freq}
-    # Each checkpoint is ~6.1GB (FSDP shards + optimizer state), so a 100-step
+    # MEASURED 2026-08-27: ~24GB per checkpoint at 3B WITHOUT optimizer state,
+    # ~50GB with it (save_contents now includes `optimizer` so chunked resumes do
+    # not cold-start Adam). The 6.1GB figure below was from the 0.5B era and is
+    # 4x low for this model; it is left here because the disk-full incident it
+    # records is real. At SAVE_FREQ=10 a 150-step run keeps 15 checkpoints, so
+    # budget ~750GB PER ARM. Check `df -h /scratch` before starting a long run.
+    # Each 0.5B checkpoint was ~6.1GB (FSDP shards + optimizer state), so a 100-step
     # run saving every 10 steps writes 61GB. An earlier set of runs filled the
     # disk to 100% this way. Keep only the most recent few -- the merged HF
     # weights under checkpoints/merged/ (954MB) are what evaluation reads, and
