@@ -1,28 +1,6 @@
 #!/usr/bin/env python3
 """Build SFT / RL / val splits from LoCoLib (../PartitionAndProve).
 
-WHY A SECOND CORPUS. Lean-Workbook is competition problems; LoCoLib is Mathlib
-itself, LLM-informalized. Same task (informal -> formal statement), different
-surface context. That makes it *contextually out-of-distribution* for a policy
-SFT'd only on Lean-Workbook, which is exactly the axis the Interplay paper
-(arXiv:2512.07783) measures.
-
-WHAT IS AND IS NOT USABLE, measured rather than assumed:
-
-  labelled, has gold formal_statement, source=mathlib   18,757   <- the only usable rows
-    train_algebraic_structures  10,151
-    train_foundations_logic      5,911
-    train_number_theory          2,695
-  unlabelled, EMPTY formal_statement, source=mizar      18,081   <- no gold, unusable for BEq+
-  val_*_unlabelled, EMPTY formal_statement              771      <- no gold, unusable for BEq+
-  LoCoLib_distilled                                     18,501   <- 100% uuid SUBSET of the
-                                                                    labelled train files
-
-So **LoCoLib ships no usable BEq+ validation set**: the files named `val_*` carry
-no gold, and `LoCoLib_distilled` is a subset of train (18,501/18,501 uuids
-overlap), so validating on it would be training on the eval set. We carve our own
-val slice here, the same way `prepare_dataset.py` does for Lean-Workbook.
-
 THE PREAMBLE IS THE POINT. Every LoCoLib gold ships its own context (imports,
 `open`, `variable`, `namespace`) before the theorem. Mid-training on raw Mathlib
 previously failed because only ~2.3% of declarations elaborate standalone; these
@@ -31,10 +9,6 @@ the theorem, which matches how `reward/beq_plus.py` already works: the header
 becomes a cached Lean env, the theorem is what gets scored.
 
     python scripts/data/prepare_locolib.py --out-dir data_locolib
-
-NOTE this does not verify the statements elaborate under OUR Mathlib
-(v4.8.0-rc1; LoCoLib targets 4.23.0). SFT does not need Lean, so it can proceed
-either way. RL cannot: check that the golds elaborate before committing to RL.
 """
 import argparse
 import json
@@ -46,12 +20,6 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import _paths  # noqa: F401  -- repo root + every stage folder
-
-# The Lean-Workbook path and the LoCoLib path use the SAME rule for where a
-# proof body starts, so they use the same function. prepare_locolib_midtrain.py
-# imports it from here, which meant a fix would have reached two of three
-# consumers.
-from prepare_sft_dataset import strip_proof
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_SRC = PROJECT_ROOT.parent / "PartitionAndProve" / "datasets_training" / "LoCoLib"
@@ -82,6 +50,22 @@ INSTRUCTION_PROOF = (
 )
 
 _THEOREM_RE = re.compile(r"^\s*(theorem|lemma)\s", re.M)
+
+
+def strip_proof(formal_statement: str) -> str:
+    """Return just the theorem signature, dropping `:= by sorry` / any proof.
+
+    The RL prompt asks for "signature only, no proof", and BEq+ scores the
+    statement, so the SFT target must match that or we would be training the
+    model to emit something the reward then penalises.
+    """
+    s = formal_statement.strip()
+    # `:=` at the top level starts the proof/definition body. rfind matches how
+    # reward/beq_plus.py's vendored BEq+ code locates the conclusion.
+    idx = s.rfind(":=")
+    if idx > 0:
+        s = s[:idx].strip()
+    return s
 
 
 def split_context_and_theorem(formal: str) -> tuple[str, str] | None:
@@ -133,28 +117,10 @@ def load(src: Path) -> tuple[list[dict], Counter]:
             except Exception:
                 dropped["unparseable_json"] += 1
                 continue
-            # `formal_statement` is ALWAYS proof-stripped -- every record ends
-            # exactly at `:=` with nothing after, confirmed against source.
-            # `formal_proof` carries the real proof; everything BEFORE its `:=`
-            # is byte-identical to `formal_statement`, so preferring it changes
-            # nothing about the signature/context/dedup key, only recovers the
-            # proof body. Measured: assuming they were duplicate fields (they
-            # looked identical in a single spot-checked sample, which just
-            # hadn't been printed far enough to reach the `:=`) silently built
-            # every SFT/RL target in `--emit-proof` mode from truncated text --
-            # elaboration failed with "unexpected end of input" on 8/8 sampled
-            # failures, at any Mathlib version, because the text had no proof
-            # to elaborate at all.
             formal_proof_field = (r.get("formal_proof") or "").strip()
             formal_stmt_field = (r.get("formal_statement") or "").strip()
             formal = formal_proof_field or formal_stmt_field
             informal = (r.get("informal_statement") or "").strip()
-            # Only read, never filtered on here: `load()` must return the SAME
-            # row population regardless of --emit-proof, so the domain-stratified
-            # split in main() stays byte-identical between the signature-only and
-            # proof-pair runs (comparable results on identical problems). A row
-            # missing informal_proof is dropped later, in main()'s per-item loop,
-            # only when --emit-proof actually needs it.
             informal_proof = (r.get("informal_proof") or "").strip()
             if not formal or not informal:
                 dropped["missing_field"] += 1
@@ -182,11 +148,6 @@ def load(src: Path) -> tuple[list[dict], Counter]:
                 "context": clean_context(context),
                 "signature": signature,
                 # The theorem HEAD to the end of the record, proof included
-                # verbatim (source is `formal_statement`, which for LoCoLib's
-                # labelled/mathlib rows is identical to `formal_proof` -- a
-                # real, unstripped Mathlib proof, not a placeholder). Unlike
-                # `gold_full` this carries no surrounding context/imports, the
-                # same convention `signature` already follows.
                 "theorem_with_proof": theorem,
                 "gold_full": formal,
             })
@@ -200,19 +161,9 @@ def main() -> None:
     ap.add_argument("--n-val", type=int, default=1000)
     ap.add_argument("--n-rl", type=int, default=6000)
     ap.add_argument("--seed", type=int, default=0)
-    # LENGTH FILTERS. verl's SFT trainer RAISES on an over-long row rather than
-    # truncating (multiturn_sft_dataset.py: "sequence_length=... is larger than
-    # max_length"), so an unfiltered corpus kills the job mid-epoch. The RL side
-    # has its own, smaller cap: run_grpo.sh sets max_prompt_length=768.
-    # Measured on this corpus: SFT median 305 tokens, exactly 1 row over 1024.
     ap.add_argument("--max-tokens", type=int, default=1024)
     ap.add_argument("--max-prompt-tokens", type=int, default=768)
     ap.add_argument("--tokenizer", default="/scratch/logan03/ai4math_training_models/qwen2.5-coder-3b-instruct")
-    # Builds the theorem+proof-pair variant instead: prompts feed BOTH
-    # informal_statement and informal_proof and ask for a complete Lean
-    # theorem WITH its proof; targets are `theorem_with_proof` (unstripped)
-    # instead of `signature`. Written to *_proof.parquet, alongside (never
-    # overwriting) the signature-only files -- see the module docstring.
     ap.add_argument("--emit-proof", action="store_true",
                     help="build the theorem+proof-pair splits (data_locolib/*_proof.parquet) "
                          "instead of the signature-only ones")
@@ -252,14 +203,6 @@ def main() -> None:
 
     from transformers import AutoTokenizer
     tok = AutoTokenizer.from_pretrained(args.tokenizer)
-    # NO SYSTEM TURN. `prepare_dataset.py` and `prepare_sft_dataset.py` both emit
-    # a bare user turn, and `evaluate_checkpoints.py` reads `prompt[0]["content"]`.
-    # An earlier version of this file added a system turn, so element 0 was the
-    # system text and EVERY eval example got the identical prompt "You are an
-    # expert in Lean 4 and Mathlib.". The model duly produced one identical
-    # theorem for all 999 rows: 100% type-check and 0% BEq+ at step 46, 0% / 0%
-    # after. Match the convention; do not reintroduce the system turn here
-    # without also fixing every consumer.
 
     def n_tokens(msgs) -> int:
         return len(tok(tok.apply_chat_template(msgs, tokenize=False)).input_ids)
@@ -279,11 +222,6 @@ def main() -> None:
     for name, items in splits.items():
         kept, over_full, over_prompt, missing_proof = [], 0, 0, 0
         for r in items:
-            # Only relevant in --emit-proof mode: a row's split membership is
-            # decided above, identically regardless of mode (see load()), so
-            # this is the ONLY place a row can drop out because it lacks an
-            # informal_proof -- keeping the two runs' splits comparable except
-            # for this narrow, counted difference.
             if args.emit_proof and not r["informal_proof"]:
                 missing_proof += 1
                 continue
@@ -305,9 +243,6 @@ def main() -> None:
             print(f"[locolib] {name}: dropped {over_full} over {args.max_tokens} tok"
                   + (f", {over_prompt} prompts over {args.max_prompt_tokens}" if over_prompt else "")
                   + (f", {missing_proof} missing informal_proof" if missing_proof else ""))
-        # Write the filtered rows BACK. This used to rebind a local, leaving
-        # splits[name] holding the pre-filter list -- so the disjointness check
-        # at the end was run over rows that never reached the parquet.
         items, prompts = (list(x) for x in zip(*kept)) if kept else ([], [])
         splits[name] = items
         if name == "sft":

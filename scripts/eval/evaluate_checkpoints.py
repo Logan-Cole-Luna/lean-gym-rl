@@ -18,10 +18,6 @@ comparison the PoC is actually after:
     typecheck_only @ step 30      ...         ...
     composite      @ step 30      ...         ...
 
-The paper's hypothesis predicts the typecheck-only arm drives type-check rate up
-while BEq+ stays flat (reward hacking: valid Lean that means the wrong thing),
-whereas the composite arm moves BEq+ too.
-
 Usage:
     python scripts/eval/evaluate_checkpoints.py \
         --checkpoint base \
@@ -187,25 +183,12 @@ def main() -> None:
     import pandas as pd
 
     _val = pd.read_parquet(args.val_parquet)
-    # FAIL rather than silently produce a file whose name claims more examples
-    # than it holds. `.head(n)` returns fewer rows when the parquet is smaller,
-    # and the caller names the output `..._n{N_EVAL}.json` from the REQUEST, so
-    # a 400-row parquet with --n-eval 1000 used to write an `_n1000` file
-    # containing 400 records -- which any later analysis keyed on n would
-    # silently mis-pair. This bites easily because hpc/grpo_eval.slurm defaults
-    # VAL_PARQUET to the 400-row data/val.parquet.
     if args.n_eval > len(_val):
         raise SystemExit(
             f"--n-eval {args.n_eval} exceeds {args.val_parquet} ({len(_val)} rows). "
             f"Pass --val-parquet matching the corpus's row count, or lower --n-eval.")
     df = _val.head(args.n_eval)
-    # Take the LAST user turn, not element 0. Element 0 is the user turn for
-    # every dataset built by prepare_dataset.py, but a parquet that carries a
-    # system turn would silently hand the SAME system string to every example.
-    # That failure is invisible in the metrics -- it looks like a collapsed
-    # model, not a broken harness -- so it is worth the two extra lines.
-    # (Observed: eval_sft3blocolib-* scored 999 rows on the string "You are an
-    # expert in Lean 4 and Mathlib.")
+    # Take the LAST user turn, not element 0.
     def _user_turn(row):
         users = [t for t in row if t.get("role") == "user"]
         if not users:
@@ -275,7 +258,7 @@ def main() -> None:
             n_beq += rec["beq_plus"]
             # Per-direction flags are recorded because the aggregate rates cannot
             # distinguish "drifted toward weaker statements" from "drifted toward
-            # unrelated ones" -- and the two call for opposite fixes.
+            # unrelated ones"
             per_example.append(rec)
             if args.save_generations:
                 generations.append({"i": i, "prompt": prompts[i], "gold": golds[i],

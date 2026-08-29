@@ -2,9 +2,7 @@
 """Paired arm-vs-arm comparison at matched training steps.
 
 The placebo control (compute_score_placebo) only means something relative to
-the real arm at the SAME step on the SAME validation slice: both arms start
-from sft-step390, see the same prompt order, and differ only in what the
-reward pays. This script pairs their per-example eval records step by step and
+the real arm at the SAME step on the SAME validation slice. This script pairs their per-example eval records step by step and
 runs McNemar's exact test between the ARMS (select_checkpoint.py tests each
 arm against SFT, which is a different question).
 
@@ -38,13 +36,7 @@ def mcnemar_exact(a, b, key):
 def load_arm(arm: str, n_eval: int | None) -> dict[int, dict]:
     """step -> eval record for every cached eval of this arm.
 
-    n_eval=None matches ANY n. Arms are routinely evaluated at different n --
-    hpc/grpo_eval.slurm defaults to N_EVAL=400 and the 3B arms were run with
-    N_EVAL=1000 explicitly -- and requiring an exact filename match made
-    perfectly comparable arms look like they shared no steps at all. Pairing is
-    then done on the common PREFIX of per_example (see main), which is valid
-    because evaluate_checkpoints.py always scores the first n rows of the same
-    val parquet in order.
+    n_eval=None matches ANY n. Arms are routinely evaluated at different n
     """
     pattern = f"eval_{arm}-step*_n{n_eval}.json" if n_eval else f"eval_{arm}-step*_n*.json"
     out = {}

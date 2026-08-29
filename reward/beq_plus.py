@@ -79,13 +79,6 @@ BASE_IMPORT = "import Mathlib\nset_option maxRecDepth 10000"
 # Per-Lean-process memory cap, in MB. See BEqPlusScorer.__init__ for why this is
 # not optional. Set BEQ_MEMORY_LIMIT_MB=0 to disable (matching the upstream
 # batch-scoring script's behaviour, only safe when nothing else shares the box).
-#
-# HARD FLOOR: `import Mathlib` alone costs ~4.3GB resident, before any tactic
-# search runs. Capping below that kills the REPL during startup and every reward
-# call then fails with "ConnectionAbortedError: The Lean server closed
-# unexpectedly" -- which reads like a memory problem elsewhere and is easy to
-# misdiagnose. The cap must sit ABOVE Mathlib's baseline and below the ~11GB a
-# runaway `exact?` search can reach.
 BEQ_MATHLIB_BASELINE_MB = 4500
 BEQ_MEMORY_LIMIT_MB = int(os.environ.get("BEQ_MEMORY_LIMIT_MB", "8000")) or None
 if BEQ_MEMORY_LIMIT_MB is not None and BEQ_MEMORY_LIMIT_MB < BEQ_MATHLIB_BASELINE_MB:
@@ -120,9 +113,6 @@ BEQ_TIME_PHASES = os.environ.get("BEQ_TIME_PHASES", "1") == "1"
 
 # ─────────────────────────────────────────────────────────────────────────────
 # VENDORED VERBATIM from augustepoiroux/RLMEval src/rlm_eval/metrics/beq_plus.py
-# (only reformatting of comments; the algorithm/tactics are unchanged). This is
-# the published BEq+ metric. `check_theorem_equivalence` returns BOTH BEqL and
-# BEq+ per direction in a single pass over the two directions.
 # ─────────────────────────────────────────────────────────────────────────────
 @dataclass
 class BEqCPUResult:
@@ -424,19 +414,7 @@ class BEqPlusScorer:
             memory_hard_limit_mb=memory_hard_limit_mb,
             verbose=False,
         )
-        # max_total_memory=1.5 disables lean-interact's SYSTEM-wide guard, which
-        # would otherwise trip constantly on a shared box (it fires at 80% of
-        # total RAM regardless of who is using it).
-        #
-        # The PER-PROCESS guard is the one that matters here and is deliberately
-        # enabled: BEq+'s cascade runs `exact?` (a whole-Mathlib search) plus
-        # `simp_all_arith!`/`apply_rules`/`convert`, and on statements that
-        # actually elaborate those searches can balloon a single Lean REPL past
-        # 10GB -- measured, and enough to get every Ray worker OOM-killed. It
-        # only shows up once the policy is good enough to type-check, so it is
-        # invisible early in training and then takes the run down later.
-        # memory_hard_limit_mb caps the REPL; max_process_memory makes
-        # AutoLeanServer recycle it before it gets there.
+        # max_total_memory=1.5 disables lean-interact's SYSTEM-wide guard
         self.server = AutoLeanServer(
             config=config,
             max_total_memory=1.5,
@@ -448,13 +426,6 @@ class BEqPlusScorer:
             raise RuntimeError(f"failed to import Mathlib base env: {base_out}")
         self.base_env = base_env
         self._env_cache: dict[str, int] = {"": base_env}
-        # Instrumentation. A Lean timeout or a dead REPL currently scores the
-        # same as a genuinely wrong statement, so a correct rollout that times
-        # out contributes a gradient AGAINST correctness. We cannot avoid that
-        # without a per-sample skip mechanism verl does not expose, but we can
-        # at least measure how often it happens -- if `timeout`/`infra` climb,
-        # the reward signal is quietly degrading and the run is not measuring
-        # what it claims to.
         self.stats: dict[str, float] = {
             "score_calls": 0,
             "typecheck_calls": 0,
@@ -469,8 +440,6 @@ class BEqPlusScorer:
             # REPL restarts. Climbing here means AutoLeanServer is recycling the
             # Lean process often (memory), and each restart costs one rollout.
             "restarts": 0,
-            # Wall-clock split, so "Lean is the bottleneck" can be attributed to
-            # the type-check or the equivalence cascade rather than guessed at.
             "t_typecheck": 0.0,
             "t_cascade": 0.0,
         }
@@ -481,41 +450,12 @@ class BEqPlusScorer:
             kind = "timeout"
         elif isinstance(exc, (ConnectionAbortedError, json.JSONDecodeError,
                               BrokenPipeError, OSError, AttributeError, ValueError)):
-            # AttributeError is here on purpose: a REPL whose process is gone
-            # surfaces as `'NoneType' object has no attribute 'stdin'` from deep
-            # inside lean_interact, not as a connection error.
             kind = "infra"
         else:
             kind = "other_error"
         self.stats[kind] += 1
         return kind
 
-    # ── surviving a dead REPL ────────────────────────────────────────────────
-    # WHAT WENT WRONG. `rl3b_selfprove` (job 1586327) wedged after ~50 minutes:
-    # 10 of 16 prompts in a step raised
-    #     AttributeError: 'NoneType' object has no attribute 'stdin'
-    # from lean_interact's `_execute_cmd_in_repl`, preceded by `Broken pipe`.
-    # `typecheck_ex` caught only (TimeoutError, ConnectionAbortedError,
-    # JSONDecodeError), so the AttributeError escaped the reward function, killed
-    # the verl agent-loop task holding it, and the step never closed. The job then
-    # sat at `running: 1, finished: 5, failure: 10` for 20 minutes with a GPU
-    # allocated. Same failure class as the documented `multiprocessing.Pool` hang,
-    # in a code path that had no equivalent guard.
-    #
-    # WHY THE REPL WAS GONE, and why this is expected rather than exotic:
-    # AutoLeanServer is constructed with `max_process_memory=0.8`, which RECYCLES
-    # the REPL process when it grows -- and BEq+'s `exact?` searches trip that
-    # routinely once the policy is good enough to type-check (see the note in
-    # __init__). A call in flight during a recycle hits a process that is already
-    # gone. So the dead REPL is a normal operating condition, not a crash.
-    #
-    # WHY CLEARING `_env_cache` IS THE ACTUAL FIX. The cache maps a header string
-    # to an INTEGER env id living inside the REPL process. Restart the process and
-    # every id in it is stale, but the dict survives -- so a worker that recovered
-    # the connection would go on submitting commands against environments that no
-    # longer exist, returning False for everything and silently poisoning the
-    # reward for the rest of the run. Losing one rollout is the acceptable
-    # outcome; a worker that looks alive and scores everything 0.0 is not.
     def _restart(self) -> bool:
         """Re-establish the base Mathlib env after the REPL died or recycled.
 
@@ -732,10 +672,6 @@ class BEqPlusScorer:
             self.stats["infra"] += 1
             out["error"] = "header_env_failed"
             out["error_kind"] = "infra"
-            # Same reasoning as the cascade's except block below: a stale
-            # _env_cache entry from a recycled REPL fails `get_env` every call
-            # it is asked for, not just this one. Clear it here too, not only
-            # when the failure happens to surface inside the cascade.
             self._restart()
             return out
         _t0 = _time.perf_counter() if BEQ_TIME_PHASES else 0.0
@@ -744,10 +680,6 @@ class BEqPlusScorer:
             self.stats["t_typecheck"] += _time.perf_counter() - _t0
         if tc_err:
             out["error_kind"] = tc_err
-        # See BEQ_SKIP_CASCADE_ON_TYPECHECK_FAIL: BEq+ implies type-check, so a
-        # non-elaborating prediction cannot prove in either direction. Every
-        # field below stays at its False/0 default, which is what the full
-        # cascade would have returned anyway.
         if BEQ_SKIP_CASCADE_ON_TYPECHECK_FAIL and not out["typecheck"]:
             self.stats["cascade_skipped"] += 1
             return out

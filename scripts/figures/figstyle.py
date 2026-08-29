@@ -1,23 +1,5 @@
-"""Shared figure style, matched to Interplay-LM-Reasoning (arXiv:2512.07783).
-
-WHERE THE STYLE COMES FROM. Their plotting scripts are not in the repo -- only
-stale `.pyc` files under `scripts/composition/__pycache__/` -- so the style was
-recovered by sampling `assets/findings.png` directly. The dominant saturated
-colours came back as #009E73, #0072B2, #E69F00, i.e. they use **Okabe-Ito**, the
-standard colourblind-safe qualitative palette. Everything else here (pastel
-panel tints, bold axis labels, dotted grid, markers on every point, in-axes
-legend, value labels over bars, red dashed callouts) is read off that figure.
-
-PALETTE ORDER IS NOT ARBITRARY -- do not reshuffle it. Assigned in fixed order
-and validated: blue -> green -> orange -> pink -> sky passes the lightness band,
-chroma floor, CVD-separation and normal-vision checks. Two other orderings that
-look equally reasonable put #CC79A7 next to #009E73, which collapses to
-deutan dE 7.6 -- below the 8.0 floor. If you add a series, re-validate.
-
-Three of the five sit under 3:1 contrast against the surface, which obliges
-"relief": every series is DIRECT-LABELLED at its line end, not identified by
-colour alone. That is why `finish()` draws end labels rather than relying on the
-legend.
+"""
+Shared figure style, matched to Interplay-LM-Reasoning (arXiv:2512.07783).
 """
 from __future__ import annotations
 
@@ -30,12 +12,6 @@ import matplotlib.patheffects as pe
 BLUE, GREEN, ORANGE, PINK, SKY = "#0072B2", "#009E73", "#E69F00", "#CC79A7", "#56B4E9"
 CATEGORICAL = [BLUE, GREEN, ORANGE, PINK, SKY]
 
-# The control is deliberately NOT categorical: it is a reference, so it is grey
-# and dashed. Only the CORRECTED fit (0.49/0.74) is plotted -- the original
-# 0.55/0.20 fit came from a degenerate objective and is kept on disk for
-# provenance, not shown -- so "placebo" in every figure means the corrected one.
-# Grey fails the chroma floor by design: it must read as recessive, and the dash
-# pattern is the secondary encoding that keeps it distinguishable.
 CONTROL = "#8C8C8C"
 BASELINE = "#3A3A3A"   # SFT reference line, and the neutral bar in bar charts
 ACCENT = "#BE0000"     # the paper's red, for callouts only -- never a series
@@ -50,35 +26,18 @@ ARM_STYLE = {
     "rl3b_gated_edge": dict(color=SKY,     marker="v", label="gated, edge pool"),
     "rl3b_v2_placebo": dict(color=CONTROL, marker="s", label="placebo", linestyle="--"),
     "rl3b_selfprove_t30": dict(color=GREEN, marker="P", label="selfprove (30s probe)", linestyle=":"),
-    # THE lr6 SERIES: same reward, same pool, ACTOR_LR=1e-6 + 0.05 warmup instead
-    # of the accidental 1e-5. Each keeps its twin's colour and marker, because
-    # colour follows the entity, and is dash-dotted so the corrected run is
-    # distinguishable from the one it corrects. Arms at different learning rates
-    # are not comparable as *rewards*; plotting a pair together is a statement
-    # about the LEARNING RATE, which is the one thing that differs.
-    # `end_label` overrides the direct label drawn at the line end. Without it,
-    # make_figures derives one as label.split(" (")[0], which maps both
-    # "gated, edge pool" and "gated, edge pool (lr 1e-6)" onto the SAME key --
-    # they share one dict entry and whichever is plotted last silently erases
-    # the other's label.
+
     "rl3b_lr6_gated_edge": dict(color=SKY, marker="v", linestyle="-.",
                                 label="gated, edge pool (lr 1e-6)",
                                 end_label="edge pool, lr 1e-6", hatch="//"),
     "rl3b_lr6_typecheck": dict(color=ORANGE, marker="s", linestyle="-.",
                                label="type-check only (lr 1e-6)",
                                end_label="type-check, lr 1e-6", hatch="//"),
-    # THE POOL-CONTROLLED PAIR. This is rl3b_lr6_gated_edge with ONE variable
-    # changed: the reward. Same edge pool, same 1e-6 + warmup. It is the only
-    # place in the set where reward quality is isolated from prompt selection,
-    # so it must be plotted whenever rl3b_lr6_gated_edge is.
+
     "rl3b_lr6edge_typecheck": dict(color=ORANGE, marker="P", linestyle="-.",
                                    label="type-check, edge pool (lr 1e-6)",
                                    end_label="type-check, edge", hatch="\\\\"),
-    # LoCoLib proof-pair series (current): the model emits a theorem AND its own
-    # proof (data_locolib/*_proof.parquet). Reuses gated's blue / selfprove's
-    # green -- the arms those name are archived, so nothing collides in a drawn
-    # figure -- and a fixed entry keeps each arm one colour across the eval
-    # (beq_plus_rate) and training (training_curves) figures both.
+
     "rl3b_locolib_proof_typecheck": dict(color=BLUE, marker="D",
                                          label="locolib proof, type-check",
                                          end_label="proof, type-check"),
@@ -88,11 +47,6 @@ ARM_STYLE = {
 }
 
 
-# Auto-styling for arms not named in ARM_STYLE. `make figures` reads its roster
-# off results/eval/, so a freshly-trained series nobody has added a hand-tuned
-# entry for still has to draw with a stable, distinct colour and marker.
-# Assignment is by first-seen order and memoised, so an arm keeps one look across
-# every figure in a run. Add an explicit ARM_STYLE entry once an arm is a keeper.
 _AUTO_MARKERS = ("D", "o", "s", "^", "v", "P", "X", "h", "<", ">", "d", "p")
 _AUTO_STYLE: dict[str, dict] = {}
 
@@ -167,15 +121,7 @@ def finish(ax, *, end_labels: dict[str, tuple[float, float, str]] | None = None,
     handles, _ = ax.get_legend_handles_labels()
     if len(handles) >= 2:
         ax.legend(loc=legend_loc)
-    # End labels get a white halo: they sit over gridlines and sometimes over a
-    # neighbouring series, and an unhaloed bold label on a dotted grid is the
-    # collision the palette validator cannot see.
-    # COLLISION IN BOTH AXES. The first version compared y alone, in data units,
-    # so two arms whose lines END at different steps still collided: "gated, edge
-    # pool" finishing at step 50 ran its text straight through "guided" at step
-    # 70, three points below it. Labels are boxed in DISPLAY space -- width
-    # estimated from the string, height from the font -- and only shifted when the
-    # boxes actually intersect.
+
     fig = ax.figure
     scale = fig.dpi / 72.0
     fontsize, pad = 8.5, 6.0
@@ -204,15 +150,7 @@ def finish(ax, *, end_labels: dict[str, tuple[float, float, str]] | None = None,
         while hits(py + dy):          # ran out of headroom -- go down instead
             dy -= h
         placed.append((x0, x1, py + dy))
-        # LEADER LINE when the label has been pushed far from its point. With
-        # three or four arms the de-collision shift is small and the label still
-        # reads as belonging to the nearest line. With six it is not: in the
-        # pass@1 panel the lr6 arms pushed "gated", "guided" and "gated, edge
-        # pool" 8pp above their own line ends, where they sat directly beside
-        # OTHER arms' lines. A displaced label without a connector does not just
-        # look untidy, it attributes the wrong value to the wrong series.
-        # Threshold is one label height: below that the label still touches its
-        # own line and a connector would be visual noise.
+
         leader = dict(arrowstyle="-", color=color, lw=0.8, alpha=0.55,
                       shrinkA=1.0, shrinkB=2.0) if abs(dy) > h else None
         ax.annotate(name, xy=(x, y), xytext=(pad, dy / scale), textcoords="offset points",

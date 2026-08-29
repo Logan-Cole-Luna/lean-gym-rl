@@ -8,7 +8,6 @@
 # make verl              — clone verl
 # make mathlib           — build Mathlib4 at the pinned tag (matches the dataset)
 # make model             — download the base model from Hugging Face
-# make dataset           — prepare the Lean-Workbook train/val parquet files
 # make smoke             — tiny (8/4-example) end-to-end GRPO smoke test
 # make train             — both of the above, sequentially (single GPU)
 # make submit ARM=…      — sbatch hpc/grpo.slurm for one arm
@@ -21,10 +20,10 @@ SHELL       := /bin/bash
 PROJECT     := $(shell pwd)
 VENV        := $(PROJECT)/.venv
 
-# Pinned to match internlm/Lean-Workbook's target toolchain (see reward/beq_plus.py).
+# Pinned to match LoCoLib's target toolchain (see CLAUDE.md, reward/beq_plus.py).
 # If you swap datasets, re-pin both of these together and re-run `make mathlib`.
-LEAN_TOOLCHAIN := leanprover/lean4:v4.8.0-rc1
-MATHLIB4_TAG   := v4.8.0-rc1
+LEAN_TOOLCHAIN := leanprover/lean4:v4.23.0
+MATHLIB4_TAG   := v4.23.0
 
 # verl's main branch has since moved to verl==0.10.0.dev0, which hard-pins its
 # [vllm] extra to vllm==0.24.0 and pulls in a much heavier dependency tree
@@ -95,10 +94,12 @@ setup:
 	@echo "[setup] (uv + a \$$HOME venv will blow the file-count quota here; see hpc/README.md.)"
 	@$(MAKE) --no-print-directory setup-hpc
 else
-setup: env verl mathlib model dataset
+setup: env verl mathlib model
 	@echo ""
 	@echo "Setup complete. Activate your environment:"
 	@echo "  source $(VENV)/bin/activate"
+	@echo ""
+	@echo "Data: LoCoLib proof-pair dataset is in data_locolib/ (pre-prepared)."
 	@echo "Then try:  make smoke"
 endif
 
@@ -149,6 +150,13 @@ env:
 	@$(MAKE) --no-print-directory _install-deps VENVDIR=$(VENV)
 	@echo "Python environment ready: $(VENV)"
 
+.PHONY: venv
+venv:
+	@if [ ! -d "$(VENV)" ]; then python3 -m venv "$(VENV)"; fi
+	@source "$(VENV)/bin/activate" && pip install --upgrade pip && pip install torch --index-url $(TORCH_INDEX) && pip install -r requirements.txt
+	@echo "Python environment ready: $(VENV)"
+	@echo "Activate with: source $(VENV)/bin/activate"
+
 ## env-hpc does NOT use uv — Compute Canada / DRAC nodes don't reliably have it,
 ## and their wheelhouse (--no-index) packages need a plain venv against the
 ## loaded module's system site-packages. Delegates entirely to hpc/setup_cc.sh,
@@ -192,9 +200,7 @@ repos/verl:
 	@$(MAKE) --no-print-directory _install-deps VENVDIR=$(VENV)
 
 # ── Lean / Mathlib4 ───────────────────────────────────────────────────────────
-# NOT reused from ../MixtureOfMathExperts — that project is pinned to Lean
-# 4.23.0; this one is pinned to whatever the training dataset targets
-# (currently v4.8.0-rc1, for internlm/Lean-Workbook). Own checkout, own build.
+# Pinned to 4.23.0 to match LoCoLib (proof-pair dataset). Own checkout, own build.
 
 .PHONY: mathlib
 mathlib: elan-install repos/mathlib4
@@ -238,48 +244,30 @@ $(MODEL_DIR)/config.json:
 	@HF_HOME=$(MODELS_ROOT)/.hf_cache $(PYTHON) -c \
 	  "from huggingface_hub import snapshot_download; snapshot_download('$(MODEL_ID)', local_dir='$(MODEL_DIR)')"
 
-# Dataset sizes are STAMPED, not plain file targets. A file target compares
-# mtimes only, so `make dataset RL_N_TRAIN=4000` would see an up-to-date
-# data/train.parquet and silently keep the 400-row one -- you would then run a
-# "longer" training that quietly re-walked the same tiny set.
-# Regenerating with the same sizes is a no-op in content: prepare_dataset.py
-# seeds its shuffle and pins the val slice to a fixed offset, so val.parquet is
-# byte-stable and already-cached eval results stay comparable.
-# Defaults MUST match what is on disk, or `make train-sft` (which depends on
-# these) would see a stamp mismatch and quietly rebuild a smaller dataset.
-#
-# RL_N_TRAIN is capped by how many unique prompts SFT did NOT consume. The
-# corpus has 13,297 unique prompts; a 20k-row SFT set uses 11,627 and val takes
-# 390, leaving 1,280. prepare_dataset.py now excludes SFT prompts by default --
-# training RL on memorised prompts left 62.5% of rollout groups saturated and
-# only 16.7% able to produce a gradient at all. To run RL on more than 1,280
-# prompts, shrink the SFT set first (SFT_N_TRAIN) to free some back up.
-RL_N_TRAIN ?= 1280
-RL_N_VAL   ?= 400
+# LoCoLib proof-pair dataset is pre-prepared in data_locolib/ and included in the repo.
+# The old Lean-Workbook dataset preparation (prepare_dataset.py) has been removed.
+# If you need to work with a different dataset, see run.md or CLAUDE.md.
 
 .PHONY: dataset
 dataset:
-	@want="n_train=$(RL_N_TRAIN) n_val=$(RL_N_VAL) excl_sft=1"; \
-	 if [ -f data/train.parquet ] && [ "$$(cat data/.stamp 2>/dev/null)" = "$$want" ]; then \
-	   echo "[dataset] up to date ($$want)"; \
-	 else \
-	   HF_HOME=$(MODELS_ROOT)/.hf_cache $(PYTHON) scripts/data/prepare_dataset.py \
-	     --n-train $(RL_N_TRAIN) --n-val $(RL_N_VAL) && echo "$$want" > data/.stamp; \
-	 fi
+	@echo "[dataset] ERROR: The Lean-Workbook dataset preparation has been removed."
+	@echo "[dataset] We now use LoCoLib proof-pair data (pre-prepared in data_locolib/)."
+	@echo "[dataset] See run.md for the current workflow."
+	@exit 1
 
 # ── Run ───────────────────────────────────────────────────────────────────────
 
 .PHONY: smoke
 smoke:
-	@$(ACTIVATE) && $(PYTHON) scripts/data/prepare_dataset.py --out-dir data/smoke --n-train 8 --n-val 4
+	@echo "[smoke] Smoke test: one GRPO step on data_locolib proof-pair data"
 	@$(ACTIVATE) && \
-	 TRAIN_BATCH_SIZE=8 PPO_MINI_BATCH_SIZE=8 ROLLOUT_N=2 TOTAL_EPOCHS=1 \
+	 TRAIN_BATCH_SIZE=4 PPO_MINI_BATCH_SIZE=4 ROLLOUT_N=2 TOTAL_EPOCHS=1 \
 	 PROJECT_NAME=beqplus_smoke EXPERIMENT_NAME=smoke \
 	 PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True \
 	 HF_HOME=$(MODELS_ROOT)/.hf_cache \
 	 bash configs/run_grpo.sh \
-	   data.train_files=$(PROJECT)/data/smoke/train.parquet \
-	   data.val_files=$(PROJECT)/data/smoke/val.parquet \
+	   data.train_files=$(PROJECT)/data_locolib/rl_proof.parquet \
+	   data.val_files=$(PROJECT)/data_locolib/val_proof.parquet \
 	   trainer.total_training_steps=1
 
 # Two 30-step ablation arms, sequentially (single GPU: they cannot overlap).
@@ -321,23 +309,14 @@ SFT_RUN    ?= $(_INIT_TAG)
 SFT_CKPT   ?= $(PROJECT)/checkpoints/sft/$(SFT_RUN)
 SFT_MERGED ?= $(PROJECT)/checkpoints/merged/sft-step30
 
-# Stamped for the same reason as `dataset` above. Depends on `dataset` because
-# prepare_sft_dataset.py reads data/val.parquet to exclude the eval set from SFT
-# training -- without it the filter silently no-ops and SFT trains on the test set.
-SFT_N_TRAIN ?= 20000
-SFT_N_VAL   ?= 500
+# SFT dataset is pre-prepared in data_locolib/ as sft_proof.parquet and val_sft_proof.parquet.
 
 .PHONY: sft-dataset
-sft-dataset: dataset
-	@want="n_train=$(SFT_N_TRAIN) n_val=$(SFT_N_VAL)"; \
-	 if [ -f data/sft/train.parquet ] && [ "$$(cat data/sft/.stamp 2>/dev/null)" = "$$want" ]; then \
-	   echo "[sft-dataset] up to date ($$want)"; \
-	 else \
-	   $(ACTIVATE) && HF_HOME=$(MODELS_ROOT)/.hf_cache \
-	     python3 scripts/data/prepare_sft_dataset.py \
-	       --n-train $(SFT_N_TRAIN) --n-val $(SFT_N_VAL) && \
-	   echo "$$want" > data/sft/.stamp; \
-	 fi
+sft-dataset:
+	@echo "[sft-dataset] ERROR: The Lean-Workbook SFT dataset preparation has been removed."
+	@echo "[sft-dataset] We now use LoCoLib proof-pair data (data_locolib/sft_proof.parquet)."
+	@echo "[sft-dataset] See run.md for the current workflow."
+	@exit 1
 
 # ── Stage entry points: train-sft / train-rl ─────────────────────────────────
 # Both take an OPTIONAL starting checkpoint via INIT=<merged HF dir>.
@@ -383,8 +362,10 @@ _check-init:
 	fi
 
 .PHONY: train-sft
-train-sft: sft-dataset _check-init
+train-sft: _check-init
 	@MODEL_PATH=$(_INIT_MODEL) \
+	 TRAIN_FILE=$${TRAIN_FILE:-$(PROJECT)/data_locolib/sft_proof.parquet} \
+	 VAL_FILE=$${VAL_FILE:-$(PROJECT)/data_locolib/val_sft_proof.parquet} \
 	 SAVE_PATH=$${SAVE_PATH:-$(SFT_CKPT)} \
 	 bash scripts/train/run_sft.sh $(SFT_EXTRA)
 
@@ -557,7 +538,7 @@ train-rft:
 STEP        ?= 30
 CKPT_ROOT   := $(PROJECT)/checkpoints/beqplus_rl_poc
 CKPT_COMP   := $(CKPT_ROOT)/qwen25_coder_0_5b_compute_score_composite/global_step_$(STEP)
-CKPT_TC     := $(CKPT_ROOT)/qwen25_coder_0_5b_compute_score_typecheck_only/global_step_$(STEP)
+CKPT_TC     := $(CKPT_ROOT)/qwen25_coder_0_5b_compute_score_typecheck/global_step_$(STEP)
 MERGED      := $(PROJECT)/checkpoints/merged
 
 # verl keeps actor weights in FSDP-sharded .pt files; actor/huggingface/ holds
@@ -778,22 +759,19 @@ help:
 	@echo "lean-gym-rl — a gym for RL on Lean 4 autoformalization"
 	@echo ""
 	@echo "SETUP"
-	@echo "  make setup             Local: env + verl + Lean/Mathlib + model + data"
+	@echo "  make setup             Local: env + verl + Lean/Mathlib + model"
+	@echo "  make venv              Create venv from requirements.txt (no uv required)"
 	@echo "  make setup-hpc         Compute Canada / DRAC (read hpc/NARVAL_NOTES.md first)"
 	@echo "  make model             Download the base model   (MODEL_ID=...)"
-	@echo "  make dataset           Lean-Workbook train/val parquet"
-	@echo "  make sft-dataset       SFT pairs from Lean-Workbook"
 	@echo "  make check-toolchain   Verify the Lean/Mathlib pin"
 	@echo ""
-	@echo "TRAIN (local, single GPU — the 3B series runs on SLURM, see below)"
-	@echo "  make smoke             ~1 step, 8 examples; proves the loop runs"
-	@echo "  make sft               SFT from the base model"
+	@echo "TRAIN (local, single GPU — the 3B series runs on SLURM, see run.md)"
+	@echo "  make smoke             ~1 step on LoCoLib proof-pair data; proves the loop runs"
+	@echo "  make train-sft         SFT from the base model (on LoCoLib proof-pair data)"
 	@echo "  make train-rl          GRPO. Flags:"
-	@echo "                           REWARD=gated|typecheck_only"
-	@echo "                           STEPS=100  INIT=<merged dir>  FILTER_GROUPS=1"
-	@echo "  make train             The two 30-step ablation arms, sequentially"
+	@echo "                           REWARD=gated|typecheck_only|outcome"
+	@echo "                           STEPS=100  INIT=<merged dir>"
 	@echo "  make train-rft         Rejection-sampling arm (RFT_DATA=... TAG=...)"
-	@echo "  make train-curriculum  Two-phase curriculum (type-check then BEq+)"
 	@echo ""
 	@echo "DATA FOR RL"
 	@echo "  make rollouts          Generate k rollouts from a checkpoint"
@@ -810,9 +788,8 @@ help:
 	@echo "  make arms-table        Refresh the checkpoint table in arms.md"
 	@echo ""
 	@echo "SLURM (the 3B series — these are where the real runs happen)"
-	@echo "  sbatch --export=ALL,ARM=gated hpc/grpo.slurm"
-	@echo "  sbatch --export=ALL,RUN=rl3b_gated,N_EVAL=1000 hpc/grpo_eval.slurm"
-	@echo "  make submit            sbatch hpc/grpo.slurm (ARM=… STEPS=…)"
+	@echo "  See run.md for the current workflow (LoCoLib proof-pair, three arms)"
+	@echo "  Shorthand: bash hpc/submit.sh grpo ARM=gated SERIES_TAG=locolib_proof_lr6"
 	@echo ""
 	@echo "HOUSEKEEPING"
 	@echo "  make clean | clean-lean | clean-all | prune-checkpoints | kill-stale"

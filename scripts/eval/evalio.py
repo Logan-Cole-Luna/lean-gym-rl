@@ -1,17 +1,5 @@
-"""Canonical readers for cached eval / pass@k results.
-
-WHY THIS EXISTS. Four scripts had grown their own copy of "glob the eval JSONs,
-pull per_example, compute a rate" -- make_figures, make_arms_table, compare_arms
-and select_checkpoint -- and they had already drifted apart in two ways that
-matter:
-
-  * whether a step evaluated at several n keeps the largest or the first found;
-  * whether the rate is recomputed over a fixed prefix or read from `*_rate`.
-
-The second is the dangerous one. `*_rate` describes whatever n its own file was
-written at, and arms in this project were evaluated at n=400 and n=1000, so
-mixing the two silently compares different example sets. Everything here
-recomputes over an explicit prefix and never reads `*_rate`.
+"""
+Canonical readers for cached eval / pass@k results.
 """
 from __future__ import annotations
 
@@ -165,9 +153,6 @@ def load_passk(results: Path = RESULTS, metric: str = "beq_plus") -> dict[str, d
         if d.get("metric", "beq_plus") != metric:
             continue
         lab = d.get("label", "")
-        # `sft3b-step93` also matches "<name>-step<N>", so keying on the pattern
-        # alone files the BASELINE as an arm called "sft3b". Arms are the rl3b_*
-        # runs; everything else is a baseline at step 0.
         m = re.match(rf"({re.escape(RUN_PREFIX)}_[A-Za-z0-9_]+)-step(\d+)$", lab)
         if m:
             out.setdefault(m.group(1), {})[int(m.group(2))] = d
@@ -181,16 +166,7 @@ def passk_at(record: dict, k: int) -> float | None:
     return None if v is None else 100 * v
 
 
-# THE REPORTING GRID. Every arm is evaluated at these steps and only these, so
-# tables and figures compare like with like. It exists because the grid used to
-# be whatever each arm happened to have: `guided` was the only arm with a
-# step-70 pass@k, which put a row in arms.md that five of six arms could never
-# fill, and it made the greedy trajectory (every 10 steps) silently denser than
-# the sampled one (every 20-40).
-#
-# Steps OUTSIDE the grid are still evaluated and still on disk -- `typecheck`
-# runs to 150 -- they are just not what results are reported at. Cost figures are
-# the deliberate exception: see fig_runtime.
+# THE REPORTING GRID.
 STEP_GRID = (10, 30, 50, 90)
 
 

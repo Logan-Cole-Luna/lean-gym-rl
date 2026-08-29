@@ -251,10 +251,7 @@ def fig_retention_gain(arms, n, step_of):
         hatches.append(st.get("hatch", ""))
     fig, axes = plt.subplots(1, 2, figsize=(10.5, 4.6))
     shown = next(iter(step_of.values()))
-    # LIMITER IS READ OFF THE ARMS ACTUALLY DRAWN. It used to be read off
-    # `step_of`, which carries every arm including ones this panel skipped for
-    # lacking the step -- so the caption named `selfprove` as the constraint on a
-    # chart selfprove is not in.
+
     drawn = [a for a in step_of if arms.get(a, {}).get(shown) is not None]
     limiter = min(drawn, key=lambda a: max(arms[a])) if drawn else None
     cap = (f"step capped by the shortest arm, "
@@ -290,20 +287,6 @@ def fig_retention_gain(arms, n, step_of):
     return fig
 
 
-# The proxy/semantics plane. When the classic roster is on disk this is a
-# hand-picked cut -- the figure is an argument and a six-line spaghetti plot does
-# not make it:
-#
-#   the 1e-5 pair  -- the original claim: optimising type-check walks DOWN and
-#                     right, away from the goal, while BEq+ holds.
-#   the 1e-6 pair  -- the correction. lr6edge_typecheck is the pool-matched twin
-#                     of lr6_gated_edge, so those two differ ONLY in the reward.
-#                     They land on top of each other, which says the collapse in
-#                     the 1e-5 type-check arm was the LEARNING RATE, not the
-#                     reward being a proxy.
-#
-# `which=None` (the default from main) draws every arm on the current roster
-# instead, so the plane still works for a series nobody has curated here.
 PROXY_ARMS = ("rl3b_typecheck", "rl3b_gated",
               "rl3b_lr6edge_typecheck", "rl3b_lr6_gated_edge")
 
@@ -339,9 +322,6 @@ def fig_proxy_vs_semantic(arms, n, which=None):
     # The specific-claim title only fits the series it was written about.
     ax.set_title("Proxy vs goal: the collapse was the LR, not the reward"
                  if "rl3b_typecheck" in arms else "Proxy vs goal: type-check against BEq+")
-    # UPPER left, not lower: the placebo's step-30/50/90 points sit at low
-    # type-check AND low BEq+, i.e. exactly where a lower-left legend lands, and
-    # the box hid most of the control's trajectory.
     fs.finish(ax, legend_loc="upper left")
     return fig
 
@@ -483,12 +463,7 @@ def fig_arm_trajectories_passk(k: int = 32, k_lo: int = 1, metric: str = "beq_pl
     ax.set_ylim(max(0, min(lows) - 6), top + 8)
     fs.finish(ax, end_labels=ends, legend_loc="lower left",
               hline=(b, f"SFT baseline {b:.1f}%") if b is not None else None)
-    # Second legend for the k encoding: colour is the arm, line style is k.
-    # ax.legend() REPLACES the axes legend, so the arm legend fs.finish() just
-    # built has to be re-added as a standalone artist -- the previous version
-    # called add_artist() on the NEW legend instead, which silently deleted the
-    # arm legend and left the figure identifying six arms by end label alone.
-    # Bottom-right, so the k legend does not sit on the baseline annotation.
+
     from matplotlib.lines import Line2D
     arm_leg = ax.get_legend()
     ax.legend(handles=[Line2D([], [], color="#555555", ls="-", lw=2.0,
@@ -536,30 +511,7 @@ def step_seconds() -> dict[str, list[tuple[int, float]]]:
     return out
 
 
-# The Lean-free cost of a GRPO step, measured. Taken from the placebo arm, which
-# runs the identical model, batch and optimiser and makes ZERO Lean calls, so its
-# step time IS the floor every other arm pays before any scoring happens.
-#
-# THIS IS WHY typecheck AND placebo COST THE SAME. verl logs no `timing_s/reward`
-# key -- the reward runs inside the agent loop and lands in `timing_s/gen`. From
-# the two arms that logged timings (150 steps each):
-#
-#     arm         gen     old_log_prob  ref   update_actor  update_weights  step
-#     placebo     4.43s      3.55s     5.54s     9.03s          2.73s      26.12s
-#     typecheck   6.36s      3.23s     5.42s     8.23s          2.71s      25.70s
-#
-# Every non-gen term is identical, as it must be. The ENTIRE Lean type-check bill
-# is the gen delta: 6.36 - 4.43 = ~1.9 s/step, about 7% of the step, which rounds
-# away against run-to-run variance. At 24 agent-loop workers and 128 rollouts per
-# step that is ~0.36s of Lean per rollout -- one elaboration against a header env
-# already cached for that prompt.
-#
-# gated's ~962 s/step is therefore ~935s of Lean, or ~175 Lean-seconds per rollout
-# at 24 workers. With BEQ_TIMEOUT_PER_PROOF=30 and up to 18 calls in the cascade,
-# that is ~6 timed-out proof attempts per rollout -- exactly what you expect when
-# most rollouts are NOT equivalent to the gold and the cascade runs to exhaustion.
-# So the ~37x is real, and it is not "type-checking is cheap and BEq+ is dear" by
-# a constant factor: it is 1 fast call versus 6 half-minute searches.
+# The Lean-free cost of a GRPO step, measured.
 def _no_lean_floor(raw: dict[str, list[tuple[int, float]]]) -> float | None:
     xs = raw.get("rl3b_v2_placebo")
     if not xs:
@@ -618,11 +570,7 @@ def fig_runtime(max_step: int):
     ax.set_xlabel("seconds per GRPO step  (log)")
     ax.set_title("Cost of one GRPO step", fontsize=11)
     ax.grid(axis="y", visible=False)
-    # THE FLOOR MAKES THE FIGURE ANSWER ITS OWN QUESTION. Without it, "type-check
-    # costs the same as a reward that never opens Lean" looks like a measurement
-    # bug. Against the floor it reads correctly: type-check sits ON the Lean-free
-    # cost of a step, so its Lean bill is ~0 at this resolution, and gated is 30x
-    # above the floor because a failed BEq+ cascade burns ~6 proof timeouts.
+
     if floor:
         ax.axvline(floor, color=fs.BASELINE, lw=1.6, ls="-.", zorder=2)
         ax.annotate(f"{floor:.0f}s: model + optimiser,\nbefore any Lean call",
@@ -632,10 +580,7 @@ def fig_runtime(max_step: int):
                     color=fs.BASELINE,
                     path_effects=[__import__("matplotlib.patheffects", fromlist=["x"])
                                   .withStroke(linewidth=2.6, foreground="white")])
-    # THE NUMBERS IN THIS CALLOUT ARE LOGGED, NOT DERIVED FROM THE LOLLIPOPS.
-    # type-check's Lean bill is ~2s against a ~31s step, which is inside the
-    # mtime resolution -- a ratio computed from (32 - 31) is noise amplified to
-    # four digits. verl's own `timing_s/gen` resolves it; see _no_lean_floor.
+
     if len(meds) >= 2 and floor:
         ax.annotate("Same step time, opposite reasons.\n"
                     "type-check adds ~2 s of Lean per step\n"
@@ -734,16 +679,7 @@ def main() -> None:
         "beq_plus_rate_passk_typecheck": fig_arm_trajectories_passk(k=32, metric="typecheck"),
         "runtime": fig_runtime(max(grid)) if grid else None,
     }
-    # Best available step per arm for the decomposition panel.
-    # MATCHED STEPS. An earlier version took each arm's best-available step, which
-    # put gated at 30 against the placebo at 150 -- i.e. compared one arm near its
-    # peak with the control at its worst. Use the latest step every arm has.
-    #
-    # ONE-POINT ARMS DO NOT SET THE STEP. `selfprove_t30` is a two-checkpoint
-    # probe, and on the reporting grid it has exactly one point (step 10). Letting
-    # it into the intersection dragged the whole panel back to step 10, where the
-    # arms have not diverged and the comparison says nothing. Arms with a single
-    # grid point are still drawn if they happen to have the chosen step.
+
     ranked = {a: set(v) for a, v in have.items() if len(v) >= 2} or {
         a: set(v) for a, v in have.items()}
     if ranked and grid:

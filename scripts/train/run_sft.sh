@@ -11,18 +11,6 @@
 # SFT on (informal -> gold formal signature) pairs removes the cold start: the
 # policy starts competent, so RL only refines and a SMALL rollout_n suffices.
 #
-# Note this stage needs NO Lean at all -- there is no reward function, so none of
-# the host-RAM pressure from the RL stages applies here.
-#
-# Known cosmetic issue: `val/loss` can come out `nan` on a 16GB card. It is
-# preceded in the log by a burst of "expandable_segments: memory mapping failed
-# with OOM on device 0" while max_memory_allocated sits ~12.3GB -- i.e. the
-# validation pass hits GPU memory pressure. Training itself is unaffected (train
-# loss stays healthy and the checkpoint evaluates well: 33.8% BEq+), so this is a
-# validation-metric artifact, not a bad model. Lower MAX_TOKEN_LEN if you need a
-# trustworthy val number; otherwise judge the checkpoint with
-# scripts/eval/evaluate_checkpoints.py, which measures what we actually care about.
-#
 # Usage:
 #   bash scripts/train/run_sft.sh                       # 1 epoch, 4k examples
 #   TOTAL_EPOCHS=2 MICRO_BATCH=2 bash scripts/train/run_sft.sh
@@ -41,19 +29,11 @@ python3 -c "import verl" 2>/dev/null || { echo "ERROR: verl not importable; run 
 MODEL_PATH=${MODEL_PATH:-$REPO_ROOT/models/qwen2.5-coder-0.5b-instruct}
 SAVE_PATH=${SAVE_PATH:-$REPO_ROOT/checkpoints/sft/qwen2.5-coder-0.5b-leanworkbook}
 MICRO_BATCH=${MICRO_BATCH:-1}
-# verl's SFT defaults (max_token_len_per_gpu=8192, max_length=1024) pack far more
-# tokens per micro-batch than this task needs -- our prompt+target is ~300 tokens
-# -- and OOM a 16GB card. Sized to the actual data instead.
 MAX_TOKEN_LEN=${MAX_TOKEN_LEN:-2048}
 MAX_LENGTH=${MAX_LENGTH:-1024}
 LR=${LR:-1e-4}
 TOTAL_EPOCHS=${TOTAL_EPOCHS:-2}
 NPROC=${NPROC:-1}
-# verl's SFT default is save_freq=-1, i.e. save ONLY at the very last step. That
-# is an all-or-nothing bet on a long run -- the RL side already lost 1h48m that
-# way to a host OOM kill at step 25/30. Save periodically, but cap retention:
-# each checkpoint is ~6.1GB, and a 234-step run saving every 50 steps would
-# otherwise leave 30GB behind (the disk has already hit 100% once).
 SAVE_FREQ=${SFT_SAVE_FREQ:-50}
 MAX_CKPT_KEEP=${MAX_CKPT_KEEP:-2}
 

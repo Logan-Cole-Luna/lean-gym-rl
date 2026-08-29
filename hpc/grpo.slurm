@@ -50,7 +50,7 @@ case "$ARM" in
     # model's output and `theorem x : 1 = 1` satisfies it. Its BEq+ is expected
     # to fall; the success criterion is that the reward rises, which separates
     # "BEq+ does not teach" from "this stack cannot optimise anything".
-    REWARD_FN_NAME=compute_score_typecheck_only ;;
+    REWARD_FN_NAME=compute_score_typecheck ;;
   gated_edge)
     # Same reward as `gated`; only the prompt pool differs, restricted to
     # prompts scoring 1-7/8 at k=8 from this SFT checkpoint. Only those groups

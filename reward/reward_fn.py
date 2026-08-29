@@ -5,7 +5,7 @@ Selected per run via `custom_reward_function.name`:
 
 - `compute_score_outcome` (default): the six-outcome ladder from reward/reward.py.
 - `compute_score_gated`: pays only for BEq+ equivalence, flat floor below it.
-- `compute_score_typecheck_only`: pays for elaboration alone. Exploitable, and
+- `compute_score_typecheck`: pays for elaboration alone. Exploitable, and
   kept as the ablation baseline.
 
 Each returns a dict, not a float. verl forwards every key other than `score`
@@ -31,18 +31,11 @@ _scorer: BEqPlusScorer | None = None
 _scorer_failures = 0
 _scorer_lock = threading.Lock()
 
-# Serialises Lean access. Must stay at 1: verl calls the reward from a thread
-# pool, and lean_interact's session cache is not thread-safe -- two threads
-# materialising the same base env raise "Session state -1 is already being
-# materialized". For parallel scoring add processes (rollout.agent.num_workers),
-# each of which gets its own scorer and its own ~4.3GB resident Mathlib.
+# Serialises Lean access.
 BEQ_MAX_CONCURRENT = int(os.environ.get("BEQ_MAX_CONCURRENT", "1"))
 _lean_slot = threading.Semaphore(BEQ_MAX_CONCURRENT)
 
-# Building a scorer spawns a Lean REPL and imports Mathlib. A plain
-# `if _scorer is None` cache retries that on every call when construction fails,
-# and each retry leaks another REPL until the host runs out of RAM. Bound the
-# retries and degrade to "no reward signal" instead.
+# Building a scorer spawns a Lean REPL and imports Mathlib. 
 _MAX_SCORER_FAILURES = 3
 
 
@@ -128,12 +121,6 @@ def _note_call(error_kind: str | None) -> None:
 # Every reward must emit the same key set ACROSS ITS OWN CALLS: verl
 # aggregates each key into a metric, and an omitted key gives a ragged
 # schema. These are the "not applicable" values, not measurements.
-# Deliberately excludes "score" -- that is the objective itself, never a
-# placeholder, and `compute_score_outcome` builds
-# `{"score": <real value>, **_diagnostics(...)}`; a "score" entry here would
-# spread in AFTER the real one and silently overwrite it back to 0.0. (This
-# is exactly what happened to `gated` and `outcome` before: every reward was
-# computed correctly and then clobbered before verl ever saw it.)
 _SCHEMA = {
     "acc": 0.0, "beq_plus": 0.0, "typecheck": 0.0,
     "semantic_signal": 0.0, "n_directions": 0.0,
@@ -235,7 +222,7 @@ def _score_pair(solution_str: str, ground_truth: str) -> tuple[dict, str, str]:
 
 
 @_never_raises(_TYPECHECK_ZERO)
-def compute_score_typecheck_only(data_source, solution_str, ground_truth, extra_info=None) -> dict:
+def compute_score_typecheck(data_source, solution_str, ground_truth, extra_info=None) -> dict:
     """1.0 if the candidate's OWN submission elaborates, else 0.0.
 
     Uses `check_own_proof`, not `typecheck_ex`: on the proof-pair task the
@@ -276,7 +263,7 @@ def compute_score_gated(data_source, solution_str, ground_truth, extra_info=None
     group -- similarity, type-check -- becomes the only climbable signal there,
     and the policy learns to farm it.
 
-    Same shape as `compute_score_typecheck_only`: a small hand-built dict, not
+    Same shape as `compute_score_typecheck`: a small hand-built dict, not
     `_diagnostics()` -- this arm only needs the two signals in its name.
     """
     r, _pred, _gold = _score_pair(solution_str, ground_truth)
@@ -325,7 +312,7 @@ compute_score = compute_score_outcome
 if __name__ == "__main__":
     gold = ("theorem lean_workbook_plus_2 (x : ℝ) : "
             "x^2 - 2*x - 24 < 0 ↔ x ∈ Set.Ioo (-4) 6 := by sorry")
-    # compute_score_typecheck_only runs check_own_proof, which elaborates the
+    # compute_score_typecheck runs check_own_proof, which elaborates the
     # candidate AS WRITTEN -- so every case needs a real `:=`, not a bare
     # signature (a signature with no proof simply fails to parse, which is
     # why this block used to print an all-zero typecheck column regardless of
@@ -348,6 +335,6 @@ if __name__ == "__main__":
     print(f"probe_stronger={os.environ.get('BEQ_PROBE_STRONGER', '0')}")
     print(f"{'case':12s} {'typecheck':>9} {'gated':>7}")
     for name, pred in cases:
-        tc = compute_score_typecheck_only("lean_workbook", pred, gold)["score"]
+        tc = compute_score_typecheck("lean_workbook", pred, gold)["score"]
         gated = compute_score_gated("lean_workbook", pred, gold)["score"]
         print(f"{name:12s} {tc:>9.2f} {gated:>7.2f}")
