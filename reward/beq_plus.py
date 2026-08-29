@@ -732,6 +732,11 @@ class BEqPlusScorer:
             self.stats["infra"] += 1
             out["error"] = "header_env_failed"
             out["error_kind"] = "infra"
+            # Same reasoning as the cascade's except block below: a stale
+            # _env_cache entry from a recycled REPL fails `get_env` every call
+            # it is asked for, not just this one. Clear it here too, not only
+            # when the failure happens to surface inside the cascade.
+            self._restart()
             return out
         _t0 = _time.perf_counter() if BEQ_TIME_PHASES else 0.0
         out["typecheck"], tc_err = self.typecheck_ex(pred_theorem_text, context)

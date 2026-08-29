@@ -197,7 +197,7 @@ def main() -> None:
     if args.n_eval > len(_val):
         raise SystemExit(
             f"--n-eval {args.n_eval} exceeds {args.val_parquet} ({len(_val)} rows). "
-            f"Pass --val-parquet data_3b/val.parquet (1000 rows), or lower --n-eval.")
+            f"Pass --val-parquet matching the corpus's row count, or lower --n-eval.")
     df = _val.head(args.n_eval)
     # Take the LAST user turn, not element 0. Element 0 is the user turn for
     # every dataset built by prepare_dataset.py, but a parquet that carries a

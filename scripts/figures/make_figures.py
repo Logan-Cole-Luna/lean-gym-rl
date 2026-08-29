@@ -17,7 +17,7 @@ scripts/figures/figstyle.py for how it was recovered and why the palette order i
 
 Figures, and the paper panel each mirrors:
 
-  1. arm_trajectories   BEq+ vs training step, every arm         (their panel 1)
+  1. beq_plus_rate      BEq+ vs training step, every arm          (their panel 1)
   1b. compile_rate      same, for the greedy compile (type-check) rate
   2. passk              pass@k, baseline vs mid-trained          (their panel 2)
   3. retention_gain     what each arm kept vs converted          (their panel 4)
@@ -49,7 +49,7 @@ import matplotlib.pyplot as plt
 RESULTS = PROJECT_ROOT / "results"
 FIGDIR = RESULTS / "figures"
 # Fallback only; main() resets this to evalio.discover_baseline_label().
-BASELINE_LABEL = "sft3b-step93"
+BASELINE_LABEL = "sft3blocolib_proof-step76"
 
 
 def load_arm(arm: str) -> dict[int, list[dict]]:
@@ -60,7 +60,6 @@ def _roster() -> list[str]:
     """The arms every figure draws: `results/eval/<RUN_PREFIX>_*/` dirs that
     carry an eval JSON, minus HIDE. Anything archived under results/eval/archive/
     is out until it is moved back. Wrappers that drive individual fig_* functions
-    (fig_gated_vs_typecheck) pick their own arms and never come through here.
     """
     hide = globals().get("HIDE", set())
     return [a for a in evalio.discover_arms() if a not in hide]
@@ -726,13 +725,13 @@ def main() -> None:
     print(f"[figures] rates computed over the first n={n} examples")
 
     figs = {
-        "arm_trajectories_pass1": fig_arm_trajectories_pass1(grid),
-        "arm_trajectories": fig_arm_trajectories(have, n),
+        "beq_plus_rate_pass1": fig_arm_trajectories_pass1(grid),
+        "beq_plus_rate": fig_arm_trajectories(have, n),
         "compile_rate": fig_arm_trajectories(have, n, metric="typecheck"),
         "passk": fig_passk(grid),
         "proxy_vs_semantic": fig_proxy_vs_semantic(have, n),
-        "arm_trajectories_passk": fig_arm_trajectories_passk(k=32),
-        "arm_trajectories_passk_typecheck": fig_arm_trajectories_passk(k=32, metric="typecheck"),
+        "beq_plus_rate_passk": fig_arm_trajectories_passk(k=32),
+        "beq_plus_rate_passk_typecheck": fig_arm_trajectories_passk(k=32, metric="typecheck"),
         "runtime": fig_runtime(max(grid)) if grid else None,
     }
     # Best available step per arm for the decomposition panel.

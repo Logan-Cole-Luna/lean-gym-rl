@@ -19,10 +19,13 @@ export PYTHONPATH="${REAL}:${PYTHONPATH:-}"
 
 # Corpus and run naming. Nothing below hardcodes a model or a size; override
 # these to point the same jobs at another corpus or another series. Defaults
-# reproduce the existing on-disk paths exactly.
-: "${DATA_DIR:=data_3b}"          # splits, rollouts and pool parquets
-: "${SFT_DIR:=sft_3b}"            # checkpoints/<SFT_DIR><TAG>
-: "${SFT_LABEL:=sft3b}"           # eval label and merged-checkpoint prefix
+# point at LoCoLib's proof-pair task -- the only task variant this repo trains
+# now (the signature-only Lean-Workbook line, and LoCoLib's own signature-only
+# variant, were removed: a model that never writes a proof isn't doing
+# autoformalization, just statement translation).
+: "${DATA_DIR:=data_locolib}"           # splits, rollouts and pool parquets
+: "${SFT_DIR:=sft_3b_locolib_proof}"    # checkpoints/<SFT_DIR><TAG>
+: "${SFT_LABEL:=sft3blocolib_proof}"    # eval label and merged-checkpoint prefix
 : "${RUN_PREFIX:=rl3b}"           # GRPO experiment name: <RUN_PREFIX>_<ARM>
 : "${PROJECT_NAME:=beqplus_rl_poc}"
 # The model SFT starts from. The only place a specific model is named.

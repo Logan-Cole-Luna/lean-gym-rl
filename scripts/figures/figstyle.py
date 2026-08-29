@@ -78,7 +78,7 @@ ARM_STYLE = {
     # proof (data_locolib/*_proof.parquet). Reuses gated's blue / selfprove's
     # green -- the arms those name are archived, so nothing collides in a drawn
     # figure -- and a fixed entry keeps each arm one colour across the eval
-    # (arm_trajectories) and training (training_curves) figures both.
+    # (beq_plus_rate) and training (training_curves) figures both.
     "rl3b_locolib_proof_typecheck": dict(color=BLUE, marker="D",
                                          label="locolib proof, type-check",
                                          end_label="proof, type-check"),

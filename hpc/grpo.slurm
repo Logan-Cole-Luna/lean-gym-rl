@@ -71,7 +71,10 @@ case "$ARM" in
   *) echo "[grpo] bad ARM: ${ARM}"; exit 1 ;;
 esac
 
-rename_job grpo "${ARM}"
+# SERIES_TAG in the name too: two series can run the same ARM (e.g. a plain
+# edge-pool arm vs a SERIES_TAG=proof variant), and without it they are
+# indistinguishable in squeue.
+rename_job grpo "${SERIES_TAG:+${SERIES_TAG}_}${ARM}"
 
 # Arms separate and then flatten well before 90 steps, and they are compared at
 # matched steps, so the useful range is capped by the shortest arm anyway.
@@ -114,5 +117,17 @@ EXPERIMENT_NAME="${RUN_NAME}" \
     'actor_rollout_ref.actor.checkpoint.save_contents=[model,optimizer,extra,hf_model]' \
     ${LOAD_CONTENTS:+"actor_rollout_ref.actor.checkpoint.load_contents=[${LOAD_CONTENTS}]"} \
     ${EXTRA[@]+"${EXTRA[@]}"}
+STATUS=$?
+
+# job_prelude.sh deliberately omits `set -e` (some jobs continue past a soft
+# failure), so a crash here -- Ray's node ever failed to come up on a bad node,
+# main_ppo raising before the first step -- would otherwise fall through to
+# the "done" line below and exit 0. That is a silent no-op: the chunk trains
+# nothing, the dependency chain still fires, and eval "completes" against
+# whatever checkpoint (or none) was already there. Fail the job instead.
+if [ "${STATUS}" -ne 0 ]; then
+  echo "[grpo] arm=${ARM} run=${RUN_NAME} FAILED (exit ${STATUS})"
+  exit "${STATUS}"
+fi
 
 echo "[grpo] arm=${ARM} run=${RUN_NAME} done"

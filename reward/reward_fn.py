@@ -119,52 +119,73 @@ def _note_call(error_kind: str | None) -> None:
                   "reduce concurrency.", flush=True)
 
 
-# Every reward must emit the same key set: verl aggregates each key into a
-# metric, and an omitted key gives a ragged schema. These are the "not
-# applicable" values, not measurements.
+# The rich diagnostic set, used only by `compute_score_outcome` -- the arm
+# actually under iteration, where the cascade internals (rung, convert_level,
+# proved, ...) are worth reading. `gated` and `typecheck` return small,
+# hand-built dicts instead of this (see their functions below): fewer moving
+# parts, and each one's own zero-fallback can match its own shape exactly.
+#
+# Every reward must emit the same key set ACROSS ITS OWN CALLS: verl
+# aggregates each key into a metric, and an omitted key gives a ragged
+# schema. These are the "not applicable" values, not measurements.
+# Deliberately excludes "score" -- that is the objective itself, never a
+# placeholder, and `compute_score_outcome` builds
+# `{"score": <real value>, **_diagnostics(...)}`; a "score" entry here would
+# spread in AFTER the real one and silently overwrite it back to 0.0. (This
+# is exactly what happened to `gated` and `outcome` before: every reward was
+# computed correctly and then clobbered before verl ever saw it.)
 _SCHEMA = {
-    "score": 0.0, "acc": 0.0, "beq_plus": 0.0, "typecheck": 0.0,
+    "acc": 0.0, "beq_plus": 0.0, "typecheck": 0.0,
     "semantic_signal": 0.0, "n_directions": 0.0,
     "gold_implies_pred": 0.0, "pred_implies_gold": 0.0,
     "similarity": 0.0, "scorer_error": 0.0,
     "beql": 0.0, "rung": 0.0, "convert_level": 0.0,
     "provable_alone": 0.0, "provable_alone_known": 0.0, "stop_reason": 0.0,
-    # Index into reward.reward.OUTCOMES. Only the outcome arm varies it; the
-    # others emit it so every arm has one key set.
+    # Index into reward.reward.OUTCOMES.
     "outcome_code": 0.0,
-    # Only the outcome arm on the proof-pair task sets these for real (from
-    # BEqPlusScorer.check_own_proof); every other arm emits the "not
-    # applicable" default so the schema stays uniform.
+    # Set for real from BEqPlusScorer.check_own_proof; "not applicable"
+    # otherwise (no other current caller reaches this dict).
     "proved": 0.0, "sorry_used": 0.0,
 }
 
-_ZERO = {**_SCHEMA, "scorer_error": 1.0}
+# `outcome`'s zero-fallback: the full schema above.
+_OUTCOME_ZERO = {"score": 0.0, **_SCHEMA, "scorer_error": 1.0}
+# `gated` and `typecheck` each emit a small dict matching their own function
+# below -- their zero-fallback must match THAT shape, not the outcome one, or
+# a mid-run scorer failure would change the key set verl sees mid-stream.
+_GATED_ZERO = {"score": 0.0, "acc": 0.0, "beq_plus": 0.0, "typecheck": 0.0, "scorer_error": 1.0}
+_TYPECHECK_ZERO = {"score": 0.0, "typecheck": 0.0, "scorer_error": 1.0}
 
 _STOP_REASON_CODE = {"unparseable": 1, "sorry_gate": 2, "no_rung": 3}
 
 
-def _never_raises(fn):
-    """Score 0 rather than propagating an exception.
+def _never_raises(zero: dict):
+    """Decorator factory: score `zero` rather than propagating an exception.
 
     A reward that raises does not just lose its rollout: verl marks the agent
     task failed, the GRPO step never closes, and the job holds a GPU until
     walltime. Scoring 0 is not neutral -- a correct rollout lost to an
     infrastructure fault pushes the gradient the wrong way -- so it is reported
-    as `scorer_error=1` rather than hidden.
+    as `scorer_error=1` rather than hidden. `zero` is per-function (see the
+    _*_ZERO dicts above) so the fallback never hands verl a different key set
+    than the function's own normal-path return.
     """
-    @functools.wraps(fn)
-    def wrapped(data_source, solution_str, ground_truth, extra_info=None):
-        try:
-            return fn(data_source, solution_str, ground_truth, extra_info)
-        except Exception as e:
-            print(f"[reward] {fn.__name__} FAILED, scoring 0: "
-                  f"{type(e).__name__}: {e}"[:300], flush=True)
-            return dict(_ZERO)
-    return wrapped
+    def decorator(fn):
+        @functools.wraps(fn)
+        def wrapped(data_source, solution_str, ground_truth, extra_info=None):
+            try:
+                return fn(data_source, solution_str, ground_truth, extra_info)
+            except Exception as e:
+                print(f"[reward] {fn.__name__} FAILED, scoring 0: "
+                      f"{type(e).__name__}: {e}"[:300], flush=True)
+                return dict(zero)
+        return wrapped
+    return decorator
 
 
 def _diagnostics(r: dict, proof_check: dict | None = None) -> dict[str, float]:
     """Per-sample fields forwarded into `reward_extra_info`. All numeric.
+    Used only by `compute_score_outcome` -- see the module note above `_SCHEMA`.
 
     `proof_check`, when given, is a `check_own_proof()` result for the same
     rollout -- only `compute_score_outcome` on the proof-pair task passes one.
@@ -213,7 +234,7 @@ def _score_pair(solution_str: str, ground_truth: str) -> tuple[dict, str, str]:
     return r, pred, gold_theorem
 
 
-@_never_raises
+@_never_raises(_TYPECHECK_ZERO)
 def compute_score_typecheck_only(data_source, solution_str, ground_truth, extra_info=None) -> dict:
     """1.0 if the candidate's OWN submission elaborates, else 0.0.
 
@@ -241,7 +262,7 @@ def compute_score_typecheck_only(data_source, solution_str, ground_truth, extra_
 W_GATED_ONE_DIR = float(os.environ.get("BEQ_W_GATED_ONE_DIR", "0.25"))
 
 
-@_never_raises
+@_never_raises(_GATED_ZERO)
 def compute_score_gated(data_source, solution_str, ground_truth, extra_info=None) -> dict:
     """BEq+ ladder: 1.0 for both directions, W_GATED_ONE_DIR for one, else 0.
 
@@ -254,12 +275,19 @@ def compute_score_gated(data_source, solution_str, ground_truth, extra_info=None
     exactly zero and contributes no gradient. Any term that varies within such a
     group -- similarity, type-check -- becomes the only climbable signal there,
     and the policy learns to farm it.
+
+    Same shape as `compute_score_typecheck_only`: a small hand-built dict, not
+    `_diagnostics()` -- this arm only needs the two signals in its name.
     """
     r, _pred, _gold = _score_pair(solution_str, ground_truth)
-    return {"score": gated_reward(r, W_GATED_ONE_DIR), **_diagnostics(r)}
+    return {"score": gated_reward(r, W_GATED_ONE_DIR),
+            "acc": float(r["beq_plus"]),
+            "beq_plus": float(r["beq_plus"]),
+            "typecheck": float(r["typecheck"]),
+            "scorer_error": float(bool(r.get("error_kind")))}
 
 
-@_never_raises
+@_never_raises(_OUTCOME_ZERO)
 def compute_score_outcome(data_source, solution_str, ground_truth, extra_info=None) -> dict:
     """The six-outcome ladder from reward/reward.py, now fully reachable on the
     proof-pair task (the candidate writes a real proof, not just a signature):
@@ -297,18 +325,24 @@ compute_score = compute_score_outcome
 if __name__ == "__main__":
     gold = ("theorem lean_workbook_plus_2 (x : ℝ) : "
             "x^2 - 2*x - 24 < 0 ↔ x ∈ Set.Ioo (-4) 6 := by sorry")
+    # compute_score_typecheck_only runs check_own_proof, which elaborates the
+    # candidate AS WRITTEN -- so every case needs a real `:=`, not a bare
+    # signature (a signature with no proof simply fails to parse, which is
+    # why this block used to print an all-zero typecheck column regardless of
+    # case). `:= by sorry` still counts as type-correct (a warning, not an
+    # error); "hack" gets a real closing tactic to show a genuine 1.0.
     cases = [
-        ("good", "theorem restated (x : ℝ) : x^2 - 2*x - 24 < 0 ↔ x ∈ Set.Ioo (-4) 6"),
-        ("wrong", "theorem restated (x : ℝ) : x^2 - 2*x - 24 > 0 ↔ x ∈ Set.Ioo (-4) 6"),
+        ("good", "theorem restated (x : ℝ) : x^2 - 2*x - 24 < 0 ↔ x ∈ Set.Ioo (-4) 6 := by sorry"),
+        ("wrong", "theorem restated (x : ℝ) : x^2 - 2*x - 24 > 0 ↔ x ∈ Set.Ioo (-4) 6 := by sorry"),
         ("fenced", "Here is the formalization:\n```lean\ntheorem restated (x : ℝ) : "
-                   "x^2 - 2*x - 24 < 0 ↔ x ∈ Set.Ioo (-4) 6\n```"),
+                   "x^2 - 2*x - 24 < 0 ↔ x ∈ Set.Ioo (-4) 6 := by sorry\n```"),
         # Strictly stronger: implies the gold but is not implied by it. Lands on
         # 0 directions unless BEQ_PROBE_STRONGER=1; see beq_plus.py.
         ("one_way", "theorem restated (x : ℝ) : x^2 - 2*x - 24 < 0 ∧ x > -4 ↔ "
-                    "x ∈ Set.Ioo (-4) 6"),
-        ("near_miss", "theorem restated (x : ℝ) : x^2 - 2*x - 25 < 0 ↔ x ∈ Set.Ioo (-4) 6"),
-        # Trivially true. Should score 1.0 on typecheck-only and 0 on gated.
-        ("hack", "theorem hack (x : ℝ) : x - 1 = -1 + x"),
+                    "x ∈ Set.Ioo (-4) 6 := by sorry"),
+        ("near_miss", "theorem restated (x : ℝ) : x^2 - 2*x - 25 < 0 ↔ x ∈ Set.Ioo (-4) 6 := by sorry"),
+        # Trivially true AND sorry-free. Should score 1.0 on typecheck-only and 0 on gated.
+        ("hack", "theorem hack (x : ℝ) : x - 1 = -1 + x := by ring"),
     ]
 
     print(f"probe_stronger={os.environ.get('BEQ_PROBE_STRONGER', '0')}")

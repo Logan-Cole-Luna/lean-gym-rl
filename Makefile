@@ -10,8 +10,6 @@
 # make model             — download the base model from Hugging Face
 # make dataset           — prepare the Lean-Workbook train/val parquet files
 # make smoke             — tiny (8/4-example) end-to-end GRPO smoke test
-# make train-composite   — real GRPO run, BEq+ composite reward (local/interactive)
-# make train-typecheck   — real GRPO run, type-check-only reward (ablation baseline)
 # make train             — both of the above, sequentially (single GPU)
 # make submit ARM=…      — sbatch hpc/grpo.slurm for one arm
 # make check-toolchain   — verify elan/Mathlib4/lean-interact all agree on the Lean version

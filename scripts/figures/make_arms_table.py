@@ -12,7 +12,7 @@ mixed a decoder change, a prompt-set change and a k change all at once, and the
 header had to warn readers not to read it.
 
 Greedy T=0 evals are NOT dropped -- they are denser in step (every 10) and are
-what the McNemar tests and `arm_trajectories.png` use. They are just not the
+what the McNemar tests and `beq_plus_rate.png` use. They are just not the
 axis this table compares on.
 
 Rows are `evalio.STEP_GRID` -- 10/30/50/90 -- and nothing else. Off-grid
@@ -120,7 +120,7 @@ def main() -> None:
         f"- Rows are the reporting grid, {'/'.join(str(s) for s in GRID)}. Every arm is",
         "  evaluated at these steps and no others, so columns compare like with like.",
         "- Greedy T=0 BEq+ is also measured at these steps and backs the McNemar",
-        "  tests; see `results/figures/arm_trajectories.png`.",
+        "  tests; see `results/figures/beq_plus_rate.png`.",
         "",
         "| step | " + " | ".join(names) + " |",
         "|---|" + "---|" * len(names),

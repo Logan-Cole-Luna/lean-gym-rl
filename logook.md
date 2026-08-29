@@ -1,5 +1,689 @@
 # Done:
 
+## 2026-08-27 — optimizer state is now saved; gated_edge extended to 150
+
+### The trap: every chunk boundary was a silent optimiser reset
+
+`hpc/grpo_3b.slurm` saved `[model,extra,hf_model]`. No `optimizer`. Arms here run
+as chained `afterany` chunks, so **every walltime boundary cold-started Adam's
+moment estimates.** `rl3b_lr6_gated_edge` already took one at step 50 (chunk 2
+resumed from checkpoint 50) with no visible shock in greedy BEq+ or KL, which is
+why it went unnoticed.
+
+It matters most on exactly the runs where it happens most: a moment reset is
+**indistinguishable from a real trend change** in the metrics, and long runs have
+more chunk boundaries. On a 150-step extension whose entire purpose is watching
+whether headroom keeps compressing, that ambiguity is not acceptable.
+
+Now `[model,optimizer,extra,hf_model]`, matching what `sft_3b.slurm` and
+`midtrain_3b.slurm` already did. Also fixed in `grpo_3b_bigbatch.slurm`, which is
+superseded but would have inherited the trap. Costs disk: checkpoints roughly
+double, bounded by `MAX_CKPT_KEEP`.
+
+**The resume from step 90 still cold-starts once**, because checkpoint 90 was
+written under the old setting and has no optimizer state to load. Boundaries
+after that are clean. Worth remembering when reading steps 90-110.
+
+### Extension: `1864238` / `39`, eval `1864240`
+
+`gated_edge` lr6 to **150 steps**, ~11 GPU-hours over 2 chunks.
+
+**Why extend rather than decay the LR.** Asked whether to add LR decay or train
+longer. The training signals rule out decay: `actor/kl_loss` is **0.009 (max
+0.020) against the 0.05 design target**, entropy is stable at 0.20-0.26,
+clip_ratio 0.8-6%, retention 96.7%, and reward mean is still climbing
+(0.645 -> 0.738 across thirds). Nothing is diverging. Decay is a fix for
+instability or overshoot, and there is neither; it would slow the sharpening and
+the slow capability erosion equally without changing direction.
+
+**What the extension actually tests.** pass@1 has not plateaued (33.1 -> 37.4)
+but pass@32 is flat and **headroom is compressing monotonically: 22.8 -> 21.9 ->
+20.3 -> 18.1pp**. pass@1 is rising by CONSUMING headroom, not by lifting the
+ceiling. The 1e-5 twin took the same path to 6.4pp. So the question is not "does
+pass@1 keep rising" (it will) but **where pass@32 finally breaks**, and the
+stopping criterion is headroom, not pass@1.
+
+Needs pass@k at 110/130/150 to answer; not yet launched, since the checkpoints do
+not exist.
+
+Third option worth recording, which the data points at and neither proposal
+covered: KL sits at a fifth of its budget while the gain-rate at 1e-6 is 4-6.6%
+against 10-12% at 1e-5. There may be room to move FASTER (3e-6), not slower.
+
+
+## 2026-08-27 — the two-arm figure at the corrected LR tells a WEAKER story
+
+`scripts/fig_gated_vs_typecheck.py` now takes `--series lr6` and writes
+`arm_trajectories_pass1_gated_vs_typecheck_lr6.png`. Parameterised rather than
+duplicated, so the underlying figure stays a single implementation. The suptitle
+carries the LR, because the two series differ in the optimiser and a figure that
+does not say which one it is invites exactly the comparison that is invalid.
+
+**The two versions do not say the same thing, and the newer one is less
+flattering.**
+
+| | 1e-5 (old figure) | 1e-6 (new figure) |
+|---|---|---|
+| gated, step 90 | 34.1% | **37.4%** |
+| type-check, step 90 | **20.7%** | **35.6%** |
+| gap | **13.4pp** | **1.8pp** |
+
+At the broken LR the figure is a scissor: BEq+ climbs while the exploitable
+proxy collapses, and that scissor is the project's clearest single argument for
+a semantic reward. At the corrected LR **both arms rise and the gap narrows to
+1.8pp**. Type-check still climbs its own proxy faster (77.9% vs 74.1% compiles),
+so the shape of the argument survives, but its force does not.
+
+Two things have to be said with this figure rather than after it:
+
+- **The 1.8pp gap is still confounded by the POOL.** `gated_edge` trains on the
+  curated edge pool, `typecheck` on the full pool. `1815033` settles it.
+- **Neither arm gains capability.** pass@32 is flat for both (p >= 0.07 at every
+  step). Both lines in this figure are sharpening.
+
+The honest reading: the LR fix rescued the proxy arm more than it helped the
+semantic one. That is evidence AGAINST the strong form of the project's thesis,
+and it should not be filed away because the old figure looked better.
+
+
+## 2026-08-27 — the `guided` control is running
+
+`1863481` / `82` / `83` chained, eval `1863484`. `ARM=guided SERIES_TAG=lr6
+MULTITURN=0 ACTOR_LR=1e-6 LR_WARMUP_RATIO=0.05 TOTAL_STEPS=90` on the FULL pool,
+matching the original `guided` arm in every respect except the learning rate, so
+it pairs against `rl3b_guided` with LR as the only variable. ~960 s/step, so
+~24 GPU-hours over three chunks.
+
+Pre-flight: **`zss` verified live** before launching. Without it
+`structural_similarity` returns 0.0 silently and half the reward disappears,
+which has already cost this project a 200-step run. Checked
+`structural_similarity(x, x) == 1.000` rather than merely importing the module.
+The known blind spot also reproduces: an INVERTED inequality scores 0.940 where
+a correctly renamed variant scores 0.820.
+
+**What it tests.** `guided` was refuted at p=0.008 by step 70, and that
+refutation is the sole evidence for the design rule now written into `arms.md`:
+continuous shaping signals are dangerous because their within-group variance
+never collapses at mastery. But it ran at the broken 1e-5, where `typecheck`
+also looked catastrophic and then turned beneficial (+1.9pp) once the LR was
+fixed. So the refutation may be measuring the optimiser, not the reward.
+
+**Both outcomes are informative, and one is against us.** If `guided` stays flat
+or degrades at 1e-6, the variance argument survives and the `verified` ladder's
+discrete-rung design is justified. If it now behaves, then continuous shaping was
+never the problem, the design rule in `arms.md` is wrong, and the reasoning that
+overrode the pre-registered "if guided fails, neither is worth the compute" rule
+collapses with it. Recording that in advance so the result is not re-read to fit
+whichever way it lands.
+
+
+## 2026-08-27 (figures) — all nine regenerated with the lr6 pass@k
+
+`arm_trajectories_pass1.png` finally includes the lr6 arms; the 8 pass@k jobs
+supplied the sampled rollouts it is built from. `retention_gain.png` is back at
+step 90 now that every arm has all four grid steps.
+
+**`arm_trajectories_passk.png` is now the figure that carries the result.**
+Solid = pass@32 (capability), dotted = pass@1. The two dash-dot lr6 arms sit
+FLAT on the 55.2% SFT baseline while every 1e-5 arm falls away beneath it, and
+their dotted pass@1 lines rise. Sharpening and non-destruction in one frame.
+
+### One figure bug fixed
+
+**End labels drifted away from their lines.** `fs.finish` shifts a colliding
+label up by one label height and repeats. With three or four arms the shift is
+small and the label still reads as belonging to its line. With six it is not: in
+the pass@1 semantics panel the lr6 arms pushed "gated", "guided" and "gated,
+edge pool" about 8pp above their own endpoints, where they sat directly beside
+OTHER arms' lines. That does not merely look untidy, it attributes the wrong
+value to the wrong series.
+
+Fixed with a **leader line**: when the displacement exceeds one label height, a
+thin 55%-alpha connector is drawn from the label back to its data point. Below
+that threshold the label still touches its own line and a connector would be
+noise. Applies to every figure that uses `finish`, so the same collision cannot
+mislead elsewhere.
+
+
+## 2026-08-27 — pass@32 says it is SHARPENING, not capability
+
+All 8 pass@k jobs landed. This is the measurement the lr6 result hung on, and it
+comes back **negative for the capability claim**.
+
+BEq+, 250 pinned prompts, k=32. SFT baseline pass@1 32.4%, pass@32 55.2%:
+
+| arm | step | pass@1 | pass@32 | headroom |
+|---|---|---|---|---|
+| gated_edge lr 1e-6 | 30 | 34.8 (+2.4) | 56.7 (+1.5) | 21.9pp |
+| gated_edge lr 1e-6 | 90 | **37.4 (+5.0)** | **55.5 (+0.3)** | 18.1pp |
+| typecheck lr 1e-6 | 90 | 35.6 (+3.2) | 56.6 (+1.4) | 21.0pp |
+| gated_edge lr 1e-5 | 90 | 34.1 (+1.6) | 40.4 (**-14.8**) | 6.4pp |
+| typecheck lr 1e-5 | 90 | 20.7 (-11.7) | 38.7 (**-16.5**) | 18.0pp |
+
+Paired McNemar on the per-prompt pass@32 indicator (242 shared prompts):
+
+```
+rl3b_lr6_gated_edge-step30   57.0%   8 gains / 3 losses   p=0.23
+rl3b_lr6_gated_edge-step90   55.0%   7 gains / 7 losses   p=1.0
+rl3b_lr6_typecheck-step10    57.4%   7 gains / 1 loss     p=0.07
+rl3b_lr6_typecheck-step90    56.2%   9 gains / 6 losses   p=0.61
+```
+
+**Not one arm at any step differs significantly from baseline on pass@32.** The
+learning-rate fix stopped RL from DESTROYING capability (the 1e-5 twins lost
+14.8 and 16.5pp) but it did not ADD any. pass@1 rises +5.0pp while the set of
+problems solvable in 32 draws is unchanged. Under the Interplay criterion that
+is sharpening.
+
+So the honest statement of the headline: **`gated_edge` at lr 1e-6 is the first
+arm to beat SFT (greedy 42.0% vs 39.4%, retention 96.7%, p=0.00041 at step 90;
+pass@1 +5.0pp), and the gain is concentration of existing ability, not new
+ability.** Both halves have to be said together.
+
+Uncomfortable secondary result: **`typecheck` at 1e-6 also beats SFT** on pass@1
+(+3.2pp) with flat pass@32. The known-exploitable proxy is no longer
+catastrophic once the optimiser is not oversized; it is merely worse than BEq+
+(+3.2 vs +5.0). Whether that gap is the REWARD or the POOL is what `1815031`
+(typecheck on the edge pool at the same LR) settles; its eval is `1815033`.
+
+### Also landed
+
+- `gated_edge` lr6 **step 90 greedy: 42.0% BEq+ / 79.8% tc, 39 gains / 13
+  losses, retention 96.7%, p=0.00041.** The effect holds to the end of the run.
+- **The LoCoLib mid-training corpus validates at 67.5% standalone-valid**
+  (135/200), against ~2.3% for raw Mathlib declarations. The preambles remove
+  exactly the blocker that killed the earlier mid-training attempt. Failure
+  kinds: 57 "other", 6 unknown constant, 2 unknown identifier.
+- LoCoLib SFT retrained clean (`1813636`, checkpoints 46/92/135). Eval launched
+  as `1862276` against `data_locolib/val.parquet`; the previous attempt was
+  invalid because of the prompt-format bug, so there is still no LoCoLib SFT
+  number.
+
+
+## 2026-08-26 — isolating reward from pool at the corrected LR
+
+Both lr6 arms already beat SFT, and both were already run at lr 1e-6 + 0.05
+warmup for 90 steps. Paired vs `sft3b-step93`, n=1000:
+
+| step | typecheck (FULL pool) | gated_edge (EDGE pool) |
+|---|---|---|
+| 10 | 40.9, 18/3, p=0.0015 | 40.0, 11/5, p=0.21 |
+| 50 | 40.9, 26/11, p=0.02 | 41.2, 31/13, p=0.0096 |
+| 70 | 41.3, 37/18, p=0.014 | **42.3, 40/11, p=5.7e-05** |
+| 90 | 41.3, 42/23, p=0.025 | (eval running) |
+
+**But they differ in TWO things, not one.** `rl3b_lr6_typecheck` trained on
+`data_3b/train.parquet`; `rl3b_lr6_gated_edge` on `data_3b/train_edge.parquet`.
+So the 42.3 vs 41.3 gap confounds the REWARD with the POOL, and the project's
+own rule is that arms differ in one thing at a time.
+
+Launched `1815031`: `ARM=typecheck` on the **edge pool** at the same LR,
+`SERIES_TAG=lr6edge`. With that, `lr6edge_typecheck` vs `lr6_gated_edge` differ
+only in the reward, and `lr6edge_typecheck` vs `lr6_typecheck` differ only in the
+pool. Cheap to settle: type-check is ~32 s/step, so 90 steps is under an hour
+against ~17 h for a BEq+ arm. Eval chained behind it.
+
+**What it can show.** If the exploitable proxy matches BEq+ once the optimiser is
+not destroying the policy, then at this LR the reward barely matters and the
+gains are coming from the pool and the small step size. That would be an
+uncomfortable result for the project's thesis, which is exactly why it is worth
+running rather than assuming. Note type-check at 1e-6 is already climbing its own
+proxy hard (76.7 -> 84.2%) WITHOUT collapsing semantics, unlike at 1e-5 where the
+same reward drove BEq+ to 6.0%.
+
+
+## 2026-08-26 (figures) — the lr6 series is now in the plots
+
+All nine figures regenerated with `rl3b_lr6_gated_edge` and `rl3b_lr6_typecheck`
+added. Each keeps its 1e-5 twin's colour (colour follows the entity) and is
+**dash-dotted** in line charts, **hatched** in bar charts. Plotting a pair
+together is a statement about the LEARNING RATE, not a reward comparison, which
+is the one thing that differs between them.
+
+`arm_trajectories.png` now carries the whole finding in one frame: both dash-dot
+arms sit ABOVE the SFT baseline, every solid 1e-5 arm falls below it.
+
+`retention_gain.png` shows the mechanism: lr6 retention **97-98%** against
+46-78% at 1e-5, bought with a LOWER gain rate (5.1 / 3.4 vs 10.6 / 11.9). Small
+steps explore less and destroy far less.
+
+**pass@1 and pass@k figures still exclude the lr6 arms**, because no pass@k has
+been run on that series. `fig_arm_trajectories_pass1` is built from the k=32
+sampled rollouts, not from the greedy evals, so lr6 cannot be added to it by
+regenerating: the rollouts have to exist first. Launched as `1814654`-`1814661`,
+8 jobs (2 arms x grid steps 10/30/50/90), ~32 GPU-hours. Regenerate with
+`python scripts/make_figures.py` once they land; ARM_STYLE already carries the
+entries, so nothing else needs changing.
+
+This is also the capability measurement the whole result hinges on. Every arm so
+far has raised pass@1 while pass@32 FELL, which is sharpening, not capability.
+`gated_edge` at lr 1e-6 is the first arm to beat SFT on pass@1 (+2.9pp,
+p=5.7e-05); whether its pass@32 clears the 55.2% baseline is the difference
+between "the policy got better at one draw" and "the policy can do more". `arm_trajectories_pass1_gated_vs_typecheck.png` is
+therefore still the 1e-5 comparison. Until pass@k lands on lr6 the result is
+"better at one draw", not "can do more" — every earlier arm raised pass@1 while
+pass@32 fell.
+
+### Three figure bugs fixed on the way in
+
+1. **End labels collided.** `make_figures` derived them as
+   `label.split(" (")[0]`, which maps "gated, edge pool" and "gated, edge pool
+   (lr 1e-6)" to the SAME dict key, so one silently erased the other. ARM_STYLE
+   now carries an explicit `end_label`.
+2. **That fix then broke label wrapping**, because `st.get("end_label") or
+   st["label"]...replace(" ", "\n")` short-circuits past the replace. Labels ran
+   into each other. Now wrapped with `textwrap.fill(width=12)` for every arm,
+   which also stops "gated, edge pool" stacking as three separate words.
+3. **Retention axis reached 126%.** It is a share of a fixed denominator and
+   cannot exceed 100; `ax.set_ylim` is capped at 108 so the bar labels still fit.
+
+### One side effect worth knowing
+
+`retention_gain.png` moved from **step 90 to step 50**. The panel uses the
+latest step every drawn arm shares, and `rl3b_lr6_gated_edge` only has grid
+steps 10/30/50 so far (its step-90 eval, job 1724353, is still running). It will
+return to 90 on the next regeneration once that lands.
+
+
+## 2026-08-26 (evening) — an RL arm finally beats SFT, significantly
+
+### `gated_edge` at lr 1e-6: +2.9pp over SFT, p=5.7e-05
+
+Same reward, same pool, same everything except the learning rate. Paired
+McNemar vs `sft3b-step93` at n=1000:
+
+| step | lr 1e-5 BEq+ / retention | **lr 1e-6 BEq+ / retention** | gain-rt | weak | p (new) |
+|---|---|---|---|---|---|
+| 20 | 40.2 / 86.8 | **40.9 / 97.7** | 4.0 | 4.7 | 0.014 |
+| 30 | 39.7 / 84.0 | **41.1 / 97.5** | 4.5 | 4.7 | 0.0076 |
+| 50 | 37.6 / 76.9 | **41.2 / 96.7** | 5.1 | 5.7 | 0.0096 |
+| **70** | 35.2 / 73.1 | **42.3 / 97.2** | 6.6 | 5.3 | **5.7e-05** |
+| 80 | 35.2 / 73.9 | **41.5 / 96.2** | 5.9 | 5.8 | 0.0046 |
+
+Step 70: 42.3% vs the 39.4% baseline, **40 gains against 11 losses**. Significant
+at every step from 20 on, and p=5.7e-05 survives Bonferroni over the 8 steps
+tested (needs 0.00625). Type-check rises too, 76.7 -> 79.5%.
+
+**"No RL checkpoint has beaten sft3b-step93" is no longer true.** The 1e-5 twin
+of this exact arm decayed to 35.2% at the same step, so the swing is 7.1pp from
+the learning rate alone.
+
+Two things that make it credible rather than a lucky step:
+
+- **Retention 95.7-98.7%**, against 73-87% at 1e-5. The loss channel is what the
+  LR fix closes; the gain channel is actually WEAKER (6.6% vs 10-12%), i.e. small
+  steps explore less but destroy far less, and the net is strongly positive.
+- **`weaker_only` sits at 4.5-5.8% against a 5.0% baseline.** No drift toward
+  the vacuity-ward rung, so this is not the 0.25 rung being farmed.
+
+Still unmeasured: **pass@32**. Every previous arm raised pass@1 while pass@32
+fell, which is sharpening rather than capability. Until pass@k is run on this
+series the result is "the policy got better at one draw", not "the policy can do
+more". That is the next job, not an optional extra.
+
+### LoCoLib SFT: first run was invalid, harness bug, mine
+
+`eval_sft3blocolib-*` reported 0.0% BEq+ at every step with type-check 100% then
+0% / 0%. Not a model result: **the model emitted one identical theorem for all
+999 rows**.
+
+Cause: `evaluate_checkpoints.py:201` reads `prompt[0]["content"]`, and
+`prepare_locolib.py` had added a `system` turn ahead of the user turn, which
+`prepare_dataset.py` does not. So element 0 was the system string and every eval
+example was scored on the prompt "You are an expert in Lean 4 and Mathlib.".
+Zero scorer errors, which is why nothing looked wrong from the metrics side.
+
+Fixed in two places, because either alone leaves the trap armed:
+
+1. `prepare_locolib.py` now emits a bare user turn for SFT, RL and val, matching
+   `prepare_dataset.py` / `prepare_sft_dataset.py`. The system turn also created
+   a train/inference mismatch, since SFT saw it and the eval did not.
+2. `evaluate_checkpoints.py` now takes the LAST user turn and raises if there is
+   none, instead of indexing element 0. This failure is invisible in the metrics
+   (it reads as a collapsed model, not a broken harness), which is what makes it
+   worth hardening rather than just avoiding.
+
+Checkpoints and evals from the bad run deleted. Retraining as `1813636`.
+
+
+## 2026-08-26 (later) — the self-prove rung is dead; LoCoLib passes its gate
+
+### The proposed `verified` ladder does not ship
+
+Two probes over 600 dead-band rollouts from the pinned SFT pool.
+
+**Availability was never the problem.** BEq+'s cascade reaches rung 3 on 99.7%
+of dead-band rollouts, so `provable_without_have` is genuinely free.
+
+**The rung is empty, and anti-correlated with correctness.** The cascade's cheap
+list (tauto + simp_all_arith!) fired 0/598. The full ladder, adding noncomm_ring
+and a bare `exact?`, reaches only 4.7%. The control is what settles it:
+
+| self-prove ladder | provable | trivial | self_prove |
+|---|---|---|---|
+| model predictions (n=600) | 7.7% | 3.0% | **4.7%** |
+| the golds themselves (n=154) | 5.8% | 3.2% | **2.6%** |
+
+Predictions score the rung nearly twice as often as the correct answers do. A
+rung the gold fails more often than the model does is not partial credit for
+correctness; it pays for being more trivially provable than the reference, which
+is vacuity-ward, the same pathology as the weakening-only 0.25 rung.
+
+This is a property of the DATA. Lean-Workbook ships unproved competition
+statements, so "automatically provable" is close to orthogonal to "correct". A
+provable corpus would not rescue it either: LoCoLib golds carry real Mathlib
+proofs, which tauto/simp/exact? will not reproduce.
+
+Also worth noting: only 90.3% of the sampled Lean-Workbook GOLDS elaborate. 15
+of 154 do not, which caps anything gold-referenced on those prompts.
+
+### LoCoLib: set up, and the toolchain gate passes
+
+`scripts/prepare_locolib.py` builds domain-stratified, content-disjoint splits
+from the 18,729 usable rows: 11,728 SFT / 5,998 RL / 999 val, pairwise content
+overlap 0.
+
+Two things measured rather than assumed:
+
+- **LoCoLib ships no usable BEq+ validation set.** Its `val_*` files have an
+  EMPTY `formal_statement`, and `LoCoLib_distilled` is a 100% uuid subset of the
+  labelled train files (18,501/18,501). Validating on either would be evaluating
+  on training data. We carve our own.
+- **73.5% of LoCoLib golds elaborate under our Mathlib v4.8.0-rc1** despite the
+  corpus targeting Lean 4.23.0, and 100% of the contexts do (job 1760265).
+  By domain: logic 81.1%, algebra 71.3%, number theory 64.9%. Comfortably above
+  the ~50% viability line, so the toolchain mismatch costs about a quarter of the
+  corpus but does NOT block RL.
+
+### A trap worth recording
+
+verl's SFT trainer RAISES on an over-long row rather than truncating
+(`multiturn_sft_dataset.py`: `sequence_length=1076 is larger than
+max_length=1024`). It killed job 1760274 at step 22 of 138, twenty minutes in,
+with the loss falling normally. `prepare_sft_dataset.py` has a length filter for
+exactly this; `prepare_locolib.py` did not, because putting the Lean preamble in
+the prompt made the rows longer. Measured: median 305 tokens, ONE row over 1024.
+Filters added for both the SFT cap (1024) and the RL prompt cap (768, from
+run_grpo.sh); total cost 3 rows.
+
+### LoCoLib SFT: trains cleanly, quality not yet known
+
+`1767734` COMPLETED in 59 min. 135 steps (11,728 / 256 = 45.8, so 45 steps/epoch
+with drop_last), checkpoints at 46 / 92 / 135.
+
+| | LoCoLib | Lean-Workbook (for scale) |
+|---|---|---|
+| train loss | 1.167 -> **0.116** over 135 steps | 1.12-1.22 -> 0.177-0.183 over 93 |
+| val loss | 0.355 (logged once, at the end) | not logged in those runs |
+
+The train/val gap (0.116 vs 0.355) suggests overfitting by epoch 3, but verl
+logged validation exactly once so there is no trajectory to confirm it, and the
+Lean-Workbook runs logged none at all, so the comparison is one-sided. **Loss is
+not the metric anyway**: `sft3b-step93` was chosen by BEq+ on a pinned slice, not
+by loss, and the same rule applies here.
+
+`1775910` evaluates all three checkpoints with BEq+ on the held-out LoCoLib val
+slice. Two things to hold in mind when it lands:
+
+- **The ceiling is ~73.5%, not 100%.** That is the gold elaboration rate under
+  our Mathlib. A gold that will not elaborate can never be proved equivalent to
+  anything, so BEq+ on this corpus is bounded by it.
+- **This measures FIT, not transfer.** Scoring the LoCoLib model against
+  Lean-Workbook golds is the separate, and for the Interplay question more
+  interesting, measurement.
+
+`hpc/eval_3b_sft.slurm` gained an overridable `VAL_PARQUET` for this, defaults
+unchanged.
+
+
+## 2026-08-26 — the cascade already computes the dead-band signal and throws it away
+
+### Phase 0 of the process-level reward: instrument first, design second
+
+The reward pays `1.0 / 0.25 / 0.0` on `semantic_signal` and nothing else, so
+**55.6% of rollouts sit on exactly 0.0** — 23.3% that do not elaborate plus the
+**32.3% dead band** that type-checks and still earns what garbage earns.
+
+Reading `check_theorem_equivalence` line by line turned up something the record
+did not have: **cascade rung 3 already runs `provable_without_have`**
+(`beq_plus.py:214-222`) — whether the *reformulated* theorem proves with no
+reference to the base. In direction 0 the reformulated theorem is the
+**prediction**, so this is a self-provability check on exactly the dead-band
+rollouts, computed and then discarded as a local variable.
+
+If it is available on most of the dead band, the BEq+ **and** self-prove ladder
+is nearly free rather than the *"~20+ min/step, the dearest arm in the set"* the
+record prices it at — that estimate assumes the full 5-call `self_prove` ladder
+must run per rollout. **Not asserted; being measured** (job `1756954`).
+
+Also discarded on every rollout, all now surfaced: **which cascade rung** closed
+each direction (1 `exact?` / 2 `apply` / 3 `have` / 4 `convert`, a closeness
+ordinal), the **`convert ... using k`** level k∈0..4, **`beql`** (strictly
+tighter than BEq+; `score()` returned it, `_diagnostics` never forwarded it), and
+**why direction 0 stopped** — unparseable / sorry-gate / no-rung, three different
+facts that `n_directions=0` conflates.
+
+**`provable_alone` is a LOWER BOUND on `self_prove`'s `provable`,** and the
+report says so: rung 3 proves with `tauto + simp_all_arith!` (its
+`exact? using this` has no `this` in scope), while `self_prove` also tries
+`noncomm_ring` and a bare `exact?`. It also cannot separate `trivial` — the
+tactic list is a disjunction — so the vacuity split still needs one call.
+
+### Changed
+
+- `reward/beq_plus.py`: additive instrumentation on `BEqCPUResult` and the
+  vendored cascade. **The algorithm is untouched** — the diff is four dataclass
+  fields plus nine `res.*` assignments beside existing branches; exactly one
+  line was removed (the `out = {...}` closer, re-added extended). `beql()` and
+  `beq_plus()` still read only the two original fields. Verify by diffing
+  `beq_plus`/`beql` on a re-scored pool.
+- `reward/reward_fn.py`: the diagnostic schema was hand-copied in **three**
+  places (`_ZERO`, `selfprove`, `placebo`) and had drifted. Now one
+  `_DIAG_DEFAULTS` spread into all of them — a reward that omits a key gives
+  verl a ragged metric schema. New keys carry `*_known` companions wherever
+  `None` and `False` are different facts; collapsing "the check never ran" into
+  "the check failed" would understate the exact thing the ladder is built on.
+  `selfprove` now also reports `provable` and `trivial`, which `self_prove()`
+  has always returned and nothing ever logged.
+- `scripts/make_deadband_subset.py`, `scripts/report_deadband.py`,
+  `hpc/score_deadband.slurm` (**no GPU** — scoring is pure Lean; bare
+  `def-vganesh` auto-assigns the cpu sub-account).
+
+### Running
+
+`1756954` — 600 dead-band rollouts sampled from the pinned
+`passk_sft3b-step93_k32` pool (2,421 available; selecting on the previous
+scoring means every example we pay for answers the question, and the dead band
+is also the expensive class, ~175 Lean-seconds).
+
+`1696981` **TIMEOUT at step 53/90**, which is the expected chunk boundary, not a
+failure — checkpoints 10-50 saved, `1724352` resumes from 50. Its metric trace
+(the first this project has had) has `actor/kl_loss` at **0.0058 max** against
+0.087-0.125 on the 1e-5 arms.
+
+### The contradiction this has to confront
+
+`logook.md` pre-registered *"if grading that band helps at all, this is the
+better way to grade it; if it does not, neither is worth the compute"*, `guided`
+came back negative, and the note then reversed the rule without saying so. The
+override is defensible on two grounds, both of which must hold: `guided` ran at
+the broken 1e-5, **and** its dead-band term was *continuous similarity*, whose
+within-group variance never collapses. [The Dark Room in the Reward
+Channel](https://arxiv.org/html/2607.21273v1) shows that is precisely the class
+that destroys GRPO — z-scored advantage is invariant to the shaping coefficient,
+so turning the weight down cannot help. Discrete verified predicates saturate
+instead. That is why `guided` gets re-run at 1e-6 as a control rather than
+being taken on trust: if it now behaves, the variance argument is wrong.
+
+## 2026-08-24 — the learning rate is 1e-5, not 1e-6; fix-vs-migrate settled
+
+### Migration question: stay on verl
+
+Evaluated moving to `sorgfresser/conjectureextraction`'s `grposinglestep.py` and
+reimplementing BEq+ there. **No.** Two facts settle it.
+
+**Its reward is our worst arm.** Traced `workers/formalizer/abstract.py:167-168`
+-> `messages.py:74` -> `train.py:81`: `working[i] = True` iff the environment
+could build a proof state from the formalization, i.e. it *elaborates*. That is
+`compute_score_typecheck_only`, which we measured taking BEq+ 39.4% -> 6.0% at
+98.4% type-check. Its BGE-M3 embedding similarity
+(`formalizationtrain/similarity.py`) is a **wandb metric only**, never in the
+loss — same "monitor semantic drift, don't reward it" posture we already have.
+The repo publishes no autoformalization-quality result to inherit.
+
+**The trainer is ~3% of wall-clock.** `gated` is ~972 s/step against a ~26 s
+Lean-free GRPO floor. Swapping verl for TRL + DeepSpeed + RabbitMQ + Postgres +
+ChromaDB optimises 3% and costs the agent loop, colocated FSDP+vLLM,
+`resume_mode=auto` chunking and the whole Narval stack.
+
+What it *does* have worth borrowing is conservatism and scale per update:
+~512-1000 stored samples per optimizer step (4 GPU x micro 8 x accum 16) and
+`WarmupCosineLR` with `warmup_num_steps=1000`, so its first updates land at an
+effectively-zero LR. We run 128 sequences per update at a constant 1e-5 with no
+warmup. **That gap, not the framework, is the thing to close.**
+
+Its architecture — decoupled generate -> score -> train, with Lean scoring off
+the critical path — remains the right answer to "Lean is 97% of a step", and we
+already have every piece (`score_rollouts.py`, the RFT path). Filed as a later
+phase: our RFT is filtered SFT with no advantage estimate; theirs computes group
+advantages `(r-mean)/std` in the Dataset and applies the clipped GRPO loss over
+stored samples. Bounded addition, not a migration.
+
+### The actual bug: ACTOR_LR
+
+`configs/run_grpo.sh` defaults `ACTOR_LR=1e-5` and nothing overrode it.
+Confirmed: `'lr': 1e-05` in the config dump of `logs/grpo_3b_1586330.out` and
+`1586332.out`. **verl's own default, TRL's `GRPOConfig` and DeepSeek's GRPO all
+use 1e-6.** TODO #1 below ("try `1e-6 -> 3e-7`") was written assuming it was
+already 1e-6. It is an order of magnitude higher and this was never tested.
+
+verl also runs `lr_scheduler_type=constant` with `lr_warmup_steps_ratio=0.0`, so
+step 1 lands at the full 1e-5 on a 16-prompt batch — which matches the fact that
+*every* arm is below baseline by step 10, including the ones that recover.
+
+With `train_batch_size=16`, ~46% informative groups and `ppo_epochs=1`, each
+Adam update is a full-size parameter step driven by **~7 prompts**. This is H1
+made concrete, and it predicts exactly what the arms show — **gains scale with
+reward quality, losses scale with distance travelled.** Paired at n=1000 vs SFT:
+
+| arm-step | BEq+ | gain | loss | gain-rate | retention |
+|---|---|---|---|---|---|
+| `gated_edge`-20 | 40.2% | 60 | 52 | 9.9% | 86.8% |
+| `gated`-30 | 38.7% | 63 | 70 | 10.4% | 82.2% |
+| `placebo`-10 | 33.9% | 33 | 88 | 5.4% | 77.7% |
+| `placebo`-30 | 21.2% | 28 | 210 | 4.6% | 46.7% |
+
+The gain channel tracks the reward (10.4% vs 4.6%); the loss channel tracks
+steps taken, nearly regardless of arm. The reward is working and the optimiser
+is out-destroying it.
+
+**The damage is semantic drift, not broken Lean.** Of `gated`-30's 70 losses,
+**59 (84%) still type-check**. By step 60, 56 of 126 losses sit on the
+one-direction rung and `weaker_only_rate` goes 0.048 -> 0.130. Since the
+vendored cascade short-circuits (`reward/beq_plus.py:41-70`),
+`semantic_signal == 1` can only mean *strictly weaker than gold* — so the 0.25
+rung pays exclusively for vacuity-ward weakening. Confirms H9/H11 at n=1000.
+
+### Two more latent config bugs
+
+**`MULTITURN=1` was a no-op.** `multi_turn.enable=True` + `function_tool_path`
+does not route rollouts through the tool loop: verl picks the agent loop from a
+per-row `agent_name`, falling back to
+`rollout.default_agent_loop = "single_turn_agent"`
+(`repos/verl/verl/workers/config/rollout.py:74`), and our parquet rows have no
+`agent_name`. `SingleTurnAgentLoop` applies the chat template with no `tools=`
+and generates once. **`reward/lean_tool.py` has never run in any arm.** The tool
+schema did reach `RLHFDataset`'s prompt-length filter, so leaving it on perturbed
+row filtering while buying nothing. Default flipped to 0. It also cannot work at
+128 response tokens — that is the total across turns.
+
+**`max_response_length=128` is never overridden.** Measured
+`response_length/clip_ratio` is 2.3-4.4% per step (max 13.3%), mean length
+drifting 65.7 -> 61.6 over 40 steps. A truncated rollout scores 0 under every
+reward, so this is a small standing gradient against long — semantically richer
+— statements. Real but secondary; free to fix with `MAX_RESPONSE_LENGTH=256`
+plus `PPO_/LOG_PROB_MAX_TOKEN_LEN_PER_GPU >= 1024`.
+
+### Changed
+
+- `configs/run_grpo.sh`: new `LR_WARMUP_RATIO` knob (default 0.0, old behaviour
+  preserved), wired to `actor.optim.lr_warmup_steps_ratio`. Verified reaching
+  Hydra via `DRY_RUN=1`. It *is* honoured under `lr_scheduler_type=constant`
+  (`workers/engine/fsdp/transformer_impl.py:502-503`) and survives the chained
+  `afterany` chunks — scheduler state lives in the `extra` shard
+  (`fsdp_checkpoint_manager.py:356-358`), which every arm already saves.
+  `ACTOR_LR` needed no change; it already passes through from the environment.
+- `hpc/grpo_3b.slurm`: `MULTITURN` default 1 -> 0, with the wiring gap written
+  into the header. Placebo arm now refuses to launch (`PLACEBO_ANYWAY=1`
+  overrides).
+- **The placebo is retired.** It answered its question (+18.2pp, p=7e-16) and
+  that result stands. New arms pair against SFT and against their own twin at
+  the previous setting — one variable moves instead of the whole reward, which
+  is a tighter control. `rl3b_v2_placebo` and the constants files stay as
+  evidence.
+- **Step metrics now go to a FILE, fixing the gap that killed `plot_results.py`.**
+  The `console` backend prints one `step:N - key:val` line per step from inside
+  the TaskRunner Ray actor, and Ray's forwarding drops those under load — which
+  is why most arms have no readable reward/KL/entropy/clip_ratio trace at all.
+  `trainer.logger=["console","file"]` now also uses verl's `file` backend
+  (`verl/utils/tracking.py:419-435`), which writes `{"step": N, "data": {...}}`
+  JSONL unbuffered. **One file per SLURM job id**, because `FileLogger` opens
+  `"wb"` — which truncates — and arms run as chained `afterany` chunks, so a
+  single per-experiment path would have chunk 2 silently wipe chunk 1.
+  `scripts/read_train_metrics.py` globs the prefix and merges, later chunks
+  winning on a repeated step. Written under `results/train_metrics/`.
+- `scripts/fig_gated_vs_typecheck.py`: the two-arm presentation figure (gated
+  vs type-check only, no other arms in frame). A wrapper over
+  `fig_arm_trajectories_pass1`, not a fork — it only sets `HIDE`, one
+  `ARM_STYLE` entry, the grid and the titles. It cuts both arms at the last step
+  the gated arm has pass@k for, derived from disk, so it extends itself as
+  pass@k jobs land.
+
+### Running
+
+`1638961` — `ARM=typecheck SERIES_TAG=lr6 MULTITURN=0 ACTOR_LR=1e-6
+LR_WARMUP_RATIO=0.05 TOTAL_STEPS=90`. A pure **step-size probe**, not a control:
+at 1e-5 this arm drives BEq+ 39.4 -> 6.0 while type-check goes to 98.4. How much
+of that collapse survives a 10x smaller step says directly whether the LR governs
+how fast the policy moves. ~32 s/step, so ~48 min for 90 steps.
+
+`1696976` — its eval, `afterany:1638961`, `N_EVAL=1000`.
+
+`1696981` — `ARM=gated_edge SERIES_TAG=lr6 MULTITURN=0 ACTOR_LR=1e-6
+LR_WARMUP_RATIO=0.05 TOTAL_STEPS=90`, with `1696982` its eval. THE test: paired
+against the existing 1e-5 `gated_edge` at matched steps, LR the only variable,
+**retention the diagnostic**. ~667 s/step, so ~17h over two chunks. First arm to
+carry the file logger, so it is also the first with a readable metric trace.
+
+### gated_edge to step 90 landed, and it separates two hypotheses
+
+`1586330` finished; steps 60-90 evaluated (n=1000, paired vs SFT):
+
+| step | BEq+ | gain-rate | retention | p |
+|---|---|---|---|---|
+| 20 | 40.2% | 9.9% | 86.8% | 0.51 |
+| 50 | 37.6% | 12.0% | 76.9% | 0.18 |
+| 70 | 35.2% | 10.6% | 73.1% | **0.0016** |
+| 90 | 36.8% | 11.2% | 76.1% | 0.049 |
+
+Ties SFT at step 20, significantly WORSE by step 70, and **all of it is the loss
+channel**: gain-rate rises and holds at 10-12% while retention falls 86.8% ->
+73.1%.
+
+This rules out the decay mechanism `hpc/grpo_3b.slurm` predicted for this arm.
+The edge pool is "a STATIC filter on a MOVING target" — prompts migrating
+starved -> informative -> saturated — and if pool exhaustion were the cause the
+**gain** rate would fall. It does not. The pool is still producing learning
+signal at step 90; the optimiser is destroying faster than the reward builds.
+Same signature as `gated`, on the arm that was supposed to be immune to it.
+
+**Caveat that limits all of this.** These fixes buy *retention*, not capability.
+`pass@32` never exceeds the SFT baseline's 55.2% for any arm at any step, and
+probing 242 starved prompts at k=32 recovered only 14.5% with 84.3% of those
+type-checking. RL can only re-weight what the policy already samples. Realistic
+upside is a few pp over SFT, not a large win; the ceiling needs data curation
+(`gated_edge`), the untried BEq+ AND self-prove ladder, or `BEQ_PROBE_STRONGER=1`.
+
 ## 2026-08-24 — pass@1 as the reporting basis, and a fixed 10/30/50/90 grid
 
 ### Two verdicts, one measurement

@@ -4,7 +4,7 @@
 Source is `results/train/train_metrics/<project>/<arm>.<jobid>.jsonl` -- verl's
 FileLogger output, one `{"step", "data"}` row per optimiser step. Runs are
 discovered off disk (evalio.discover_train_runs) and coloured to match the eval
-figures (figstyle.arm_style), so `arm_trajectories.png` and `training_curves.png`
+figures (figstyle.arm_style), so `beq_plus_rate.png` and `training_curves.png`
 read together.
 
     python scripts/figures/fig_training.py

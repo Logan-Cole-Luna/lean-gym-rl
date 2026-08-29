@@ -145,22 +145,20 @@ log_prob_max_token_len_per_gpu=${LOG_PROB_MAX_TOKEN_LEN_PER_GPU:-896}
 use_fused_kernels=${USE_FUSED_KERNELS:-False}
 fused_kernels_backend=${FUSED_KERNELS_BACKEND:-torch}
 
-# THE LEARNING RATE IS 10x THE GRPO STANDARD AND THAT IS NOT DELIBERATE.
-# verl's own default, TRL's GRPOConfig, and DeepSeek's GRPO all use 1e-6. Every
-# 3B arm in results/ ran at this 1e-5 -- confirmed by `'lr': 1e-05` in the config
-# dump of logs/grpo_3b_1586330.out and 1586332.out. logook.md's next-step note
-# ("try 1e-6 -> 3e-7") was written assuming the LR was ALREADY 1e-6; it was not.
+# 1e-6, matching verl's own default, TRL's GRPOConfig, and DeepSeek's GRPO.
+# For a long stretch this default was silently 1e-5 -- 10x too high -- and every
+# arm run under it showed the same signature: noisy/flat training reward, eval
+# performance degrading rather than improving, and actor/kl_loss climbing well
+# past the ~0.05 the KL anchor is meant to hold it under (observed up to 0.27).
+# Root cause: train_batch_size=16 is 32x smaller than the batches GRPO is
+# normally run at, so at ~46% informative groups each Adam update is a
+# full-size parameter step driven by roughly 7 prompts -- enough for even a
+# zero-information reward to be actively destructive rather than merely inert.
 #
-# Combine that with train_batch_size=16 (32x smaller than the 512-prompt batches
-# GRPO is normally run at), ~46% informative groups, and ppo_epochs=1, and each
-# Adam update is a full-size parameter step driven by roughly 7 prompts. That is
-# the mechanism behind the placebo arm being CATASTROPHIC (39.4% -> 13.0% BEq+)
-# rather than inert: a zero-information reward should do approximately nothing
-# under correct regularisation.
-#
-# DO NOT change this default without re-running the whole comparison set -- arms
-# at different LRs are not comparable. Pass ACTOR_LR=1e-6 and a new SERIES_TAG.
-actor_lr=${ACTOR_LR:-1e-5}
+# DO NOT lower this again without re-running the whole comparison set -- arms
+# at different LRs are not comparable. Pass ACTOR_LR=<value> and a new
+# SERIES_TAG for a deliberate deviation.
+actor_lr=${ACTOR_LR:-1e-6}
 # verl's optim defaults are lr_warmup_steps_ratio=0.0 and
 # lr_scheduler_type=constant (repos/verl/verl/trainer/config/optim/fsdp.yaml), so
 # step 1 lands at the full LR on a 16-prompt batch. That matches the observation

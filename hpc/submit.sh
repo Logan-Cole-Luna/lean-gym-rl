@@ -33,14 +33,17 @@ done
 get() { local k="$1" d="${2:-}"; for e in ${EXPORTS[@]+"${EXPORTS[@]}"}; do
           [ "${e%%=*}" = "$k" ] && { echo "${e#*=}"; return; }; done; echo "$d"; }
 
-DATA_DIR="$(get DATA_DIR data_3b)"
+DATA_DIR="$(get DATA_DIR data_locolib)"
 RUN_PREFIX="$(get RUN_PREFIX rl3b)"
 DATA_TAG="$(get DATA_TAG "${DATA_DIR#data_}")"
 MODEL_TAG="$(get MODEL_TAG "${RUN_PREFIX#rl}")"
 
 TASK="$(basename "${SCRIPT}" .slurm)"
 case "${TASK}" in
-  grpo)       ARM="$(get ARM)" ;;
+  # SERIES_TAG distinguishes two runs of the same ARM (e.g. a plain edge-pool
+  # run vs a SERIES_TAG=proof variant); fold it in or they name-collide.
+  grpo)       ARM="$(get ARM)"; SERIES="$(get SERIES_TAG)"
+              ARM="${SERIES:+${SERIES}_}${ARM}" ;;
   grpo_eval)  ARM="$(get RUN)"; ARM="${ARM#${RUN_PREFIX}_}"; TASK=eval ;;
   eval_sft)   ARM="$(get TAG)"; TASK=evalsft ;;
   sft|midtrain) ARM="$(get TAG)" ;;
