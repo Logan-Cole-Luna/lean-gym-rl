@@ -30,8 +30,8 @@ results/train
 data_locolib
 
 CLAUDE.md
-
 datasets.md
+logbook.md
 
 # Lean / lean-interact caches
 .lean_interact_cache/

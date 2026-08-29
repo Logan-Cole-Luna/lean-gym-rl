@@ -17,9 +17,7 @@ The task:
   [datasets.md](datasets.md).
 
 The stack is verl GRPO with a colocated FSDP actor and vLLM rollout, against
-Lean 4 + Mathlib. **No job names a model, a size or a corpus.** Those are knobs
-set in [hpc/job_prelude.sh](hpc/job_prelude.sh), so the same jobs run any
-model against any corpus:
+Lean 4 + Mathlib.
 
 | knob | what it names | default |
 |---|---|---|
@@ -29,9 +27,6 @@ model against any corpus:
 | `SFT_LABEL` | eval label and merged-checkpoint prefix | `sft3blocolib_proof` |
 | `RUN_PREFIX` | GRPO run name, `<RUN_PREFIX>_<ARM>` | `rl3b` |
 | `PROJECT_NAME` | checkpoint project directory | `beqplus_rl_poc` |
-
-Defaults point at the proof-pair task (see CLAUDE.md — the signature-only
-variant was removed). A second corpus needs no second copy of any job.
 
 ## Pipeline
 
@@ -62,13 +57,6 @@ flowchart TB
     CKPT --> POOL --> GRPO
 ```
 
-Two properties of that loop drive most of the design:
-
-- **Lean dominates a GRPO step.** A BEq+ arm spends ~97% of each step in the
-  verifier; the verifier is the bottleneck, not the trainer.
-- **A rollout group scoring 0/k or k/k contributes exactly zero.** GRPO
-  subtracts the group mean, so only *spread within a group* produces gradient.
-  That is why the reward ladders and the curated prompt pool both exist.
 
 ## Setup
 
