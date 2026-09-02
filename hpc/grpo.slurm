@@ -95,6 +95,16 @@ if [ -n "${LAST_CKPT}" ] \
   echo "[grpo] this chunk only. Adam cold-starts once here."
 fi
 
+# Hardware profile: Narval a100:2 == 2x A100-40GB. Full-parameter 3B GRPO plus a
+# frozen ref model does not fit resident on 40GB, so FSDP_OFFLOAD keeps params
+# and Adam state on the host; the token budgets pack ~4 sequences per
+# micro-batch; vLLM takes 30% of VRAM (the rest is the FSDP gather plus
+# activations); CUDA graphs stay off. On an 80GB card (A100-80GB / H100) override
+# at submit time:
+#   FSDP_OFFLOAD=0 PPO_MAX_TOKEN_LEN_PER_GPU=16384 \
+#   LOG_PROB_MAX_TOKEN_LEN_PER_GPU=16384 ROLLOUT_GPU_MEM_UTIL=0.6 ENFORCE_EAGER=False
+# AGENT_LOOP_WORKERS is Lean/host-RAM parallelism, not VRAM -- see README "Hardware".
+#
 # Do not put a comment inside the continued command below: bash joins the
 # continuation and the `#` silently drops every remaining argument.
 MODEL_PATH="${CKPT}" \
@@ -103,6 +113,12 @@ TRAIN_BATCH_SIZE="${TRAIN_BATCH_SIZE:-16}" \
 PPO_MINI_BATCH_SIZE="${PPO_MINI_BATCH_SIZE:-16}" \
 ROLLOUT_N="${ROLLOUT_N:-8}" \
 ROLLOUT_GPU_MEM_UTIL="${ROLLOUT_GPU_MEM_UTIL:-0.30}" \
+FSDP_OFFLOAD="${FSDP_OFFLOAD:-1}" \
+PPO_MAX_TOKEN_LEN_PER_GPU="${PPO_MAX_TOKEN_LEN_PER_GPU:-4096}" \
+LOG_PROB_MAX_TOKEN_LEN_PER_GPU="${LOG_PROB_MAX_TOKEN_LEN_PER_GPU:-4096}" \
+ENFORCE_EAGER="${ENFORCE_EAGER:-True}" \
+LAYERED_SUMMON="${LAYERED_SUMMON:-True}" \
+GRADIENT_CHECKPOINTING="${GRADIENT_CHECKPOINTING:-True}" \
 AGENT_LOOP_WORKERS="${AGENT_LOOP_WORKERS:-24}" \
 NGPUS_PER_NODE="${NGPUS_PER_NODE:-2}" \
 SAVE_FREQ="${SAVE_FREQ:-10}" MAX_CKPT_KEEP="${MAX_CKPT_KEEP:-20}" \

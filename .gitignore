@@ -28,6 +28,8 @@ results/eval
 results/train
 
 data_locolib
+data_locolib_distilled
+data_locolib_matched_gold
 
 CLAUDE.md
 datasets.md
@@ -45,3 +47,10 @@ __pycache__/
 
 # verl's raw per-step validation dumps (large, regenerable)
 results/val_generations/
+data_locolib_uncapped
+data_locolib_distilled_beqok
+data_locolib_cotgold
+data_minif2f
+results/distilled_vs_baseline_locolib
+results/distilled_vs_baseline_v3
+results/distilled_vs_baseline

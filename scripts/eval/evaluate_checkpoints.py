@@ -126,10 +126,10 @@ def generate(model_dir: str, prompts: list[str], max_new_tokens: int, gpu_frac: 
 _W_SCORER = None
 
 
-def _init_scoring_worker(probe_stronger: bool) -> None:
+def _init_scoring_worker(probe_stronger: bool, standalone: bool = False) -> None:
     global _W_SCORER
     from reward.beq_plus import BEqPlusScorer
-    _W_SCORER = (BEqPlusScorer(), probe_stronger)
+    _W_SCORER = (BEqPlusScorer(), probe_stronger, standalone)
 
 
 def _score_one(task):
@@ -138,9 +138,10 @@ def _score_one(task):
     paired McNemar tests depend on that."""
     i, comp, gold = task
     from reward.reward_fn import _clean_solution
-    scorer, probe_stronger = _W_SCORER
+    scorer, probe_stronger, standalone = _W_SCORER
     pred = _clean_solution(comp)
-    r = scorer.score(gold, pred, probe_stronger=probe_stronger)
+    r = (scorer.score_standalone(gold, pred, probe_stronger=probe_stronger) if standalone
+         else scorer.score(gold, pred, probe_stronger=probe_stronger))
     return i, pred, {
         "i": i,
         "typecheck": bool(r["typecheck"]),
@@ -175,6 +176,11 @@ def main() -> None:
     ap.add_argument("--probe-stronger", action="store_true",
                     help="also test pred=>gold on its own when gold=>pred fails "
                          "(see reward/beq_plus.py DIRECTION SEMANTICS); slower")
+    ap.add_argument("--standalone", action="store_true",
+                    help="the model emits a self-contained snippet (own import/open/"
+                         "namespace), not a bare theorem for the gold's context -- "
+                         "e.g. a CoT-distilled model. Scores via "
+                         "BEqPlusScorer.score_standalone (union-context env).")
     args = ap.parse_args()
 
     if not args.checkpoints:
@@ -227,7 +233,7 @@ def main() -> None:
             ctx = mp.get_context("spawn")
             tasks = [(i, c, g) for i, (c, g) in enumerate(zip(completions, golds))]
             pool = ctx.Pool(args.workers, initializer=_init_scoring_worker,
-                            initargs=(args.probe_stronger,))
+                            initargs=(args.probe_stronger, args.standalone))
             scored_iter = pool.imap(_score_one, tasks, chunksize=1)
         else:
             from reward.beq_plus import BEqPlusScorer
@@ -237,7 +243,9 @@ def main() -> None:
             def _serial():
                 for i, (comp, gold) in enumerate(zip(completions, golds)):
                     pred = _clean_solution(comp)
-                    r = scorer.score(gold, pred, probe_stronger=args.probe_stronger)
+                    r = (scorer.score_standalone(gold, pred, probe_stronger=args.probe_stronger)
+                         if args.standalone
+                         else scorer.score(gold, pred, probe_stronger=args.probe_stronger))
                     yield i, pred, {
                         "i": i,
                         "typecheck": bool(r["typecheck"]),

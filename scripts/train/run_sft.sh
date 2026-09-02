@@ -28,14 +28,35 @@ python3 -c "import verl" 2>/dev/null || { echo "ERROR: verl not importable; run 
 
 MODEL_PATH=${MODEL_PATH:-$REPO_ROOT/models/qwen2.5-coder-0.5b-instruct}
 SAVE_PATH=${SAVE_PATH:-$REPO_ROOT/checkpoints/sft/qwen2.5-coder-0.5b-leanworkbook}
+# With use_dynamic_bsz=True (set below) MAX_TOKEN_LEN is the real per-micro-batch
+# budget: verl packs sequences up to that many tokens regardless of MICRO_BATCH.
+# 2048 == one MAX_LENGTH sequence, which is what fits a 3B on a 40GB A100 (FSDP-
+# sharded, host offload on, grad checkpointing on). 8192 packs ~4 and OOMs.
+# Raise both on an 80GB card.
 MICRO_BATCH=${MICRO_BATCH:-1}
 MAX_TOKEN_LEN=${MAX_TOKEN_LEN:-2048}
 MAX_LENGTH=${MAX_LENGTH:-1024}
+# verl's default is 'error': a single row longer than MAX_LENGTH kills the job
+# in the DataLoader worker before step 1. Set TRUNCATION=right to clip the tail
+# of the rare over-length row instead (e.g. a corpus kept for instance-match
+# where a few gold targets run long).
+TRUNCATION=${TRUNCATION:-error}
 LR=${LR:-1e-4}
+# verl defaults lr_scheduler_type to 'constant'. That leaves every late
+# checkpoint taking full-size Adam steps on data the model has already
+# memorised, so the eval bounces by several points between adjacent
+# checkpoints and the "best" one is partly luck. LR_SCHEDULER=cosine anneals
+# it away. Defaults preserve the old behaviour exactly.
+LR_SCHEDULER=${LR_SCHEDULER:-constant}
+LR_WARMUP_RATIO=${LR_WARMUP_RATIO:-0.0}
+MIN_LR_RATIO=${MIN_LR_RATIO:-0.0}
 TOTAL_EPOCHS=${TOTAL_EPOCHS:-2}
 NPROC=${NPROC:-1}
 SAVE_FREQ=${SFT_SAVE_FREQ:-50}
 MAX_CKPT_KEEP=${MAX_CKPT_KEEP:-2}
+# Recompute activations in the backward pass rather than storing them. On unless
+# you have measured headroom to turn it off (GRAD_CKPT=False).
+GRAD_CKPT=${GRAD_CKPT:-True}
 
 TRAIN_FILE=${TRAIN_FILE:-$REPO_ROOT/data/sft/train.parquet}
 VAL_FILE=${VAL_FILE:-$REPO_ROOT/data/sft/val.parquet}
@@ -58,11 +79,15 @@ torchrun --standalone --nnodes=1 --nproc_per_node="${NPROC}" \
     data.micro_batch_size_per_gpu="${MICRO_BATCH}" \
     data.max_token_len_per_gpu="${MAX_TOKEN_LEN}" \
     data.max_length="${MAX_LENGTH}" \
+    data.truncation="${TRUNCATION}" \
     optim.lr="${LR}" \
+    optim.lr_scheduler_type="${LR_SCHEDULER}" \
+    optim.lr_warmup_steps_ratio="${LR_WARMUP_RATIO}" \
+    optim.min_lr_ratio="${MIN_LR_RATIO}" \
     engine=fsdp \
     model.path="$MODEL_PATH" \
     model.use_remove_padding=false \
-    model.enable_gradient_checkpointing=True \
+    model.enable_gradient_checkpointing="${GRAD_CKPT}" \
     +model.override_config.attn_implementation=sdpa \
     trainer.default_local_dir="$SAVE_PATH" \
     trainer.project_name=beqplus_sft \

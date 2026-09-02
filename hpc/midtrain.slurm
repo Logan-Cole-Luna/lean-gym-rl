@@ -66,6 +66,9 @@ echo "[midtrain] corpus=${MIDTRAIN_DIR}  saving to ${SAVE_PATH}"
 #
 # Two GPUs and 240G for the same reasons as hpc/sft.slurm: FSDP is NO_SHARD at
 # world size 1, and each hf_model save gathers a full state dict on the host.
+#
+# Hardware profile: 2x A100-40GB. On an 80GB card raise MICRO_BATCH and
+# MAX_TOKEN_LEN; see README "Hardware".
 MODEL_PATH="${MODEL:-${BASE_MODEL}}" \
 SAVE_PATH="${SAVE_PATH}" \
 TRAIN_FILE="${TRAIN}" \
@@ -73,6 +76,7 @@ VAL_FILE="${REAL}/${MIDTRAIN_DIR}/val.parquet" \
 MICRO_BATCH="${MICRO_BATCH:-2}" \
 MAX_TOKEN_LEN="${MAX_TOKEN_LEN:-4096}" \
 MAX_LENGTH="${MAX_LENGTH:-512}" \
+GRAD_CKPT="${GRAD_CKPT:-True}" \
 LR="${LR:-2e-5}" \
 TOTAL_EPOCHS="${TOTAL_EPOCHS:-1}" \
 SFT_SAVE_FREQ="${SFT_SAVE_FREQ:-60}" \

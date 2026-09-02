@@ -336,6 +336,41 @@ def split_header_and_theorem(full_snippet: str) -> tuple[str, str]:
     return context, theorem_text
 
 
+# A prediction from a CoT-distilled model is a self-contained file: its own
+# `import` / `open` / `variable` / `namespace`, plus (upstream of the fence) a
+# `<think>` block that `_clean_solution` does not always remove. Keep only the
+# lines that are actually Lean context so a stray prose line can't break the env.
+_CTX_KEEP_RE = re.compile(
+    r"^\s*(open|variable|namespace|section|end|universe|set_option|notation|"
+    r"local|scoped|attribute|noncomputable)\b")
+
+
+def _standalone_context(header: str) -> str:
+    """The Lean-context lines of a prediction's own header (imports already
+    dropped by `split_header_and_theorem`)."""
+    return "\n".join(ln for ln in header.splitlines()
+                     if _CTX_KEEP_RE.match(ln)).strip()
+
+
+def _union_context(gold_ctx: str, pred_ctx: str) -> str:
+    """Gold context first, then any prediction-context line not already present
+    (compared whitespace-insensitively). BEq+ needs one env in which BOTH the
+    gold statement and the prediction statement elaborate; layering the
+    prediction's own `open`/`variable`/`namespace` on top of the gold's is the
+    pragmatic way to get there for a standalone prediction. A prediction `open`
+    that makes a name in the gold statement ambiguous just costs that row a
+    miss, not a crash."""
+    seen, lines = set(), []
+    for block in (gold_ctx, pred_ctx):
+        for ln in block.splitlines():
+            key = " ".join(ln.split())
+            if not key or key in seen:
+                continue
+            seen.add(key)
+            lines.append(ln)
+    return "\n".join(lines).strip()
+
+
 # ── candidate's OWN proof, kept intact (not sorry'd away) ──────────────────
 #
 # `clean_theorem_string`/`clean_last_theorem_string` (lean_interact.utils)
@@ -624,12 +659,17 @@ class BEqPlusScorer:
         res = check_theorem_equivalence(premise, goal, self.server, env, self.timeout_per_proof)
         return res.beq_plus_unidirections[0] is not None
 
-    def score(self, gold_full_snippet: str, pred_theorem_text: str, probe_stronger: bool | None = None) -> dict:
+    def score(self, gold_full_snippet: str, pred_theorem_text: str, probe_stronger: bool | None = None,
+              *, pred_context: str | None = None) -> dict:
         """gold_full_snippet: full record text (imports+namespace+...+theorem),
         e.g. LoCoLib's `gold_standard_formal_theorem` field.
         pred_theorem_text: the model's raw generated theorem statement (no
         surrounding imports/namespace needed -- the gold record's context is
         reused for both sides, matching how BEq+ is meant to be run).
+        pred_context: extra context lines the prediction brought its own (its
+        `open`/`variable`/`namespace`). When given, the env is the UNION of the
+        gold context and this, so a self-contained prediction still elaborates.
+        `score_standalone` is the entry point that fills it in.
 
         `probe_stronger` overrides the BEQ_PROBE_STRONGER default; see the
         DIRECTION SEMANTICS note at the top of this module.
@@ -657,6 +697,8 @@ class BEqPlusScorer:
             probe_stronger = BEQ_PROBE_STRONGER
         self.stats["score_calls"] += 1
         context, gold_theorem_text = split_header_and_theorem(gold_full_snippet)
+        if pred_context:
+            context = _union_context(context, pred_context)
         out = {"typecheck": False, "beql": False, "beq_plus": False,
                "beq_plus_fwd": False, "beq_plus_bwd": False, "n_directions": 0,
                "gold_implies_pred": False, "pred_implies_gold": False,
@@ -719,6 +761,32 @@ class BEqPlusScorer:
         if BEQ_TIME_PHASES:
             self.stats["t_cascade"] += _time.perf_counter() - _t1
         return out
+
+    def score_standalone(self, gold_full_snippet: str, pred_full_snippet: str,
+                         probe_stronger: bool | None = None) -> dict:
+        """`score()` for a prediction that is a SELF-CONTAINED snippet -- its own
+        `import` / `open` / `variable` / `namespace` and its own theorem name --
+        rather than a bare theorem meant to slot into the gold's context.
+
+        This is what a CoT-distilled model emits (its teacher was prompted for
+        standalone Lean). `score()` would strip the prediction's header and
+        elaborate the bare theorem in the GOLD's context, where it usually does
+        not type-check; here the prediction keeps its header and the equivalence
+        env is the union of the two. Same return shape as `score()`.
+        """
+        try:
+            pred_header, pred_theorem_text = split_header_and_theorem(pred_full_snippet)
+        except ValueError:
+            # No theorem/lemma keyword in the model output -- nothing to score.
+            self.stats["score_calls"] += 1
+            return {"typecheck": False, "beql": False, "beq_plus": False,
+                    "beq_plus_fwd": False, "beq_plus_bwd": False, "n_directions": 0,
+                    "gold_implies_pred": False, "pred_implies_gold": False,
+                    "semantic_signal": 0, "error": None, "error_kind": None,
+                    "rung": None, "convert_level": None,
+                    "provable_alone": None, "stop_reason": None}
+        return self.score(gold_full_snippet, pred_theorem_text, probe_stronger,
+                          pred_context=_standalone_context(pred_header))
 
 
 if __name__ == "__main__":

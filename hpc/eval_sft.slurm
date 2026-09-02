@@ -22,6 +22,11 @@ N_EVAL="${N_EVAL:-1000}"
 # A corpus must be evaluated against the val slice it was built from: BEq+ needs
 # a gold, so scoring against another corpus's golds measures transfer, not fit.
 VAL_PARQUET="${VAL_PARQUET:-${DATA_DIR}/val.parquet}"
+# Generation budget. 128 is enough for a bare theorem; a CoT-distilled model
+# emits a <think> block then a fenced proof and needs far more, or every
+# completion is truncated before the fence closes. Set MAX_NEW_TOKENS=1536 for
+# such a model (pair it with STANDALONE=1).
+MAX_NEW_TOKENS="${MAX_NEW_TOKENS:-128}"
 
 # TAG must match the one given to hpc/sft.slurm; it scopes the checkpoint dir,
 # every results/ filename, and the best-SFT pointer.
@@ -41,7 +46,12 @@ mkdir -p checkpoints/merged
 
 EVAL_DIR="results/eval/${LABEL}"
 mkdir -p "${EVAL_DIR}"
-for d in $(ls -d ${CKPT_DIR}/global_step_* 2>/dev/null | sort -t_ -k3 -n); do
+# sort -V, not `sort -t_ -k3 -n`: field 3 is the step number only for the
+# original checkpoint paths. For sft_3b_locolib_proof_<tag>/global_step_N it
+# is "locolib", so every key tied and the fallback was lexicographic
+# (128, 160, 32, 64, 96). Every checkpoint still got evaluated, just out of
+# order, which makes a partial log look like steps went missing.
+for d in $(ls -d ${CKPT_DIR}/global_step_* 2>/dev/null | sort -V); do
   step=${d##*global_step_}
   out="${EVAL_DIR}/eval_${LABEL}-step${step}_n${N_EVAL}.json"
   [ -f "$out" ] && { echo "[evalsft] cached step${step}"; continue; }
@@ -51,9 +61,14 @@ for d in $(ls -d ${CKPT_DIR}/global_step_* 2>/dev/null | sort -t_ -k3 -n); do
   model="checkpoints/merged/${LABEL}-step${step}"
   ln -sfn "${REAL}/${d}/huggingface" "${model}"
   echo "[evalsft] ===== ${LABEL}-step${step} ====="
+  # STANDALONE=1 for a model that emits a self-contained snippet (own import/
+  # open/namespace) rather than a bare theorem for the gold's context -- e.g. a
+  # CoT-distilled model. See BEqPlusScorer.score_standalone.
   python3 scripts/eval/evaluate_checkpoints.py --checkpoint "${model}" \
     --val-parquet "${REAL}/${VAL_PARQUET}" \
     --n-eval "${N_EVAL}" --workers "${BEQ_WORKERS:-8}" --out "${out}" \
+    --max-new-tokens "${MAX_NEW_TOKENS}" \
+    ${STANDALONE:+--standalone} \
     || echo "[evalsft] FAILED step${step}"
 done
 

@@ -73,6 +73,45 @@ On a cluster, source the environment before anything else. Never run bare
 source hpc/cc_env.sh
 ```
 
+## Hardware
+
+`configs/run_grpo.sh` and `scripts/train/run_sft.sh`, sized for the **A100-40GB**
+nodes the SLURM jobs target (Narval `a100:2`); the `.slurm` files pin that same
+40GB profile explicitly. On an **80GB** card (A100-80GB or H100) override at
+submit time.
+
+**GRPO** (`hpc/grpo.slurm` -> `configs/run_grpo.sh`):
+
+| var | 40GB | 80GB / H100 | what it does |
+|---|---|---|---|
+| `FSDP_OFFLOAD` | `1` | `0` | `1` parks the actor params + Adam state on the host; `0` keeps them resident and drops a host<->device copy every step. Split as `FSDP_PARAM_OFFLOAD`, `FSDP_OPTIMIZER_OFFLOAD`, `REF_FSDP_PARAM_OFFLOAD`. |
+| `PPO_MAX_TOKEN_LEN_PER_GPU` | `4096` | `16384` | Tokens per training micro-batch under `use_dynamic_bsz` (actor backward). 896 == one full sequence; 4096 packs ~4-5. |
+| `LOG_PROB_MAX_TOKEN_LEN_PER_GPU` | `4096` | `16384` | Same, for the forward-only `compute_log_prob` (actor + ref). |
+| `ROLLOUT_GPU_MEM_UTIL` | `0.30` | `0.6` | vLLM KV-cache fraction of VRAM. Drop it if you also set `FSDP_OFFLOAD=0` on 40GB. Script default is `0.45`; the slurm pins `0.30`. |
+| `ENFORCE_EAGER` | `True` | `False` | `True` disables vLLM CUDA-graph capture: less VRAM, slower decode. |
+| `LAYERED_SUMMON` | `True` | `True`/`False` | Ship refreshed weights to vLLM layer-by-layer, lowering peak memory during the sync. Cheap to leave on for a 3B. |
+| `ROLLOUT_TP_SIZE` | `1` | `1` | Rollout tensor-parallel width. 1 is right for a 3B; raise only for a model that will not fit one card. |
+| `GRADIENT_CHECKPOINTING` | `True` | `True` | Recompute activations in the backward pass. Turn off only with measured headroom. |
+| `NGPUS_PER_NODE` / `NNODES` | `2` / `1` | per node | FSDP data-parallel topology. |
+
+`TRAIN_BATCH_SIZE=16` is **not** a hardware knob: it is the experiment design
+(see CLAUDE.md on the LR interaction), and the slurm pins it on any card.
+`AGENT_LOOP_WORKERS` (24) is Lean/host-RAM parallelism, unrelated to VRAM.
+
+**SFT / mid-training** (`hpc/sft.slurm`, `hpc/midtrain.slurm` -> `scripts/train/run_sft.sh`):
+
+| var | 40GB | 80GB / H100 | what it does |
+|---|---|---|---|
+| `MAX_TOKEN_LEN` | `2048` (sft), `4096` (midtrain) | `16384` | `data.max_token_len_per_gpu`. With `use_dynamic_bsz` this is the real per-micro-batch budget: verl packs to it regardless of `MICRO_BATCH`. `2048` == one `MAX_LENGTH` sequence and fits a 3B on 40GB with offload + grad checkpointing; `8192` packs ~4 and OOMs after step 1. For a run with `MAX_LENGTH=2048` (e.g. the CoT-distilled SFT) pass `MAX_TOKEN_LEN=3072`. |
+| `MICRO_BATCH` | `1` (sft), `2` (midtrain) | `8`+ | `data.micro_batch_size_per_gpu`. Under `use_dynamic_bsz` it is only the fallback cap; `MAX_TOKEN_LEN` governs. |
+| `MAX_LENGTH` | `1024` (sft), `512` (midtrain) | unchanged | Sequence-length cap. Task-driven, not hardware -- raising it changes what gets truncated, and requires `MAX_TOKEN_LEN >= MAX_LENGTH`. |
+| `GRAD_CKPT` | `True` | `True` | `model.enable_gradient_checkpointing`. |
+| `NPROC` | `2` | `2`+ | FSDP ranks. Must be >= 2: at world size 1 FSDP is `NO_SHARD` and a 3B optimizer OOMs one card even with offload. |
+
+SFT and mid-training additionally pass `engine.param_offload=True
+engine.optimizer_offload=True` directly in the slurm (verl `sft_trainer` args,
+separate from the GRPO knobs above).
+
 ## Train
 
 Local, single GPU:

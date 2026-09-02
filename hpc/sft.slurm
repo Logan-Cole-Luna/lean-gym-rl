@@ -54,11 +54,19 @@ echo "[sft] saving to ${SAVE_PATH}"
 # (256 by default). A different corpus needs its own value. Save once per epoch
 # and pick with scripts/eval/select_checkpoint.py rather than assuming the last epoch
 # is best.
+#
+# Hardware profile: 2x A100-40GB. use_dynamic_bsz packs to MAX_TOKEN_LEN tokens
+# per micro-batch, so that (not MICRO_BATCH) is the memory knob: 2048 == one
+# MAX_LENGTH sequence and fits with host offload + grad checkpointing on; 8192
+# packs ~4 and OOMs after step 1. On an 80GB card raise MAX_TOKEN_LEN to 16384.
+# See README "Hardware".
 MODEL_PATH="${MODEL}" \
 SAVE_PATH="${SAVE_PATH}" \
 TRAIN_FILE="${TRAIN_FILE:-${PROJECT_ROOT}/${DATA_DIR}/sft/train.parquet}" \
 VAL_FILE="${VAL_FILE:-${PROJECT_ROOT}/${DATA_DIR}/sft/val.parquet}" \
 MICRO_BATCH="${MICRO_BATCH:-1}" \
+MAX_TOKEN_LEN="${MAX_TOKEN_LEN:-2048}" \
+GRAD_CKPT="${GRAD_CKPT:-True}" \
 LR="${LR:-5e-5}" \
 TOTAL_EPOCHS="${TOTAL_EPOCHS:-3}" \
 SFT_SAVE_FREQ="${SFT_SAVE_FREQ:-31}" \

@@ -1,6 +1,15 @@
 #!/usr/bin/env bash
-# GRPO (full-parameter) | vLLM rollout | FSDP training | single RTX 5070 Ti (16GB)
-# BEq+ RL PoC for Lean 4 autoformalization (Qwen2.5-Coder-0.5B-Instruct, Lean-Workbook).
+# GRPO (full-parameter) | vLLM rollout | FSDP training
+# BEq+ RL for Lean 4 autoformalization (Qwen2.5-Coder-3B-Instruct, LoCoLib).
+#
+# Hardware: this script was first written for a 16GB card and is now run on
+# A100/H100 nodes. Every setting that traded speed for VRAM is an env knob
+# below, and the defaults stay on the low-VRAM (40GB-safe) side. On an 80GB
+# card, opt into the faster path explicitly:
+#   FSDP_OFFLOAD=0                keep the actor + Adam state resident on the GPU
+#   PPO_MAX_TOKEN_LEN_PER_GPU=16384 LOG_PROB_MAX_TOKEN_LEN_PER_GPU=16384
+#   ROLLOUT_GPU_MEM_UTIL=0.6     larger vLLM KV cache
+#   ENFORCE_EAGER=False          let vLLM capture CUDA graphs
 #
 # Select the reward function (see reward/reward_fn.py for the full argument):
 #   REWARD_FN_NAME=compute_score_outcome         (DEFAULT: graded six-outcome ladder)
@@ -44,18 +53,32 @@ MODEL_PATH=${MODEL_PATH:-$REPO_ROOT/models/qwen2.5-coder-0.5b-instruct}
 NGPUS_PER_NODE=${NGPUS_PER_NODE:-1}
 
 train_batch_size=${TRAIN_BATCH_SIZE:-16}
-ppo_mini_batch_size=${PPO_MINI_BATCH_SIZE:-16}
+ppo_mini_batch_size=${PPO_MINI_BATCH_SIZE:-${train_batch_size}}
 max_prompt_length=${MAX_PROMPT_LENGTH:-768}
 max_response_length=${MAX_RESPONSE_LENGTH:-128}
 # Tokens per training micro-batch under use_dynamic_bsz, for BOTH the actor's
 # backward pass (train_batch) and compute_log_prob (actor + ref, forward-only).
-#
-ppo_max_token_len_per_gpu=${PPO_MAX_TOKEN_LEN_PER_GPU:-896}
-log_prob_max_token_len_per_gpu=${LOG_PROB_MAX_TOKEN_LEN_PER_GPU:-896}
+ppo_max_token_len_per_gpu=${PPO_MAX_TOKEN_LEN_PER_GPU:-4096}
+log_prob_max_token_len_per_gpu=${LOG_PROB_MAX_TOKEN_LEN_PER_GPU:-4096}
 # Fused log-prob kernels (actor_rollout_ref.model.use_fused_kernels). OFF, and
 # the default should stay OFF -- MEASURED, not assumed:
 use_fused_kernels=${USE_FUSED_KERNELS:-False}
 fused_kernels_backend=${FUSED_KERNELS_BACKEND:-torch}
+
+# ---- hardware knobs (default to the low-VRAM / 40GB-safe side) ----
+fsdp_offload=${FSDP_OFFLOAD:-1}
+if [ "${fsdp_offload}" = "0" ]; then _off_default=False; else _off_default=True; fi
+param_offload=${FSDP_PARAM_OFFLOAD:-${_off_default}}
+optimizer_offload=${FSDP_OPTIMIZER_OFFLOAD:-${_off_default}}
+ref_param_offload=${REF_FSDP_PARAM_OFFLOAD:-${_off_default}}
+
+enforce_eager=${ENFORCE_EAGER:-True}
+layered_summon=${LAYERED_SUMMON:-True}
+rollout_tp_size=${ROLLOUT_TP_SIZE:-1}
+
+# Recompute activations in the backward pass instead of storing them. Leave on
+# unless you have measured headroom to turn it off.
+gradient_checkpointing=${GRADIENT_CHECKPOINTING:-True}
 
 # TODO hyperparam search
 actor_lr=${ACTOR_LR:-1e-6}
@@ -72,7 +95,8 @@ norm_adv_by_std=${NORM_ADV_BY_STD:-False}
 lora_rank=${LORA_RANK:-0}
 lora_alpha=${LORA_ALPHA:-16}
 
-rollout_gpu_mem_util=${ROLLOUT_GPU_MEM_UTIL:-0.3}
+# vLLM KV-cache fraction of VRAM. 0.3 left room for a resident FSDP actor 
+rollout_gpu_mem_util=${ROLLOUT_GPU_MEM_UTIL:-0.45}
 # Was 4.
 rollout_n=${ROLLOUT_N:-8}
 # THE exploration lever 
@@ -135,7 +159,7 @@ MODEL=(
     actor_rollout_ref.model.lora_rank=${lora_rank}
     actor_rollout_ref.model.lora_alpha=${lora_alpha}
     actor_rollout_ref.model.use_remove_padding=False
-    actor_rollout_ref.model.enable_gradient_checkpointing=True
+    actor_rollout_ref.model.enable_gradient_checkpointing=${gradient_checkpointing}
     actor_rollout_ref.model.use_fused_kernels=${use_fused_kernels}
     actor_rollout_ref.model.fused_kernel_options.impl_backend=${fused_kernels_backend}
     +actor_rollout_ref.model.override_config.attn_implementation=sdpa
@@ -153,20 +177,20 @@ ACTOR=(
     actor_rollout_ref.actor.entropy_coeff=${entropy_coeff}
     actor_rollout_ref.actor.entropy_from_logits_with_chunking=${entropy_chunking}
     actor_rollout_ref.actor.entropy_checkpointing=${entropy_checkpointing}
-    actor_rollout_ref.actor.fsdp_config.param_offload=True
-    actor_rollout_ref.actor.fsdp_config.optimizer_offload=True
+    actor_rollout_ref.actor.fsdp_config.param_offload=${param_offload}
+    actor_rollout_ref.actor.fsdp_config.optimizer_offload=${optimizer_offload}
 )
 
 ROLLOUT=(
     actor_rollout_ref.rollout.name=vllm
-    actor_rollout_ref.rollout.tensor_model_parallel_size=1
+    actor_rollout_ref.rollout.tensor_model_parallel_size=${rollout_tp_size}
     actor_rollout_ref.rollout.gpu_memory_utilization=${rollout_gpu_mem_util}
     actor_rollout_ref.rollout.max_model_len=$((max_prompt_length + max_response_length))
-    actor_rollout_ref.rollout.enforce_eager=True
+    actor_rollout_ref.rollout.enforce_eager=${enforce_eager}
     actor_rollout_ref.rollout.n=${rollout_n}
     actor_rollout_ref.rollout.temperature=${rollout_temperature}
     actor_rollout_ref.rollout.load_format=safetensors
-    actor_rollout_ref.rollout.layered_summon=True
+    actor_rollout_ref.rollout.layered_summon=${layered_summon}
     actor_rollout_ref.rollout.log_prob_use_dynamic_bsz=True
     actor_rollout_ref.rollout.log_prob_max_token_len_per_gpu=${log_prob_max_token_len_per_gpu}
     actor_rollout_ref.rollout.agent.num_workers=${agent_loop_workers}
@@ -175,7 +199,7 @@ ROLLOUT=(
 REF=(
     actor_rollout_ref.ref.log_prob_use_dynamic_bsz=True
     actor_rollout_ref.ref.log_prob_max_token_len_per_gpu=${log_prob_max_token_len_per_gpu}
-    actor_rollout_ref.ref.fsdp_config.param_offload=True
+    actor_rollout_ref.ref.fsdp_config.param_offload=${ref_param_offload}
 )
 
 REWARD=(
@@ -191,7 +215,7 @@ TRAINER=(
     trainer.project_name=${project_name}
     trainer.experiment_name=${experiment_name}
     trainer.n_gpus_per_node=${NGPUS_PER_NODE}
-    trainer.nnodes=1
+    trainer.nnodes=${NNODES:-1}
     trainer.val_before_train=False
     trainer.save_freq=${save_freq}
     trainer.max_actor_ckpt_to_keep=${MAX_CKPT_KEEP:-2}
@@ -222,6 +246,10 @@ if [ "$DRY_RUN" = "1" ]; then
   echo "=== DRY RUN: reward=${reward_fn_name} rollout_n=${rollout_n} "\
 "batch=${train_batch_size} kl=${kl_loss_coef} entropy=${entropy_coeff} "\
 "norm_adv_by_std=${norm_adv_by_std} filter_groups=${filter_groups} ==="
+  echo "=== hardware: gpus/node=${NGPUS_PER_NODE} nnodes=${NNODES:-1} tp=${rollout_tp_size} "\
+"offload(param/opt/ref)=${param_offload}/${optimizer_offload}/${ref_param_offload} "\
+"token_len/gpu=${ppo_max_token_len_per_gpu} vllm_mem=${rollout_gpu_mem_util} "\
+"eager=${enforce_eager} grad_ckpt=${gradient_checkpointing} ==="
   printf '%s\n' python3 -m verl.trainer.main_ppo \
     "${DATA[@]}" "${MODEL[@]}" "${ACTOR[@]}" "${ROLLOUT[@]}" \
     "${REF[@]}" "${REWARD[@]}" "${TRAINER[@]}" "${EXTRA[@]}" "$@"
