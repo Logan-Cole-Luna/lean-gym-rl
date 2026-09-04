@@ -10,6 +10,12 @@ the repo draws a reference level: a dash-dot horizontal line with a right-edge
 label, via `figstyle.finish(..., hline=...)` -- the same convention as
 results/figures/beq_plus_rate.png. The distilled run is the trajectory.
 
+Both reported metrics score the generated *statement* only: `typecheck_ex` replaces
+the model's proof body with `sorry` before calling Lean, so `typecheck_rate` is a
+statement-elaboration rate and `beq_plus_rate` is statement equivalence to the gold.
+Proof validity is not measured anywhere in this pipeline. Every table reports each
+run's FINAL checkpoint; nothing is argmaxed over the metric being reported.
+
 Exactly two series appear here, by design: the untrained floor and the distilled
 model. Other arms of the investigation (BEq+-filtered targets, CoT-on-gold, the
 gold baselines) live outside this folder.
@@ -53,6 +59,13 @@ CORPORA = {
                            kind="out-of-domain", ceiling=None,
                            val=ROOT / "data_minif2f" / "val_proof.parquet",
                            series="BEQOK_ABLATION"),
+    # training corpus + reasoning-trace ablation, all on miniF2F: a Mizar-distilled
+    # model, a LoCoLib-distilled model with the <think> stripped, our LoCoLib
+    # distilled model, and the untrained base.
+    "corpus_ablation": dict(out="minif2f_corpus_ablation", n=244,
+                            kind="out-of-domain", ceiling=None,
+                            val=ROOT / "data_minif2f" / "val_proof.parquet",
+                            series="CORPUS_ABLATION"),
 }
 CORPUS = CORPORA["locolib"]      # main() resets this
 OUT = FIGS = TABS = None
@@ -105,12 +118,40 @@ _ALL = [
          sft_logs=["sft_2201739.out", "sft_2201741.out"]),
 ]
 
+_CORPUS = [
+    dict(key="base", tex="Untrained base", role="hline", col="BASELINE",
+         label="minif2f_base", steps=[0], sft_logs=[]),
+    dict(key="ours", tex="LoCoLib distilled (ours)", role="primary", col="BLUE",
+         label="minif2f_distilled", steps=[32, 64, 96, 128, 160],
+         sft_logs=["sft_2205189.out", "sft_2205190.out"],
+         train_parquet=ROOT / "data_locolib_distilled" / "sft_proof.parquet",
+         train_rows=8389, domains=DOM_DISTILLED),
+    dict(key="nocot", tex="LoCoLib distilled, no CoT", role="primary", col="GREEN",
+         label="minif2f_locolib_nocot",
+         steps=[25, 50, 75, 100, 125, 150, 175, 200, 225, 250],
+         sft_logs=["sft_2328157.out", "sft_2328158.out"],
+         train_parquet=ROOT / "data_locolib_distilled_nocot" / "sft_proof.parquet",
+         train_rows=9149, domains=None),
+    dict(key="mizar", tex="Mizar distilled", role="primary", col="PINK",
+         label="minif2f_mizar",
+         steps=[25, 50, 75, 100, 125, 150, 175, 200, 225, 250],
+         sft_logs=["sft_2328154.out", "sft_2328155.out"],
+         train_parquet=ROOT / "data_mizar_distilled" / "sft_proof.parquet",
+         train_rows=6316, domains=None),
+    dict(key="mizar_nocot", tex="Mizar distilled, no CoT", role="primary", col="ORANGE",
+         label="minif2f_mizar_nocot",
+         steps=[25, 50, 75, 100, 125, 150, 175, 200, 225, 250],
+         sft_logs=["sft_2328642.out", "sft_2328643.out"],
+         train_parquet=ROOT / "data_mizar_distilled_nocot" / "sft_proof.parquet",
+         train_rows=6316, domains=None),
+]
+
 _BEQOK = [
     dict(key="base", tex="Untrained base", role="hline", col="BASELINE",
-         label="sft3blocolib_proof_base", steps=[0], sft_logs=[]),
+         label="minif2f_base", steps=[0], sft_logs=[]),
     dict(key="distilled", tex="All teacher targets", role="primary", col="BLUE",
          label="minif2f_distilledcos225",
-         steps=[25, 50, 75, 100, 125, 150, 175, 200, 225, 250],
+         steps=[25, 50, 75, 100, 125, 150, 175, 200],
          sft_logs=["sft_2250596.out", "sft_2250597.out"],
          train_parquet=ROOT / "data_locolib_distilled" / "sft_proof_plusval.parquet",
          train_rows=9149, domains=DOM_DISTILLED),
@@ -152,8 +193,14 @@ def load_gen(c, s):
     return [json.loads(l) for l in open(p)] if p.exists() else []
 
 
-def best(ev):
-    return max(ev, key=lambda s: ev[s]["beq_plus_rate"])
+def final(ev):
+    # The last evaluated checkpoint, fixed by the training schedule rather than
+    # picked by the number being reported. Argmaxing BEq+ over checkpoints and
+    # then reporting that same BEq+ selects on the statistic: there is no
+    # separate selection split in this setup (trainer.test_freq is -1, and no
+    # dev parquet exists), so the whole trajectory is the result and the final
+    # step is the one pre-registered point in it.
+    return max(ev)
 
 
 def outcome(pe):
@@ -224,7 +271,8 @@ def figures(tok, trajs, evs, gens, full):
 
     # 1. eval trajectory -- the headline figure
     for metric, ylab, fname in (("beq_plus_rate", "BEq+ (%), greedy decode", "fig_beq_plus_rate"),
-                                ("typecheck_rate", "compiles (%), greedy decode", "fig_compile_rate")):
+                                ("typecheck_rate", "statement elaborates (%), greedy decode",
+                                 "fig_elaborate_rate")):
         fig, ax = plt.subplots(figsize=(7.4, 4.8))
         ends, vals = {}, []
         for c in traj:
@@ -244,7 +292,8 @@ def figures(tok, trajs, evs, gens, full):
             vals.append(b)
         ax.set_xlabel("SFT step")
         ax.set_ylabel(ylab)
-        ax.set_title(("Semantic accuracy" if metric == "beq_plus_rate" else "Compile rate (pass@1)")
+        ax.set_title(("Statement equivalence" if metric == "beq_plus_rate"
+                      else "Statement elaboration rate (pass@1)")
                      + f"  (greedy T=0, paired, n={N})")
         lo, hi = min(vals), max(vals)
         ax.set_ylim(max(0, lo - 6), min(100, hi + 8))
@@ -276,7 +325,7 @@ def figures(tok, trajs, evs, gens, full):
     labs, sp = [], []
     for c in live:
         ev = evs[c["key"]]
-        st = best(ev)
+        st = final(ev)
         sp.append(outcome(ev[st]["per_example"]))
         labs.append(f"{c['tex']}\n(step {st})")
     x = np.arange(len(labs))
@@ -289,7 +338,7 @@ def figures(tok, trajs, evs, gens, full):
     ax.set_xticklabels(labs, fontsize=8)
     ax.set_ylim(0, N * 1.25)  # headroom for the top legend
     ax.set_ylabel(f"val examples (of {N})")
-    ax.set_title("Outcome breakdown at best checkpoint")
+    ax.set_title("Outcome breakdown at final checkpoint")
     ax.legend(loc="upper center", ncol=4, fontsize=8, frameon=False)
     save(fig, "fig_outcome_breakdown")
 
@@ -305,7 +354,7 @@ def figures(tok, trajs, evs, gens, full):
             rotation=90, va="center", color=C["CONTROL"])
     ax.set_xlabel("completion length (Qwen tokens)")
     ax.set_ylabel("val examples")
-    ax.set_title("Eval output length, best checkpoint")
+    ax.set_title("Eval output length, final checkpoint")
     ax.legend(loc="upper right")
     save(fig, "fig_output_length")
 
@@ -370,8 +419,8 @@ def tables(evs, gens, full):
     live = [c for c in SERIES if evs[c["key"]]]
     base = next(c for c in live if c["key"] == "base")
     dist = next(c for c in live if c["key"] == "distilled")
-    b_ev, d_ev = evs["base"][0], evs["distilled"][best(evs["distilled"])]
-    d_best = best(evs["distilled"])
+    b_ev, d_ev = evs["base"][0], evs["distilled"][final(evs["distilled"])]
+    d_final = final(evs["distilled"])
     pr = paired(b_ev, d_ev)
 
     # headline: every trained series against the untrained floor
@@ -381,20 +430,26 @@ def tables(evs, gens, full):
         if c["key"] == "base":
             continue
         ev = evs[c["key"]]
-        st = best(ev)
+        st = final(ev)
         r = ev[st]
         q = paired(b_ev, r)
         lines.append(f"{c['tex']} & {st} & {r['typecheck_rate']*100:.1f}\\% & "
                      f"{r['beq_plus_rate']*100:.1f}\\% & "
                      f"{(r['beq_plus_rate']-b_ev['beq_plus_rate'])*100:+.1f} pp & {q['p']:.2g} \\\\")
-    body = ("\\begin{tabular}{lccccc}\n\\toprule\nseries & step & type-check & BEq+ & "
+    body = ("\\begin{tabular}{lccccc}\n\\toprule\nseries & step & elaborates & BEq+ & "
             "$\\Delta$BEq+ vs untrained & McNemar $p$ \\\\\n\\midrule\n"
             + "\n".join(lines) + "\n\\bottomrule\n\\end{tabular}")
     (TABS / "table_results.tex").write_text(_tex(
-        body, "Best-checkpoint held-out results against the untrained base model. "
+        body, "Final-checkpoint results against the untrained base model. The step "
+        "is the last one of each run, not a step selected on this table's own BEq+ "
+        "column; the full trajectory is Table~\\ref{tab:dvb-bystep}. "
         f"Paired McNemar exact on the per-example BEq+ outcome over the same {N} "
-        "validation rows. The untrained model was given the most charitable "
-        "settings (standalone scoring, 1536-token budget).", "dvb-results"))
+        "validation rows. Both columns score the generated \\emph{statement} only "
+        "(the proof body is replaced with \\texttt{sorry} before Lean is called), so "
+        "\\emph{elaborates} means the statement elaborates and BEq+ means it is "
+        "bidirectionally equivalent to the gold statement. The untrained model was "
+        "given the most charitable settings (standalone scoring, 1536-token budget).",
+        "dvb-results"))
 
     # every checkpoint
     rows = []
@@ -404,34 +459,36 @@ def tables(evs, gens, full):
             rows.append(f"{c['tex']} & {s} & {r['typecheck_rate']*100:.1f}\\% & "
                         f"{r['beq_plus_rate']*100:.1f}\\% & {r['weaker_only_rate']*100:.1f}\\% \\\\")
         rows.append("\\midrule")
-    body = ("\\begin{tabular}{llccc}\n\\toprule\nseries & step & type-check & BEq+ & weaker-only \\\\\n"
+    body = ("\\begin{tabular}{llccc}\n\\toprule\nseries & step & elaborates & BEq+ & weaker-only \\\\\n"
             "\\midrule\n" + "\n".join(rows[:-1]) + "\n\\bottomrule\n\\end{tabular}")
     (TABS / "table_eval_by_step.tex").write_text(_tex(
         body, f"Eval rates at every evaluated checkpoint (same {N}-row slice).", "dvb-bystep"))
 
     # outcome decomposition -- the load-bearing table
-    order = [("no\\_elab", "no_elab"), ("type-check only", "typecheck_only"),
+    order = [("no\\_elab", "no_elab"), ("elaborates only", "typecheck_only"),
              ("weaker only", "weaker_only"), ("BEq+", "beq_plus")]
-    cols = [(c, best(evs[c["key"]])) for c in live]
+    cols = [(c, final(evs[c["key"]])) for c in live]
     hdr = " & ".join(f"{c['tex']}" for c, _ in cols)
     body = ["\\begin{tabular}{l" + "c" * len(cols) + "}\n\\toprule\noutcome & " + hdr + " \\\\\n\\midrule"]
     oc = [outcome(evs[c["key"]][s]["per_example"]) for c, s in cols]
     for lab, k in order:
         body.append(lab + " & " + " & ".join(str(o[k]) for o in oc) + " \\\\")
     body.append("\\midrule")
-    body.append("compiled & " + " & ".join(str(N - o["no_elab"]) for o in oc) + " \\\\")
-    body.append("BEq+ $\\mid$ compiled & " + " & ".join(
+    body.append("elaborates & " + " & ".join(str(N - o["no_elab"]) for o in oc) + " \\\\")
+    body.append("BEq+ $\\mid$ elaborates & " + " & ".join(
         f"{100*o['beq_plus']/(N-o['no_elab']):.1f}\\%" for o in oc) + " \\\\")
     body.append("\\bottomrule\n\\end{tabular}")
     (TABS / "table_outcome_breakdown.tex").write_text(_tex(
-        "\n".join(body), "Per-example outcome at each series' best checkpoint. The "
-        "last row separates the two things SFT teaches: producing Lean that "
-        "elaborates at all, and producing the \\emph{intended} theorem.", "dvb-outcome"))
+        "\n".join(body), "Per-example outcome at each series' final checkpoint. The "
+        "last row separates the two things SFT teaches: producing a statement that "
+        "elaborates at all, and producing the \\emph{intended} statement. Neither row "
+        "says anything about the model's proof, which is discarded before scoring.",
+        "dvb-outcome"))
 
     # output lengths, untrained vs distilled
     bs, ds = summ(gens["base"]), summ(gens["distilled"])
     bf = sum(1 for g in load_gen(base, 0) if _FENCE.search(g["completion"]))
-    df_ = sum(1 for g in load_gen(dist, d_best) if _FENCE.search(g["completion"]))
+    df_ = sum(1 for g in load_gen(dist, d_final) if _FENCE.search(g["completion"]))
     body = ("\\begin{tabular}{lcc}\n\\toprule\n & Untrained base & Distilled (CoT) \\\\\n\\midrule\n"
             f"mean & {bs['mean']:.0f} & {ds['mean']:.0f} \\\\\n"
             f"median & {bs['p50']} & {ds['p50']} \\\\\n"
@@ -489,14 +546,14 @@ def tables(evs, gens, full):
             f"trained on a different corpus ({td:,} rows) whose domain labels do not "
             "overlap with these, so the training mix is not shown alongside.",
             "dvb-traindist"))
-        return b_ev, d_ev, d_best, pr, live
+        return b_ev, d_ev, d_final, pr, live
     body = ("\\begin{tabular}{lcc}\n\\toprule\ndomain & Distilled train & val ({N}) \\\\\n\\midrule\n"
             + "".join(f"{d.replace('_',' ')} & {DOM_DISTILLED[d]} ({100*DOM_DISTILLED[d]/td:.0f}\\%) "
                       f"& {vd[d]} ({100*vd[d]/tv:.0f}\\%) \\\\\n" for d in doms)
             + f"\\midrule\ntotal & {td} & {tv} \\\\\n\\bottomrule\n\\end{{tabular}}")
     (TABS / "table_training_distribution.tex").write_text(_tex(
         body, "Training-set domain composition (exact).", "dvb-traindist"))
-    return b_ev, d_ev, d_best, pr, live
+    return b_ev, d_ev, d_final, pr, live
 
 
 def main():
@@ -512,6 +569,8 @@ def main():
         SERIES = _ALL
     elif CORPUS.get("series") == "BEQOK_ABLATION":
         SERIES = _BEQOK
+    elif CORPUS.get("series") == "CORPUS_ABLATION":
+        SERIES = _CORPUS
     OUT = ROOT / "results" / CORPUS["out"]
     FIGS, TABS = OUT / "figures", OUT / "tables"
     # the two series carry a different eval label per corpus; everything else
@@ -531,14 +590,24 @@ def main():
     gens = {}
     for c in SERIES:
         if evs[c["key"]] and c["key"] in ("base", "distilled"):
-            gens[c["key"]] = toklen(tok, [g["completion"] for g in load_gen(c, best(evs[c["key"]]))])
+            gens[c["key"]] = toklen(tok, [g["completion"] for g in load_gen(c, final(evs[c["key"]]))])
     print("[dvb] series with evals: " + ", ".join(
         f"{c['tex']}({len(evs[c['key']])})" for c in SERIES if evs[c["key"]]))
     print("[dvb] figures ..."); figures(tok, trajs, evs, gens, a.full)
-    print("[dvb] tables ...");  b_ev, d_ev, d_best, pr, live = tables(evs, gens, a.full)
+    print("[dvb] tables ...");  b_ev, d_ev, d_final, pr, live = tables(evs, gens, a.full)
 
     roster = CORPUS.get("series") == "ALL_MINIF2F"
-    if roster:
+    ablation = CORPUS.get("series") == "BEQOK_ABLATION"
+    if ablation:
+        A = evs["distilled"]; B = evs["beqok"]     # "all targets" / "valid only"
+        aB, bB = final(A), final(B)
+        md = ["# Does filtering the distilled targets to BEq+-valid help? (miniF2F, OOD)\n",
+              "Two SFT runs, identical except the training data: **all teacher targets",
+              "that elaborate** (9,149 rows) vs **only the ~76% BEq+-equivalent to the gold**",
+              "(7,181 rows). Both cosine LR from scratch, the LoCoLib pinned-760 slice folded",
+              "into training since the eval moved to miniF2F, scored with `score_standalone`",
+              f"on the same {N}-row out-of-domain slice.\n"]
+    elif roster:
         md = ["# Every trained SFT variant on miniF2F (out-of-domain)\n",
               f"All {len([c for c in live if c['role']!='hline'])} trained models plus the "
               "untrained base, on the same pinned",
@@ -555,13 +624,17 @@ def main():
               "(`score_standalone`) and the same 1536-token generation budget for both, so",
               "nothing here is confounded by eval settings. The untrained model is a level,",
               "not a trajectory, so it is drawn as a dash-dot reference line.\n",]
-    md += ["## Headline\n", "| series | step | type-check | BEq+ | Δ BEq+ vs untrained | McNemar p |",
+    md += ["## Headline\n",
+          "Each row is that run's **final** checkpoint, not a checkpoint selected on this",
+          "table's own BEq+ column. Both metrics score the generated *statement* only --",
+          "see Caveats.\n",
+          "| series | step | elaborates | BEq+ | Δ BEq+ vs untrained | McNemar p |",
           "|---|---|---|---|---|---|",
           f"| untrained base | 0 | {b_ev['typecheck_rate']*100:.1f}% | {b_ev['beq_plus_rate']*100:.1f}% | — | — |"]
     for c in live:
         if c["key"] == "base":
             continue
-        st = best(evs[c["key"]]); r = evs[c["key"]][st]; q = paired(b_ev, r)
+        st = final(evs[c["key"]]); r = evs[c["key"]][st]; q = paired(b_ev, r)
         md.append(f"| {c['tex']} | {st} | {r['typecheck_rate']*100:.1f}% | "
                   f"{r['beq_plus_rate']*100:.1f}% | {(r['beq_plus_rate']-b_ev['beq_plus_rate'])*100:+.1f} pp | {q['p']:.2g} |")
     md += ["", "## Trajectories (BEq+ %)\n"]
@@ -576,13 +649,13 @@ def main():
               ("teacher statement, BEq+-filtered + CoT", "beqok"),
               ("gold statement + CoT", "cotgold")]
     rung = [(t, k) for t, k in ladder if evs.get(k)]
-    if len(rung) > 1:
+    if len(rung) > 1 and not ablation:
         md += ["", "## What the target choice buys", "",
                "Replacing the teacher's *statement* with the gold statement, everything",
                "else held fixed:", "",
-               "| training target | BEq+ | type-check |", "|---|---|---|"]
+               "| training target | BEq+ | elaborates |", "|---|---|---|"]
         for t, k in rung:
-            r = evs[k][best(evs[k])]
+            r = evs[k][final(evs[k])]
             md.append(f"| {t} | {r['beq_plus_rate']*100:.1f}% | {r['typecheck_rate']*100:.1f}% |")
         if roster:
             md += ["",
@@ -593,50 +666,80 @@ def main():
                    "the Read section."]
         else:
             md += ["",
-                   "Type-check barely moves across the rungs: the compile skill is",
-                   "insensitive to which target you train on. Only semantic fidelity to",
-                   "the reference statement responds, which is what the metric measures."]
-    if roster:
+                   "Elaboration barely moves across the rungs: the skill of writing Lean",
+                   "that parses is insensitive to which target you train on. Only fidelity",
+                   "to the reference statement responds."]
+    if ablation:
+        A = evs["distilled"]; B = evs["beqok"]; aB, bB = final(A), final(B)
+        d = (A[aB]["beq_plus_rate"] - B[bB]["beq_plus_rate"]) * 100
+        pr2 = paired(A[aB], B[bB])
+        md += ["", "## Read", "",
+               f"Filtering **does not help**. At the final checkpoint of each run BEq+ is "
+               f"{A[aB]['beq_plus_rate']*100:.1f}% (all targets, step {aB}) against "
+               f"{B[bB]['beq_plus_rate']*100:.1f}% (valid only, step {bB}): {d:+.1f} pp, "
+               f"McNemar p={pr2['p']:.2g} -- not significant, and at matched steps "
+               "150/175/200 neither run leads either.",
+               "",
+               "**Statement elaboration is clearly worse for the filtered run** (~52-61% vs "
+               "~60-70% at every step -- see `fig_elaborate_rate`). Dropping 24% of the "
+               "training data cost more elaboration skill than the label-cleanliness bought "
+               "back.",
+               "",
+               "Both plateau by step ~75-125 then wander in a 12-16% band; longer training "
+               "does nothing on this OOD slice. The earlier hint that filtering helped "
+               "(+2.9 pp, p=0.09) was a noisier setup (constant LR, no folded val, only to "
+               "step 175) and does not survive here.",
+               "",
+               "For this transfer target, **data volume beats target-statement purity**.",
+               ""]
+    elif roster:
         fam = {"capped": "gold", "uncapped": "gold", "matchedgold": "gold",
                "cotgold": "gold", "distilled": "distilled", "distilled_constlr": "distilled",
                "beqok": "distilled"}
         def bqt(k):
-            r = evs[k][best(evs[k])]; return r["beq_plus_rate"] * 100, r["typecheck_rate"] * 100
-        gold_bq = [bqt(k)[0] for k in fam if fam[k] == "gold" and evs.get(k)]
-        dist_bq = [bqt(k)[0] for k in fam if fam[k] == "distilled" and evs.get(k)]
+            r = evs[k][final(evs[k])]; return r["beq_plus_rate"] * 100, r["typecheck_rate"] * 100
+        gold = [bqt(k) for k in fam if fam[k] == "gold" and evs.get(k)]
+        dist = [bqt(k) for k in fam if fam[k] == "distilled" and evs.get(k)]
+        gold_bq, gold_tc = [x[0] for x in gold], [x[1] for x in gold]
+        dist_bq, dist_tc = [x[0] for x in dist], [x[1] for x in dist]
         md += ["", "## Read", "",
                "The out-of-domain ranking inverts the in-domain one. On LoCoLib the",
                "gold-target models lead; on miniF2F the distilled/CoT models do:",
                "",
-               f"- distilled family best-BEq+ range {min(dist_bq):.1f}-{max(dist_bq):.1f}%, "
-               f"type-check ~64-69%",
-               f"- gold-target family {min(gold_bq):.1f}-{max(gold_bq):.1f}%, type-check ~46-60%",
+               f"- distilled family final-checkpoint BEq+ {min(dist_bq):.1f}-{max(dist_bq):.1f}%, "
+               f"elaboration {min(dist_tc):.1f}-{max(dist_tc):.1f}%",
+               f"- gold-target family {min(gold_bq):.1f}-{max(gold_bq):.1f}%, "
+               f"elaboration {min(gold_tc):.1f}-{max(gold_tc):.1f}%",
                "",
                "The likely cause is prompt-format transfer: miniF2F is self-contained",
                "competition statements with a trivial preamble, which is the shape the",
                "distilled models learned to emit (their teacher wrote standalone Lean).",
                "The gold-target models learned to emit a bare theorem that slots into",
                "LoCoLib's rich namespace context, and that habit does not carry over.",
-               "`CoT + gold target` is worst of all (10.7%), below even the capped",
-               "baseline -- the `<think>` prefix plus a gold-context bare theorem",
+               "`CoT + gold target`"
+               + (f" ({bqt('cotgold')[0]:.1f}%)" if evs.get("cotgold") else "")
+               + " sits at the bottom of the range with the",
+               "capped baseline -- the `<think>` prefix plus a gold-context bare theorem",
                "transfers poorly on both axes.",
                "",
                f"`BEq+-clean` (distilled targets filtered to statements BEq+ says match",
-               f"the gold) is the strongest single model here at {max(dist_bq):.1f}% -- the",
-               "same 24%-label-noise fix that helped in-domain helps more out-of-domain.",
+               f"the gold) tops the distilled band at {max(dist_bq):.1f}%, though the band "
+               "is a",
+               "few points wide and the runs cross over between checkpoints -- read",
+               "`table_eval_by_step.tex`, not the single number.",
                "",
                "Every trained model still beats the untrained base "
                f"({b_ev['beq_plus_rate']*100:.1f}% BEq+ / {b_ev['typecheck_rate']*100:.1f}% "
-               "type-check) with paired significance -- see `table_results.tex`.",
+               "elaboration) with paired significance -- see `table_results.tex`.",
                ""]
     else:
         md += ["", "## Read", "",
                "SFT does two separable jobs, and `table_outcome_breakdown.tex` splits them:",
                "",
-               f"1. **Make Lean that elaborates at all.** The untrained model compiles "
-               f"{bc}/{N} ({100*bc/N:.1f}%) of the slice; after distilled SFT that is "
-               f"{dc}/{N} ({100*dc/N:.1f}%). This is the bulk of the gain.",
-               f"2. **Make the *intended* theorem.** Conditional on compiling, the untrained "
+               f"1. **Make a statement that elaborates at all.** The untrained model "
+               f"elaborates {bc}/{N} ({100*bc/N:.1f}%) of the slice; after distilled SFT "
+               f"that is {dc}/{N} ({100*dc/N:.1f}%). This is the bulk of the gain.",
+               f"2. **Make the *intended* theorem.** Conditional on elaborating, the untrained "
                f"model is right {100*bo['beq_plus']/bc:.1f}% of the time and the distilled "
                f"model {100*do_['beq_plus']/dc:.1f}%."
                # only claim drift where the one-directional bucket is actually populated;
@@ -652,10 +755,26 @@ def main():
                "",
                "Distilled data trains the model: it moves BEq+ from "
                f"{b_ev['beq_plus_rate']*100:.1f}% to {d_ev['beq_plus_rate']*100:.1f}% and the "
-               f"compile rate from {100*bc/N:.1f}% to {100*dc/N:.1f}%, both with "
-               "overwhelming paired significance.",
-           "",
-           "## Caveats", "",
+               f"statement-elaboration rate from {100*bc/N:.1f}% to {100*dc/N:.1f}%, both "
+               "with overwhelming paired significance."]
+    md += ["", "## Caveats", "",
+           "- **Proof validity is not measured, by either metric.** Scoring goes through",
+           "  `BEqPlusScorer.typecheck_ex`, which calls",
+           "  `clean_last_theorem_string(..., add_sorry=True)`: the model's proof body is",
+           "  stripped and replaced with `sorry` before Lean is ever called. So",
+           "  *elaborates* means the generated **statement** elaborates, and *BEq+* means",
+           "  that statement is bidirectionally equivalent to the gold **statement**.",
+           "  Neither says whether the model's proof closes the goal.",
+           "  `BEqPlusScorer.check_own_proof` would check exactly that and is never called",
+           "  by `scripts/eval/evaluate_checkpoints.py`. Elaboration also hard-gates BEq+",
+           "  (`BEQ_SKIP_CASCADE_ON_TYPECHECK_FAIL=1`), so the two are nested, not",
+           "  independent.",
+           "- **No checkpoint is selected on the reported metric.** Every table and figure",
+           "  annotation uses each run's *final* checkpoint, fixed by the training",
+           "  schedule. There is no separate selection split here (`trainer.test_freq: -1`,",
+           "  no dev parquet), so an argmax over the reported BEq+ column would be",
+           "  selecting on the statistic it then reports. Read",
+           "  `table_eval_by_step.tex` -- the full trajectory -- as the result.",
            "- The untrained number is an upper bound: standalone (union-context) scoring,",
            "  a 1536-token generation budget, and zero-shot with no few-shot exemplars.",
            f"- Adjacent checkpoints still disagree on a sizeable minority of the {N} examples",
@@ -666,7 +785,7 @@ def main():
            "",
            "## Contents", "",
            "```",
-           "figures/   fig_beq_plus_rate, fig_compile_rate, fig_training_loss,",
+           "figures/   fig_beq_plus_rate, fig_elaborate_rate, fig_training_loss,",
            "           fig_outcome_breakdown, fig_output_length, fig_target_length,",
            "           fig_domain_distribution            (.png + .pdf)",
            "tables/    table_results, table_eval_by_step, table_outcome_breakdown,",

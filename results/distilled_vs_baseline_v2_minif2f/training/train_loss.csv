@@ -1,0 +1,1155 @@
+series,label,step,train_loss
+capped,"Baseline (capped, gold)",1,1.547865
+capped,"Baseline (capped, gold)",2,2.324613
+capped,"Baseline (capped, gold)",3,2.212125
+capped,"Baseline (capped, gold)",4,1.837569
+capped,"Baseline (capped, gold)",5,1.540330
+capped,"Baseline (capped, gold)",6,1.337281
+capped,"Baseline (capped, gold)",7,1.162781
+capped,"Baseline (capped, gold)",8,1.014922
+capped,"Baseline (capped, gold)",9,0.941196
+capped,"Baseline (capped, gold)",10,0.929179
+capped,"Baseline (capped, gold)",11,0.877137
+capped,"Baseline (capped, gold)",12,0.800772
+capped,"Baseline (capped, gold)",13,0.798165
+capped,"Baseline (capped, gold)",14,0.802870
+capped,"Baseline (capped, gold)",15,0.738591
+capped,"Baseline (capped, gold)",16,0.770920
+capped,"Baseline (capped, gold)",17,0.789162
+capped,"Baseline (capped, gold)",18,0.726366
+capped,"Baseline (capped, gold)",19,0.712398
+capped,"Baseline (capped, gold)",20,0.665824
+capped,"Baseline (capped, gold)",21,0.667382
+capped,"Baseline (capped, gold)",22,0.690877
+capped,"Baseline (capped, gold)",23,0.653371
+capped,"Baseline (capped, gold)",24,0.663746
+capped,"Baseline (capped, gold)",25,0.648836
+capped,"Baseline (capped, gold)",26,0.672534
+capped,"Baseline (capped, gold)",27,0.675280
+capped,"Baseline (capped, gold)",28,0.668766
+capped,"Baseline (capped, gold)",29,0.655756
+capped,"Baseline (capped, gold)",30,0.592595
+capped,"Baseline (capped, gold)",31,0.615388
+capped,"Baseline (capped, gold)",32,0.633249
+capped,"Baseline (capped, gold)",33,0.621251
+capped,"Baseline (capped, gold)",34,0.608861
+capped,"Baseline (capped, gold)",35,0.587130
+capped,"Baseline (capped, gold)",36,0.613645
+capped,"Baseline (capped, gold)",37,0.645260
+capped,"Baseline (capped, gold)",38,0.567594
+capped,"Baseline (capped, gold)",39,0.439293
+capped,"Baseline (capped, gold)",40,0.384305
+capped,"Baseline (capped, gold)",41,0.416340
+capped,"Baseline (capped, gold)",42,0.377950
+capped,"Baseline (capped, gold)",43,0.377355
+capped,"Baseline (capped, gold)",44,0.417941
+capped,"Baseline (capped, gold)",45,0.412791
+capped,"Baseline (capped, gold)",46,0.390666
+capped,"Baseline (capped, gold)",47,0.400809
+capped,"Baseline (capped, gold)",48,0.389045
+capped,"Baseline (capped, gold)",49,0.418793
+capped,"Baseline (capped, gold)",50,0.411428
+capped,"Baseline (capped, gold)",51,0.379922
+capped,"Baseline (capped, gold)",52,0.390072
+capped,"Baseline (capped, gold)",53,0.393382
+capped,"Baseline (capped, gold)",54,0.378030
+capped,"Baseline (capped, gold)",55,0.369580
+capped,"Baseline (capped, gold)",56,0.351143
+capped,"Baseline (capped, gold)",57,0.393185
+capped,"Baseline (capped, gold)",58,0.375116
+capped,"Baseline (capped, gold)",59,0.393106
+capped,"Baseline (capped, gold)",60,0.358861
+capped,"Baseline (capped, gold)",61,0.358748
+capped,"Baseline (capped, gold)",62,0.385550
+capped,"Baseline (capped, gold)",63,0.389495
+capped,"Baseline (capped, gold)",64,0.380689
+capped,"Baseline (capped, gold)",65,0.378341
+capped,"Baseline (capped, gold)",66,0.361806
+capped,"Baseline (capped, gold)",67,0.370119
+capped,"Baseline (capped, gold)",68,0.368587
+capped,"Baseline (capped, gold)",69,0.359176
+capped,"Baseline (capped, gold)",70,0.375712
+capped,"Baseline (capped, gold)",71,0.362489
+capped,"Baseline (capped, gold)",72,0.349290
+capped,"Baseline (capped, gold)",73,0.380561
+capped,"Baseline (capped, gold)",74,0.377486
+capped,"Baseline (capped, gold)",75,0.394937
+capped,"Baseline (capped, gold)",76,0.341419
+capped,"Baseline (capped, gold)",77,0.201038
+capped,"Baseline (capped, gold)",78,0.195651
+capped,"Baseline (capped, gold)",79,0.199923
+capped,"Baseline (capped, gold)",80,0.183211
+capped,"Baseline (capped, gold)",81,0.201649
+capped,"Baseline (capped, gold)",82,0.172105
+capped,"Baseline (capped, gold)",83,0.171993
+capped,"Baseline (capped, gold)",84,0.180903
+capped,"Baseline (capped, gold)",85,0.175389
+capped,"Baseline (capped, gold)",86,0.201203
+capped,"Baseline (capped, gold)",87,0.179779
+capped,"Baseline (capped, gold)",88,0.173456
+capped,"Baseline (capped, gold)",89,0.182953
+capped,"Baseline (capped, gold)",90,0.187714
+capped,"Baseline (capped, gold)",91,0.167163
+capped,"Baseline (capped, gold)",92,0.184631
+capped,"Baseline (capped, gold)",93,0.185821
+capped,"Baseline (capped, gold)",94,0.196237
+capped,"Baseline (capped, gold)",95,0.177832
+capped,"Baseline (capped, gold)",96,0.181768
+capped,"Baseline (capped, gold)",97,0.199901
+capped,"Baseline (capped, gold)",98,0.172286
+capped,"Baseline (capped, gold)",99,0.185300
+capped,"Baseline (capped, gold)",100,0.190268
+capped,"Baseline (capped, gold)",101,0.185099
+capped,"Baseline (capped, gold)",102,0.178726
+capped,"Baseline (capped, gold)",103,0.192268
+capped,"Baseline (capped, gold)",104,0.189011
+capped,"Baseline (capped, gold)",105,0.176429
+capped,"Baseline (capped, gold)",106,0.175188
+capped,"Baseline (capped, gold)",107,0.191090
+capped,"Baseline (capped, gold)",108,0.203156
+capped,"Baseline (capped, gold)",109,0.191019
+capped,"Baseline (capped, gold)",110,0.198289
+capped,"Baseline (capped, gold)",111,0.192595
+capped,"Baseline (capped, gold)",112,0.193195
+capped,"Baseline (capped, gold)",113,0.178515
+capped,"Baseline (capped, gold)",114,0.198605
+uncapped,"Baseline (full data, gold)",1,1.560255
+uncapped,"Baseline (full data, gold)",2,2.459833
+uncapped,"Baseline (full data, gold)",3,2.070959
+uncapped,"Baseline (full data, gold)",4,1.811352
+uncapped,"Baseline (full data, gold)",5,1.528854
+uncapped,"Baseline (full data, gold)",6,1.370356
+uncapped,"Baseline (full data, gold)",7,1.322531
+uncapped,"Baseline (full data, gold)",8,1.183479
+uncapped,"Baseline (full data, gold)",9,1.098959
+uncapped,"Baseline (full data, gold)",10,1.028360
+uncapped,"Baseline (full data, gold)",11,0.988622
+uncapped,"Baseline (full data, gold)",12,0.940941
+uncapped,"Baseline (full data, gold)",13,0.969212
+uncapped,"Baseline (full data, gold)",14,0.883072
+uncapped,"Baseline (full data, gold)",15,0.899960
+uncapped,"Baseline (full data, gold)",16,0.891523
+uncapped,"Baseline (full data, gold)",17,0.804960
+uncapped,"Baseline (full data, gold)",18,0.888248
+uncapped,"Baseline (full data, gold)",19,0.807784
+uncapped,"Baseline (full data, gold)",20,0.832568
+uncapped,"Baseline (full data, gold)",21,0.857187
+uncapped,"Baseline (full data, gold)",22,0.822195
+uncapped,"Baseline (full data, gold)",23,0.850805
+uncapped,"Baseline (full data, gold)",24,0.803176
+uncapped,"Baseline (full data, gold)",25,0.792089
+uncapped,"Baseline (full data, gold)",26,0.736707
+uncapped,"Baseline (full data, gold)",27,0.711763
+uncapped,"Baseline (full data, gold)",28,0.763628
+uncapped,"Baseline (full data, gold)",29,0.724113
+uncapped,"Baseline (full data, gold)",30,0.812293
+uncapped,"Baseline (full data, gold)",31,0.743214
+uncapped,"Baseline (full data, gold)",32,0.790489
+uncapped,"Baseline (full data, gold)",33,0.715137
+uncapped,"Baseline (full data, gold)",34,0.759710
+uncapped,"Baseline (full data, gold)",35,0.716980
+uncapped,"Baseline (full data, gold)",36,0.716406
+uncapped,"Baseline (full data, gold)",37,0.770946
+uncapped,"Baseline (full data, gold)",38,0.740842
+uncapped,"Baseline (full data, gold)",39,0.697891
+uncapped,"Baseline (full data, gold)",40,0.696617
+uncapped,"Baseline (full data, gold)",41,0.695501
+uncapped,"Baseline (full data, gold)",42,0.680729
+uncapped,"Baseline (full data, gold)",43,0.657839
+uncapped,"Baseline (full data, gold)",44,0.688505
+uncapped,"Baseline (full data, gold)",45,0.690960
+uncapped,"Baseline (full data, gold)",46,0.520472
+uncapped,"Baseline (full data, gold)",47,0.520633
+uncapped,"Baseline (full data, gold)",48,0.532403
+uncapped,"Baseline (full data, gold)",49,0.492677
+uncapped,"Baseline (full data, gold)",50,0.490767
+uncapped,"Baseline (full data, gold)",51,0.482346
+uncapped,"Baseline (full data, gold)",52,0.488800
+uncapped,"Baseline (full data, gold)",53,0.500464
+uncapped,"Baseline (full data, gold)",54,0.495615
+uncapped,"Baseline (full data, gold)",55,0.450610
+uncapped,"Baseline (full data, gold)",56,0.493436
+uncapped,"Baseline (full data, gold)",57,0.496966
+uncapped,"Baseline (full data, gold)",58,0.480022
+uncapped,"Baseline (full data, gold)",59,0.497281
+uncapped,"Baseline (full data, gold)",60,0.455300
+uncapped,"Baseline (full data, gold)",61,0.458251
+uncapped,"Baseline (full data, gold)",62,0.452674
+uncapped,"Baseline (full data, gold)",63,0.482628
+uncapped,"Baseline (full data, gold)",64,0.462830
+uncapped,"Baseline (full data, gold)",65,0.500847
+uncapped,"Baseline (full data, gold)",66,0.460801
+uncapped,"Baseline (full data, gold)",67,0.461643
+uncapped,"Baseline (full data, gold)",68,0.475925
+uncapped,"Baseline (full data, gold)",69,0.479871
+uncapped,"Baseline (full data, gold)",70,0.489020
+uncapped,"Baseline (full data, gold)",71,0.476930
+uncapped,"Baseline (full data, gold)",72,0.472216
+uncapped,"Baseline (full data, gold)",73,0.499526
+uncapped,"Baseline (full data, gold)",74,0.449458
+uncapped,"Baseline (full data, gold)",75,0.460111
+uncapped,"Baseline (full data, gold)",76,0.496058
+uncapped,"Baseline (full data, gold)",77,0.461402
+uncapped,"Baseline (full data, gold)",78,0.490175
+uncapped,"Baseline (full data, gold)",79,0.439472
+uncapped,"Baseline (full data, gold)",80,0.487187
+uncapped,"Baseline (full data, gold)",81,0.445556
+uncapped,"Baseline (full data, gold)",82,0.500501
+uncapped,"Baseline (full data, gold)",83,0.438400
+uncapped,"Baseline (full data, gold)",84,0.526394
+uncapped,"Baseline (full data, gold)",85,0.483670
+uncapped,"Baseline (full data, gold)",86,0.463050
+uncapped,"Baseline (full data, gold)",87,0.477785
+uncapped,"Baseline (full data, gold)",88,0.467307
+uncapped,"Baseline (full data, gold)",89,0.479837
+uncapped,"Baseline (full data, gold)",90,0.447397
+uncapped,"Baseline (full data, gold)",91,0.278784
+uncapped,"Baseline (full data, gold)",92,0.300563
+uncapped,"Baseline (full data, gold)",93,0.253161
+uncapped,"Baseline (full data, gold)",94,0.268647
+uncapped,"Baseline (full data, gold)",95,0.243255
+uncapped,"Baseline (full data, gold)",96,0.280015
+uncapped,"Baseline (full data, gold)",97,0.296009
+uncapped,"Baseline (full data, gold)",98,0.250954
+uncapped,"Baseline (full data, gold)",99,0.264188
+uncapped,"Baseline (full data, gold)",100,0.276639
+uncapped,"Baseline (full data, gold)",101,0.265628
+uncapped,"Baseline (full data, gold)",102,0.248704
+uncapped,"Baseline (full data, gold)",103,0.257165
+uncapped,"Baseline (full data, gold)",104,0.262095
+uncapped,"Baseline (full data, gold)",105,0.248824
+uncapped,"Baseline (full data, gold)",106,0.256508
+uncapped,"Baseline (full data, gold)",107,0.230960
+uncapped,"Baseline (full data, gold)",108,0.266934
+uncapped,"Baseline (full data, gold)",109,0.263994
+uncapped,"Baseline (full data, gold)",110,0.261524
+uncapped,"Baseline (full data, gold)",111,0.262386
+uncapped,"Baseline (full data, gold)",112,0.239233
+uncapped,"Baseline (full data, gold)",113,0.243021
+uncapped,"Baseline (full data, gold)",114,0.278482
+uncapped,"Baseline (full data, gold)",115,0.255759
+uncapped,"Baseline (full data, gold)",116,0.263652
+uncapped,"Baseline (full data, gold)",117,0.283388
+uncapped,"Baseline (full data, gold)",118,0.297420
+uncapped,"Baseline (full data, gold)",119,0.264287
+uncapped,"Baseline (full data, gold)",120,0.269756
+uncapped,"Baseline (full data, gold)",121,0.272663
+uncapped,"Baseline (full data, gold)",122,0.255937
+uncapped,"Baseline (full data, gold)",123,0.261451
+uncapped,"Baseline (full data, gold)",124,0.253407
+uncapped,"Baseline (full data, gold)",125,0.281141
+uncapped,"Baseline (full data, gold)",126,0.272012
+uncapped,"Baseline (full data, gold)",127,0.279162
+uncapped,"Baseline (full data, gold)",128,0.302205
+uncapped,"Baseline (full data, gold)",129,0.266329
+uncapped,"Baseline (full data, gold)",130,0.267411
+uncapped,"Baseline (full data, gold)",131,0.282385
+uncapped,"Baseline (full data, gold)",132,0.286056
+uncapped,"Baseline (full data, gold)",133,0.298445
+uncapped,"Baseline (full data, gold)",134,0.249432
+uncapped,"Baseline (full data, gold)",135,0.294341
+uncapped,"Baseline (full data, gold)",136,0.135996
+uncapped,"Baseline (full data, gold)",137,0.158017
+uncapped,"Baseline (full data, gold)",138,0.140944
+uncapped,"Baseline (full data, gold)",139,0.155328
+uncapped,"Baseline (full data, gold)",140,0.124079
+uncapped,"Baseline (full data, gold)",141,0.140835
+uncapped,"Baseline (full data, gold)",142,0.130160
+uncapped,"Baseline (full data, gold)",143,0.140364
+uncapped,"Baseline (full data, gold)",144,0.124118
+uncapped,"Baseline (full data, gold)",145,0.131538
+uncapped,"Baseline (full data, gold)",146,0.137860
+uncapped,"Baseline (full data, gold)",147,0.144655
+uncapped,"Baseline (full data, gold)",148,0.136804
+uncapped,"Baseline (full data, gold)",149,0.128511
+uncapped,"Baseline (full data, gold)",150,0.131926
+uncapped,"Baseline (full data, gold)",151,0.144812
+uncapped,"Baseline (full data, gold)",152,0.143982
+uncapped,"Baseline (full data, gold)",153,0.125073
+uncapped,"Baseline (full data, gold)",154,0.147846
+uncapped,"Baseline (full data, gold)",155,0.140217
+uncapped,"Baseline (full data, gold)",156,0.143564
+uncapped,"Baseline (full data, gold)",157,0.151130
+uncapped,"Baseline (full data, gold)",158,0.152392
+uncapped,"Baseline (full data, gold)",159,0.136848
+uncapped,"Baseline (full data, gold)",160,0.156105
+uncapped,"Baseline (full data, gold)",161,0.146366
+uncapped,"Baseline (full data, gold)",162,0.140384
+uncapped,"Baseline (full data, gold)",163,0.142871
+uncapped,"Baseline (full data, gold)",164,0.176357
+uncapped,"Baseline (full data, gold)",165,0.149302
+uncapped,"Baseline (full data, gold)",166,0.156752
+uncapped,"Baseline (full data, gold)",167,0.160544
+uncapped,"Baseline (full data, gold)",168,0.138148
+uncapped,"Baseline (full data, gold)",169,0.146981
+uncapped,"Baseline (full data, gold)",170,0.163782
+uncapped,"Baseline (full data, gold)",171,0.149938
+uncapped,"Baseline (full data, gold)",172,0.152459
+uncapped,"Baseline (full data, gold)",173,0.157105
+uncapped,"Baseline (full data, gold)",174,0.149477
+uncapped,"Baseline (full data, gold)",175,0.147365
+uncapped,"Baseline (full data, gold)",176,0.142907
+uncapped,"Baseline (full data, gold)",177,0.157707
+uncapped,"Baseline (full data, gold)",178,0.176827
+uncapped,"Baseline (full data, gold)",179,0.158807
+uncapped,"Baseline (full data, gold)",180,0.162035
+uncapped,"Baseline (full data, gold)",181,0.075223
+uncapped,"Baseline (full data, gold)",182,0.088712
+uncapped,"Baseline (full data, gold)",183,0.077526
+uncapped,"Baseline (full data, gold)",184,0.086188
+uncapped,"Baseline (full data, gold)",185,0.076801
+uncapped,"Baseline (full data, gold)",186,0.078648
+uncapped,"Baseline (full data, gold)",187,0.080484
+uncapped,"Baseline (full data, gold)",188,0.078768
+uncapped,"Baseline (full data, gold)",189,0.069127
+uncapped,"Baseline (full data, gold)",190,0.088692
+uncapped,"Baseline (full data, gold)",191,0.081987
+uncapped,"Baseline (full data, gold)",192,0.079882
+uncapped,"Baseline (full data, gold)",193,0.075327
+uncapped,"Baseline (full data, gold)",194,0.096861
+uncapped,"Baseline (full data, gold)",195,0.079912
+uncapped,"Baseline (full data, gold)",196,0.078733
+uncapped,"Baseline (full data, gold)",197,0.096084
+uncapped,"Baseline (full data, gold)",198,0.079723
+uncapped,"Baseline (full data, gold)",199,0.084268
+uncapped,"Baseline (full data, gold)",200,0.084255
+uncapped,"Baseline (full data, gold)",201,0.075847
+uncapped,"Baseline (full data, gold)",202,0.089678
+uncapped,"Baseline (full data, gold)",203,0.079342
+uncapped,"Baseline (full data, gold)",204,0.078838
+uncapped,"Baseline (full data, gold)",205,0.081824
+uncapped,"Baseline (full data, gold)",206,0.085022
+uncapped,"Baseline (full data, gold)",207,0.084437
+uncapped,"Baseline (full data, gold)",208,0.080917
+uncapped,"Baseline (full data, gold)",209,0.090384
+uncapped,"Baseline (full data, gold)",210,0.080588
+uncapped,"Baseline (full data, gold)",211,0.089648
+uncapped,"Baseline (full data, gold)",212,0.093541
+uncapped,"Baseline (full data, gold)",213,0.086083
+uncapped,"Baseline (full data, gold)",214,0.092246
+uncapped,"Baseline (full data, gold)",215,0.103109
+uncapped,"Baseline (full data, gold)",216,0.081055
+uncapped,"Baseline (full data, gold)",217,0.082984
+uncapped,"Baseline (full data, gold)",218,0.081178
+uncapped,"Baseline (full data, gold)",219,0.085336
+uncapped,"Baseline (full data, gold)",220,0.091145
+uncapped,"Baseline (full data, gold)",221,0.097522
+uncapped,"Baseline (full data, gold)",222,0.077737
+uncapped,"Baseline (full data, gold)",223,0.087951
+uncapped,"Baseline (full data, gold)",224,0.087496
+uncapped,"Baseline (full data, gold)",225,0.085611
+matchedgold,Matched-gold,1,1.542158
+matchedgold,Matched-gold,2,2.283605
+matchedgold,Matched-gold,3,2.041192
+matchedgold,Matched-gold,4,1.757191
+matchedgold,Matched-gold,5,1.415756
+matchedgold,Matched-gold,6,1.258307
+matchedgold,Matched-gold,7,1.180173
+matchedgold,Matched-gold,8,1.112346
+matchedgold,Matched-gold,9,1.054049
+matchedgold,Matched-gold,10,0.970834
+matchedgold,Matched-gold,11,0.920033
+matchedgold,Matched-gold,12,0.844264
+matchedgold,Matched-gold,13,0.952606
+matchedgold,Matched-gold,14,0.879344
+matchedgold,Matched-gold,15,0.882444
+matchedgold,Matched-gold,16,0.833790
+matchedgold,Matched-gold,17,0.851103
+matchedgold,Matched-gold,18,0.817966
+matchedgold,Matched-gold,19,0.811235
+matchedgold,Matched-gold,20,0.773665
+matchedgold,Matched-gold,21,0.829561
+matchedgold,Matched-gold,22,0.704516
+matchedgold,Matched-gold,23,0.706184
+matchedgold,Matched-gold,24,0.768088
+matchedgold,Matched-gold,25,0.689635
+matchedgold,Matched-gold,26,0.767893
+matchedgold,Matched-gold,27,0.669003
+matchedgold,Matched-gold,28,0.762084
+matchedgold,Matched-gold,29,0.785504
+matchedgold,Matched-gold,30,0.656087
+matchedgold,Matched-gold,31,0.728786
+matchedgold,Matched-gold,32,0.716832
+matchedgold,Matched-gold,33,0.514343
+matchedgold,Matched-gold,34,0.553114
+matchedgold,Matched-gold,35,0.535236
+matchedgold,Matched-gold,36,0.500595
+matchedgold,Matched-gold,37,0.497884
+matchedgold,Matched-gold,38,0.516845
+matchedgold,Matched-gold,39,0.510639
+matchedgold,Matched-gold,40,0.500642
+matchedgold,Matched-gold,41,0.519700
+matchedgold,Matched-gold,42,0.542202
+matchedgold,Matched-gold,43,0.532465
+matchedgold,Matched-gold,44,0.481769
+matchedgold,Matched-gold,45,0.503795
+matchedgold,Matched-gold,46,0.486276
+matchedgold,Matched-gold,47,0.476851
+matchedgold,Matched-gold,48,0.481379
+matchedgold,Matched-gold,49,0.518097
+matchedgold,Matched-gold,50,0.541081
+matchedgold,Matched-gold,51,0.502223
+matchedgold,Matched-gold,52,0.493318
+matchedgold,Matched-gold,53,0.469647
+matchedgold,Matched-gold,54,0.485266
+matchedgold,Matched-gold,55,0.468693
+matchedgold,Matched-gold,56,0.451481
+matchedgold,Matched-gold,57,0.471944
+matchedgold,Matched-gold,58,0.464665
+matchedgold,Matched-gold,59,0.455319
+matchedgold,Matched-gold,60,0.469121
+matchedgold,Matched-gold,61,0.467865
+matchedgold,Matched-gold,62,0.487608
+matchedgold,Matched-gold,63,0.453486
+matchedgold,Matched-gold,64,0.487609
+matchedgold,Matched-gold,65,0.299361
+matchedgold,Matched-gold,66,0.279719
+matchedgold,Matched-gold,67,0.290829
+matchedgold,Matched-gold,68,0.265333
+matchedgold,Matched-gold,69,0.367904
+matchedgold,Matched-gold,70,0.261248
+matchedgold,Matched-gold,71,0.269218
+matchedgold,Matched-gold,72,0.253753
+matchedgold,Matched-gold,73,0.258718
+matchedgold,Matched-gold,74,0.260846
+matchedgold,Matched-gold,75,0.271090
+matchedgold,Matched-gold,76,0.280917
+matchedgold,Matched-gold,77,0.240907
+matchedgold,Matched-gold,78,0.279036
+matchedgold,Matched-gold,79,0.255298
+matchedgold,Matched-gold,80,0.255013
+matchedgold,Matched-gold,81,0.260277
+matchedgold,Matched-gold,82,0.256264
+matchedgold,Matched-gold,83,0.249419
+matchedgold,Matched-gold,84,0.243695
+matchedgold,Matched-gold,85,0.280370
+matchedgold,Matched-gold,86,0.276797
+matchedgold,Matched-gold,87,0.280916
+matchedgold,Matched-gold,88,0.248476
+matchedgold,Matched-gold,89,0.262329
+matchedgold,Matched-gold,90,0.256931
+matchedgold,Matched-gold,91,0.272105
+matchedgold,Matched-gold,92,0.256733
+matchedgold,Matched-gold,93,0.255909
+matchedgold,Matched-gold,94,0.267441
+matchedgold,Matched-gold,95,0.275851
+matchedgold,Matched-gold,96,0.278877
+cotgold,CoT + gold target,1,1.931397
+cotgold,CoT + gold target,2,1.648863
+cotgold,CoT + gold target,3,1.658447
+cotgold,CoT + gold target,4,1.393862
+cotgold,CoT + gold target,5,1.269425
+cotgold,CoT + gold target,6,1.257043
+cotgold,CoT + gold target,7,1.224130
+cotgold,CoT + gold target,8,1.119106
+cotgold,CoT + gold target,9,1.087152
+cotgold,CoT + gold target,10,1.012441
+cotgold,CoT + gold target,11,1.025727
+cotgold,CoT + gold target,12,1.005639
+cotgold,CoT + gold target,13,0.988462
+cotgold,CoT + gold target,14,0.946004
+cotgold,CoT + gold target,15,0.985319
+cotgold,CoT + gold target,16,0.966000
+cotgold,CoT + gold target,17,0.931042
+cotgold,CoT + gold target,18,0.903662
+cotgold,CoT + gold target,19,0.902380
+cotgold,CoT + gold target,20,0.928915
+cotgold,CoT + gold target,21,0.875892
+cotgold,CoT + gold target,22,0.832550
+cotgold,CoT + gold target,23,0.855982
+cotgold,CoT + gold target,24,0.864931
+cotgold,CoT + gold target,25,0.806325
+cotgold,CoT + gold target,26,0.843413
+cotgold,CoT + gold target,27,0.860243
+cotgold,CoT + gold target,28,0.849630
+cotgold,CoT + gold target,29,0.860864
+cotgold,CoT + gold target,30,0.859461
+cotgold,CoT + gold target,31,0.814733
+cotgold,CoT + gold target,32,0.779079
+cotgold,CoT + gold target,33,0.703596
+cotgold,CoT + gold target,34,0.676964
+cotgold,CoT + gold target,35,0.655958
+cotgold,CoT + gold target,36,0.642751
+cotgold,CoT + gold target,37,0.655020
+cotgold,CoT + gold target,38,0.629457
+cotgold,CoT + gold target,39,0.648178
+cotgold,CoT + gold target,40,0.617157
+cotgold,CoT + gold target,41,0.653546
+cotgold,CoT + gold target,42,0.610075
+cotgold,CoT + gold target,43,0.593177
+cotgold,CoT + gold target,44,0.615922
+cotgold,CoT + gold target,45,0.569877
+cotgold,CoT + gold target,46,0.674727
+cotgold,CoT + gold target,47,0.610258
+cotgold,CoT + gold target,48,0.616565
+cotgold,CoT + gold target,49,0.553075
+cotgold,CoT + gold target,50,0.643707
+cotgold,CoT + gold target,51,0.597135
+cotgold,CoT + gold target,52,0.621087
+cotgold,CoT + gold target,53,0.591685
+cotgold,CoT + gold target,54,0.592854
+cotgold,CoT + gold target,55,0.625775
+cotgold,CoT + gold target,56,0.601212
+cotgold,CoT + gold target,57,0.618428
+cotgold,CoT + gold target,58,0.572492
+cotgold,CoT + gold target,59,0.587804
+cotgold,CoT + gold target,60,0.608187
+cotgold,CoT + gold target,61,0.603948
+cotgold,CoT + gold target,62,0.581499
+cotgold,CoT + gold target,63,0.593727
+cotgold,CoT + gold target,64,0.601802
+cotgold,CoT + gold target,65,0.437276
+cotgold,CoT + gold target,66,0.394133
+cotgold,CoT + gold target,67,0.381611
+cotgold,CoT + gold target,68,0.410763
+cotgold,CoT + gold target,69,0.396334
+cotgold,CoT + gold target,70,0.406274
+cotgold,CoT + gold target,71,0.381155
+cotgold,CoT + gold target,72,0.396181
+cotgold,CoT + gold target,73,0.384115
+cotgold,CoT + gold target,74,0.388961
+cotgold,CoT + gold target,75,0.368974
+cotgold,CoT + gold target,76,0.377941
+cotgold,CoT + gold target,77,0.374391
+cotgold,CoT + gold target,78,0.372457
+cotgold,CoT + gold target,79,0.390380
+cotgold,CoT + gold target,80,0.378160
+cotgold,CoT + gold target,81,0.362664
+cotgold,CoT + gold target,82,0.370302
+cotgold,CoT + gold target,83,0.374411
+cotgold,CoT + gold target,84,0.356912
+cotgold,CoT + gold target,85,0.367328
+cotgold,CoT + gold target,86,0.371347
+cotgold,CoT + gold target,87,0.369565
+cotgold,CoT + gold target,88,0.376122
+cotgold,CoT + gold target,89,0.375563
+cotgold,CoT + gold target,90,0.395895
+cotgold,CoT + gold target,91,0.382675
+cotgold,CoT + gold target,92,0.381898
+cotgold,CoT + gold target,93,0.376126
+cotgold,CoT + gold target,94,0.391864
+cotgold,CoT + gold target,95,0.388060
+cotgold,CoT + gold target,96,0.390730
+cotgold,CoT + gold target,97,0.231361
+cotgold,CoT + gold target,98,0.205698
+cotgold,CoT + gold target,99,0.204887
+cotgold,CoT + gold target,100,0.194062
+cotgold,CoT + gold target,101,0.206254
+cotgold,CoT + gold target,102,0.207319
+cotgold,CoT + gold target,103,0.219524
+cotgold,CoT + gold target,104,0.200979
+cotgold,CoT + gold target,105,0.196187
+cotgold,CoT + gold target,106,0.207249
+cotgold,CoT + gold target,107,0.199917
+cotgold,CoT + gold target,108,0.195791
+cotgold,CoT + gold target,109,0.195105
+cotgold,CoT + gold target,110,0.203924
+cotgold,CoT + gold target,111,0.189388
+cotgold,CoT + gold target,112,0.203893
+cotgold,CoT + gold target,113,0.204539
+cotgold,CoT + gold target,114,0.193935
+cotgold,CoT + gold target,115,0.196504
+cotgold,CoT + gold target,116,0.208379
+cotgold,CoT + gold target,117,0.208987
+cotgold,CoT + gold target,118,0.221845
+cotgold,CoT + gold target,119,0.207723
+cotgold,CoT + gold target,120,0.208827
+cotgold,CoT + gold target,121,0.221008
+cotgold,CoT + gold target,122,0.216291
+cotgold,CoT + gold target,123,0.201500
+cotgold,CoT + gold target,124,0.212609
+cotgold,CoT + gold target,125,0.215407
+cotgold,CoT + gold target,126,0.226534
+cotgold,CoT + gold target,127,0.221104
+cotgold,CoT + gold target,128,0.218586
+cotgold,CoT + gold target,129,0.111995
+cotgold,CoT + gold target,130,0.109555
+cotgold,CoT + gold target,131,0.109445
+cotgold,CoT + gold target,132,0.103728
+cotgold,CoT + gold target,133,0.101308
+cotgold,CoT + gold target,134,0.101040
+cotgold,CoT + gold target,135,0.106421
+cotgold,CoT + gold target,136,0.101389
+cotgold,CoT + gold target,137,0.102840
+cotgold,CoT + gold target,138,0.104673
+cotgold,CoT + gold target,139,0.104111
+cotgold,CoT + gold target,140,0.107551
+cotgold,CoT + gold target,141,0.101492
+cotgold,CoT + gold target,142,0.108992
+cotgold,CoT + gold target,143,0.098855
+cotgold,CoT + gold target,144,0.109961
+cotgold,CoT + gold target,145,0.107139
+cotgold,CoT + gold target,146,0.100998
+cotgold,CoT + gold target,147,0.112839
+cotgold,CoT + gold target,148,0.112393
+cotgold,CoT + gold target,149,0.104851
+cotgold,CoT + gold target,150,0.113092
+cotgold,CoT + gold target,151,0.116581
+cotgold,CoT + gold target,152,0.108391
+cotgold,CoT + gold target,153,0.113362
+cotgold,CoT + gold target,154,0.112876
+cotgold,CoT + gold target,155,0.112304
+cotgold,CoT + gold target,156,0.113267
+cotgold,CoT + gold target,157,0.117777
+cotgold,CoT + gold target,158,0.111260
+cotgold,CoT + gold target,159,0.119790
+cotgold,CoT + gold target,160,0.111601
+cotgold,CoT + gold target,161,0.055388
+cotgold,CoT + gold target,162,0.054571
+cotgold,CoT + gold target,163,0.056311
+cotgold,CoT + gold target,164,0.056434
+cotgold,CoT + gold target,165,0.054339
+cotgold,CoT + gold target,166,0.057325
+cotgold,CoT + gold target,167,0.059522
+cotgold,CoT + gold target,168,0.056004
+cotgold,CoT + gold target,169,0.062942
+cotgold,CoT + gold target,170,0.056919
+cotgold,CoT + gold target,171,0.061816
+cotgold,CoT + gold target,172,0.055706
+cotgold,CoT + gold target,173,0.057735
+cotgold,CoT + gold target,174,0.054380
+cotgold,CoT + gold target,175,0.053845
+cotgold,CoT + gold target,176,0.058359
+cotgold,CoT + gold target,177,0.061673
+cotgold,CoT + gold target,178,0.057788
+cotgold,CoT + gold target,179,0.057459
+cotgold,CoT + gold target,180,0.063450
+cotgold,CoT + gold target,181,0.058120
+cotgold,CoT + gold target,182,0.057528
+cotgold,CoT + gold target,183,0.061092
+cotgold,CoT + gold target,184,0.062795
+cotgold,CoT + gold target,185,0.056376
+cotgold,CoT + gold target,186,0.061437
+cotgold,CoT + gold target,187,0.060654
+cotgold,CoT + gold target,188,0.060241
+cotgold,CoT + gold target,189,0.060969
+cotgold,CoT + gold target,190,0.060492
+cotgold,CoT + gold target,191,0.063766
+cotgold,CoT + gold target,192,0.059790
+distilled,Distilled (cosine LR),1,1.581200
+distilled,Distilled (cosine LR),2,1.601664
+distilled,Distilled (cosine LR),3,1.397707
+distilled,Distilled (cosine LR),4,1.268180
+distilled,Distilled (cosine LR),5,1.146037
+distilled,Distilled (cosine LR),6,1.177780
+distilled,Distilled (cosine LR),7,1.017074
+distilled,Distilled (cosine LR),8,0.944001
+distilled,Distilled (cosine LR),9,0.912953
+distilled,Distilled (cosine LR),10,0.916649
+distilled,Distilled (cosine LR),11,0.873767
+distilled,Distilled (cosine LR),12,0.828691
+distilled,Distilled (cosine LR),13,0.820926
+distilled,Distilled (cosine LR),14,0.774902
+distilled,Distilled (cosine LR),15,0.774372
+distilled,Distilled (cosine LR),16,0.719163
+distilled,Distilled (cosine LR),17,0.665105
+distilled,Distilled (cosine LR),18,0.726091
+distilled,Distilled (cosine LR),19,0.746031
+distilled,Distilled (cosine LR),20,0.676825
+distilled,Distilled (cosine LR),21,0.770962
+distilled,Distilled (cosine LR),22,0.678539
+distilled,Distilled (cosine LR),23,0.692368
+distilled,Distilled (cosine LR),24,0.684136
+distilled,Distilled (cosine LR),25,0.673180
+distilled,Distilled (cosine LR),26,0.683540
+distilled,Distilled (cosine LR),27,0.731563
+distilled,Distilled (cosine LR),28,0.684688
+distilled,Distilled (cosine LR),29,0.667034
+distilled,Distilled (cosine LR),30,0.626015
+distilled,Distilled (cosine LR),31,0.656193
+distilled,Distilled (cosine LR),32,0.655092
+distilled,Distilled (cosine LR),33,0.491485
+distilled,Distilled (cosine LR),34,0.542195
+distilled,Distilled (cosine LR),35,0.520902
+distilled,Distilled (cosine LR),36,0.540048
+distilled,Distilled (cosine LR),37,0.507872
+distilled,Distilled (cosine LR),38,0.532482
+distilled,Distilled (cosine LR),39,0.491526
+distilled,Distilled (cosine LR),40,0.483341
+distilled,Distilled (cosine LR),41,0.497358
+distilled,Distilled (cosine LR),42,0.546030
+distilled,Distilled (cosine LR),43,0.487186
+distilled,Distilled (cosine LR),44,0.502935
+distilled,Distilled (cosine LR),45,0.501207
+distilled,Distilled (cosine LR),46,0.483063
+distilled,Distilled (cosine LR),47,0.494021
+distilled,Distilled (cosine LR),48,0.496796
+distilled,Distilled (cosine LR),49,0.488950
+distilled,Distilled (cosine LR),50,0.457422
+distilled,Distilled (cosine LR),51,0.476486
+distilled,Distilled (cosine LR),52,0.488831
+distilled,Distilled (cosine LR),53,0.551983
+distilled,Distilled (cosine LR),54,0.477318
+distilled,Distilled (cosine LR),55,0.466527
+distilled,Distilled (cosine LR),56,0.514169
+distilled,Distilled (cosine LR),57,0.459587
+distilled,Distilled (cosine LR),58,0.470655
+distilled,Distilled (cosine LR),59,0.472183
+distilled,Distilled (cosine LR),60,0.491847
+distilled,Distilled (cosine LR),61,0.459893
+distilled,Distilled (cosine LR),62,0.454282
+distilled,Distilled (cosine LR),63,0.465913
+distilled,Distilled (cosine LR),64,0.476685
+distilled,Distilled (cosine LR),65,0.323582
+distilled,Distilled (cosine LR),66,0.329029
+distilled,Distilled (cosine LR),67,0.338686
+distilled,Distilled (cosine LR),68,0.315345
+distilled,Distilled (cosine LR),69,0.348522
+distilled,Distilled (cosine LR),70,0.323808
+distilled,Distilled (cosine LR),71,0.303346
+distilled,Distilled (cosine LR),72,0.311537
+distilled,Distilled (cosine LR),73,0.313604
+distilled,Distilled (cosine LR),74,0.302793
+distilled,Distilled (cosine LR),75,0.319965
+distilled,Distilled (cosine LR),76,0.307342
+distilled,Distilled (cosine LR),77,0.294949
+distilled,Distilled (cosine LR),78,0.307811
+distilled,Distilled (cosine LR),79,0.337468
+distilled,Distilled (cosine LR),80,0.298695
+distilled,Distilled (cosine LR),81,0.301867
+distilled,Distilled (cosine LR),82,0.310036
+distilled,Distilled (cosine LR),83,0.295590
+distilled,Distilled (cosine LR),84,0.297664
+distilled,Distilled (cosine LR),85,0.307959
+distilled,Distilled (cosine LR),86,0.298000
+distilled,Distilled (cosine LR),87,0.290601
+distilled,Distilled (cosine LR),88,0.300066
+distilled,Distilled (cosine LR),89,0.309995
+distilled,Distilled (cosine LR),90,0.290963
+distilled,Distilled (cosine LR),91,0.292762
+distilled,Distilled (cosine LR),92,0.319874
+distilled,Distilled (cosine LR),93,0.308421
+distilled,Distilled (cosine LR),94,0.312586
+distilled,Distilled (cosine LR),95,0.323070
+distilled,Distilled (cosine LR),96,0.293017
+distilled,Distilled (cosine LR),97,0.191635
+distilled,Distilled (cosine LR),98,0.197291
+distilled,Distilled (cosine LR),99,0.187560
+distilled,Distilled (cosine LR),100,0.182904
+distilled,Distilled (cosine LR),101,0.183295
+distilled,Distilled (cosine LR),102,0.190490
+distilled,Distilled (cosine LR),103,0.170219
+distilled,Distilled (cosine LR),104,0.179678
+distilled,Distilled (cosine LR),105,0.173322
+distilled,Distilled (cosine LR),106,0.171284
+distilled,Distilled (cosine LR),107,0.162442
+distilled,Distilled (cosine LR),108,0.183448
+distilled,Distilled (cosine LR),109,0.158304
+distilled,Distilled (cosine LR),110,0.184345
+distilled,Distilled (cosine LR),111,0.168725
+distilled,Distilled (cosine LR),112,0.173362
+distilled,Distilled (cosine LR),113,0.152016
+distilled,Distilled (cosine LR),114,0.168604
+distilled,Distilled (cosine LR),115,0.154815
+distilled,Distilled (cosine LR),116,0.157873
+distilled,Distilled (cosine LR),117,0.173478
+distilled,Distilled (cosine LR),118,0.174124
+distilled,Distilled (cosine LR),119,0.155922
+distilled,Distilled (cosine LR),120,0.161522
+distilled,Distilled (cosine LR),121,0.185240
+distilled,Distilled (cosine LR),122,0.155120
+distilled,Distilled (cosine LR),123,0.170318
+distilled,Distilled (cosine LR),124,0.160527
+distilled,Distilled (cosine LR),125,0.162045
+distilled,Distilled (cosine LR),126,0.166620
+distilled,Distilled (cosine LR),127,0.170292
+distilled,Distilled (cosine LR),128,0.167303
+distilled,Distilled (cosine LR),129,0.109174
+distilled,Distilled (cosine LR),130,0.100594
+distilled,Distilled (cosine LR),131,0.105109
+distilled,Distilled (cosine LR),132,0.096130
+distilled,Distilled (cosine LR),133,0.099942
+distilled,Distilled (cosine LR),134,0.106415
+distilled,Distilled (cosine LR),135,0.103729
+distilled,Distilled (cosine LR),136,0.097602
+distilled,Distilled (cosine LR),137,0.097450
+distilled,Distilled (cosine LR),138,0.090408
+distilled,Distilled (cosine LR),139,0.101415
+distilled,Distilled (cosine LR),140,0.092993
+distilled,Distilled (cosine LR),141,0.107856
+distilled,Distilled (cosine LR),142,0.094210
+distilled,Distilled (cosine LR),143,0.103474
+distilled,Distilled (cosine LR),144,0.095703
+distilled,Distilled (cosine LR),145,0.102264
+distilled,Distilled (cosine LR),146,0.094035
+distilled,Distilled (cosine LR),147,0.088193
+distilled,Distilled (cosine LR),148,0.091254
+distilled,Distilled (cosine LR),149,0.083979
+distilled,Distilled (cosine LR),150,0.089622
+distilled,Distilled (cosine LR),151,0.094966
+distilled,Distilled (cosine LR),152,0.094299
+distilled,Distilled (cosine LR),153,0.100709
+distilled,Distilled (cosine LR),154,0.095275
+distilled,Distilled (cosine LR),155,0.096729
+distilled,Distilled (cosine LR),156,0.103280
+distilled,Distilled (cosine LR),157,0.093395
+distilled,Distilled (cosine LR),158,0.100455
+distilled,Distilled (cosine LR),159,0.093487
+distilled,Distilled (cosine LR),160,0.100860
+distilled_constlr,Distilled (constant LR),1,1.581200
+distilled_constlr,Distilled (constant LR),2,1.381661
+distilled_constlr,Distilled (constant LR),3,1.275159
+distilled_constlr,Distilled (constant LR),4,1.137676
+distilled_constlr,Distilled (constant LR),5,1.025406
+distilled_constlr,Distilled (constant LR),6,0.993384
+distilled_constlr,Distilled (constant LR),7,0.898390
+distilled_constlr,Distilled (constant LR),8,0.851216
+distilled_constlr,Distilled (constant LR),9,0.840493
+distilled_constlr,Distilled (constant LR),10,0.889143
+distilled_constlr,Distilled (constant LR),11,0.837432
+distilled_constlr,Distilled (constant LR),12,0.800378
+distilled_constlr,Distilled (constant LR),13,0.793824
+distilled_constlr,Distilled (constant LR),14,0.755283
+distilled_constlr,Distilled (constant LR),15,0.749778
+distilled_constlr,Distilled (constant LR),16,0.698183
+distilled_constlr,Distilled (constant LR),17,0.648560
+distilled_constlr,Distilled (constant LR),18,0.712093
+distilled_constlr,Distilled (constant LR),19,0.730539
+distilled_constlr,Distilled (constant LR),20,0.663295
+distilled_constlr,Distilled (constant LR),21,0.754825
+distilled_constlr,Distilled (constant LR),22,0.661206
+distilled_constlr,Distilled (constant LR),23,0.678863
+distilled_constlr,Distilled (constant LR),24,0.672055
+distilled_constlr,Distilled (constant LR),25,0.658557
+distilled_constlr,Distilled (constant LR),26,0.666912
+distilled_constlr,Distilled (constant LR),27,0.716513
+distilled_constlr,Distilled (constant LR),28,0.668266
+distilled_constlr,Distilled (constant LR),29,0.653087
+distilled_constlr,Distilled (constant LR),30,0.609988
+distilled_constlr,Distilled (constant LR),31,0.644615
+distilled_constlr,Distilled (constant LR),32,0.642510
+distilled_constlr,Distilled (constant LR),33,0.473692
+distilled_constlr,Distilled (constant LR),34,0.520465
+distilled_constlr,Distilled (constant LR),35,0.501482
+distilled_constlr,Distilled (constant LR),36,0.519430
+distilled_constlr,Distilled (constant LR),37,0.485918
+distilled_constlr,Distilled (constant LR),38,0.514338
+distilled_constlr,Distilled (constant LR),39,0.476651
+distilled_constlr,Distilled (constant LR),40,0.461652
+distilled_constlr,Distilled (constant LR),41,0.479880
+distilled_constlr,Distilled (constant LR),42,0.519974
+distilled_constlr,Distilled (constant LR),43,0.469989
+distilled_constlr,Distilled (constant LR),44,0.481316
+distilled_constlr,Distilled (constant LR),45,0.482722
+distilled_constlr,Distilled (constant LR),46,0.467510
+distilled_constlr,Distilled (constant LR),47,0.473562
+distilled_constlr,Distilled (constant LR),48,0.477797
+distilled_constlr,Distilled (constant LR),49,0.467438
+distilled_constlr,Distilled (constant LR),50,0.443190
+distilled_constlr,Distilled (constant LR),51,0.460723
+distilled_constlr,Distilled (constant LR),52,0.472458
+distilled_constlr,Distilled (constant LR),53,0.531621
+distilled_constlr,Distilled (constant LR),54,0.463246
+distilled_constlr,Distilled (constant LR),55,0.452526
+distilled_constlr,Distilled (constant LR),56,0.495119
+distilled_constlr,Distilled (constant LR),57,0.443408
+distilled_constlr,Distilled (constant LR),58,0.458777
+distilled_constlr,Distilled (constant LR),59,0.460781
+distilled_constlr,Distilled (constant LR),60,0.480265
+distilled_constlr,Distilled (constant LR),61,0.447605
+distilled_constlr,Distilled (constant LR),62,0.443334
+distilled_constlr,Distilled (constant LR),63,0.460474
+distilled_constlr,Distilled (constant LR),64,0.465139
+distilled_constlr,Distilled (constant LR),65,0.304218
+distilled_constlr,Distilled (constant LR),66,0.308531
+distilled_constlr,Distilled (constant LR),67,0.311391
+distilled_constlr,Distilled (constant LR),68,0.295261
+distilled_constlr,Distilled (constant LR),69,0.325046
+distilled_constlr,Distilled (constant LR),70,0.301691
+distilled_constlr,Distilled (constant LR),71,0.285478
+distilled_constlr,Distilled (constant LR),72,0.287797
+distilled_constlr,Distilled (constant LR),73,0.293567
+distilled_constlr,Distilled (constant LR),74,0.280982
+distilled_constlr,Distilled (constant LR),75,0.299639
+distilled_constlr,Distilled (constant LR),76,0.289619
+distilled_constlr,Distilled (constant LR),77,0.273610
+distilled_constlr,Distilled (constant LR),78,0.290506
+distilled_constlr,Distilled (constant LR),79,0.327870
+distilled_constlr,Distilled (constant LR),80,0.280349
+distilled_constlr,Distilled (constant LR),81,0.290004
+distilled_constlr,Distilled (constant LR),82,0.294462
+distilled_constlr,Distilled (constant LR),83,0.285590
+distilled_constlr,Distilled (constant LR),84,0.288892
+distilled_constlr,Distilled (constant LR),85,0.297973
+distilled_constlr,Distilled (constant LR),86,0.289868
+distilled_constlr,Distilled (constant LR),87,0.288418
+distilled_constlr,Distilled (constant LR),88,0.290140
+distilled_constlr,Distilled (constant LR),89,0.302981
+distilled_constlr,Distilled (constant LR),90,0.287702
+distilled_constlr,Distilled (constant LR),91,0.290210
+distilled_constlr,Distilled (constant LR),92,0.318559
+distilled_constlr,Distilled (constant LR),93,0.306058
+distilled_constlr,Distilled (constant LR),94,0.313196
+distilled_constlr,Distilled (constant LR),95,0.320222
+distilled_constlr,Distilled (constant LR),96,0.294645
+distilled_constlr,Distilled (constant LR),97,0.182308
+distilled_constlr,Distilled (constant LR),98,0.163633
+distilled_constlr,Distilled (constant LR),99,0.169806
+distilled_constlr,Distilled (constant LR),100,0.152366
+distilled_constlr,Distilled (constant LR),101,0.157309
+distilled_constlr,Distilled (constant LR),102,0.174510
+distilled_constlr,Distilled (constant LR),103,0.162039
+distilled_constlr,Distilled (constant LR),104,0.162776
+distilled_constlr,Distilled (constant LR),105,0.159300
+distilled_constlr,Distilled (constant LR),106,0.150012
+distilled_constlr,Distilled (constant LR),107,0.161165
+distilled_constlr,Distilled (constant LR),108,0.161576
+distilled_constlr,Distilled (constant LR),109,0.178208
+distilled_constlr,Distilled (constant LR),110,0.159046
+distilled_constlr,Distilled (constant LR),111,0.174227
+distilled_constlr,Distilled (constant LR),112,0.167979
+distilled_constlr,Distilled (constant LR),113,0.171947
+distilled_constlr,Distilled (constant LR),114,0.153351
+distilled_constlr,Distilled (constant LR),115,0.157139
+distilled_constlr,Distilled (constant LR),116,0.153026
+distilled_constlr,Distilled (constant LR),117,0.152220
+distilled_constlr,Distilled (constant LR),118,0.154140
+distilled_constlr,Distilled (constant LR),119,0.211067
+distilled_constlr,Distilled (constant LR),120,0.174915
+distilled_constlr,Distilled (constant LR),121,0.181674
+distilled_constlr,Distilled (constant LR),122,0.170520
+distilled_constlr,Distilled (constant LR),123,0.172250
+distilled_constlr,Distilled (constant LR),124,0.186135
+distilled_constlr,Distilled (constant LR),125,0.164387
+distilled_constlr,Distilled (constant LR),126,0.170235
+distilled_constlr,Distilled (constant LR),127,0.169306
+distilled_constlr,Distilled (constant LR),128,0.185569
+distilled_constlr,Distilled (constant LR),129,0.092002
+distilled_constlr,Distilled (constant LR),130,0.087746
+distilled_constlr,Distilled (constant LR),131,0.086972
+distilled_constlr,Distilled (constant LR),132,0.091660
+distilled_constlr,Distilled (constant LR),133,0.082094
+distilled_constlr,Distilled (constant LR),134,0.087835
+distilled_constlr,Distilled (constant LR),135,0.094184
+distilled_constlr,Distilled (constant LR),136,0.087079
+distilled_constlr,Distilled (constant LR),137,0.087612
+distilled_constlr,Distilled (constant LR),138,0.092864
+distilled_constlr,Distilled (constant LR),139,0.088649
+distilled_constlr,Distilled (constant LR),140,0.093895
+distilled_constlr,Distilled (constant LR),141,0.092091
+distilled_constlr,Distilled (constant LR),142,0.089981
+distilled_constlr,Distilled (constant LR),143,0.087101
+distilled_constlr,Distilled (constant LR),144,0.095314
+distilled_constlr,Distilled (constant LR),145,0.085499
+distilled_constlr,Distilled (constant LR),146,0.099324
+distilled_constlr,Distilled (constant LR),147,0.086277
+distilled_constlr,Distilled (constant LR),148,0.085653
+distilled_constlr,Distilled (constant LR),149,0.082521
+distilled_constlr,Distilled (constant LR),150,0.099366
+distilled_constlr,Distilled (constant LR),151,0.095689
+distilled_constlr,Distilled (constant LR),152,0.091779
+distilled_constlr,Distilled (constant LR),153,0.096508
+distilled_constlr,Distilled (constant LR),154,0.097387
+distilled_constlr,Distilled (constant LR),155,0.099701
+distilled_constlr,Distilled (constant LR),156,0.093131
+distilled_constlr,Distilled (constant LR),157,0.096415
+distilled_constlr,Distilled (constant LR),158,0.095402
+distilled_constlr,Distilled (constant LR),159,0.103250
+distilled_constlr,Distilled (constant LR),160,0.104510
+distilled_constlr,Distilled (constant LR),161,0.047687
+distilled_constlr,Distilled (constant LR),162,0.046975
+distilled_constlr,Distilled (constant LR),163,0.052564
+distilled_constlr,Distilled (constant LR),164,0.049068
+distilled_constlr,Distilled (constant LR),165,0.046868
+distilled_constlr,Distilled (constant LR),166,0.046224
+distilled_constlr,Distilled (constant LR),167,0.051104
+distilled_constlr,Distilled (constant LR),168,0.048217
+distilled_constlr,Distilled (constant LR),169,0.051822
+distilled_constlr,Distilled (constant LR),170,0.048124
+distilled_constlr,Distilled (constant LR),171,0.050792
+distilled_constlr,Distilled (constant LR),172,0.046291
+distilled_constlr,Distilled (constant LR),173,0.046233
+distilled_constlr,Distilled (constant LR),174,0.051668
+distilled_constlr,Distilled (constant LR),175,0.049279
+distilled_constlr,Distilled (constant LR),176,0.050768
+distilled_constlr,Distilled (constant LR),177,0.051977
+distilled_constlr,Distilled (constant LR),178,0.055328
+distilled_constlr,Distilled (constant LR),179,0.052653
+distilled_constlr,Distilled (constant LR),180,0.049867
+distilled_constlr,Distilled (constant LR),181,0.051467
+distilled_constlr,Distilled (constant LR),182,0.053876
+distilled_constlr,Distilled (constant LR),183,0.049792
+distilled_constlr,Distilled (constant LR),184,0.053007
+distilled_constlr,Distilled (constant LR),185,0.053787
+distilled_constlr,Distilled (constant LR),186,0.055347
+distilled_constlr,Distilled (constant LR),187,0.053197
+distilled_constlr,Distilled (constant LR),188,0.059738
+distilled_constlr,Distilled (constant LR),189,0.052673
+distilled_constlr,Distilled (constant LR),190,0.052166
+distilled_constlr,Distilled (constant LR),191,0.054528
+distilled_constlr,Distilled (constant LR),192,0.057448
+beqok,"Distilled, BEq+-clean",1,1.595789
+beqok,"Distilled, BEq+-clean",2,1.398274
+beqok,"Distilled, BEq+-clean",3,1.299906
+beqok,"Distilled, BEq+-clean",4,1.149985
+beqok,"Distilled, BEq+-clean",5,0.962340
+beqok,"Distilled, BEq+-clean",6,0.971719
+beqok,"Distilled, BEq+-clean",7,0.935051
+beqok,"Distilled, BEq+-clean",8,0.848083
+beqok,"Distilled, BEq+-clean",9,0.859373
+beqok,"Distilled, BEq+-clean",10,0.812613
+beqok,"Distilled, BEq+-clean",11,0.803029
+beqok,"Distilled, BEq+-clean",12,0.719818
+beqok,"Distilled, BEq+-clean",13,0.709389
+beqok,"Distilled, BEq+-clean",14,0.662870
+beqok,"Distilled, BEq+-clean",15,0.730043
+beqok,"Distilled, BEq+-clean",16,0.675776
+beqok,"Distilled, BEq+-clean",17,0.667478
+beqok,"Distilled, BEq+-clean",18,0.616852
+beqok,"Distilled, BEq+-clean",19,0.679569
+beqok,"Distilled, BEq+-clean",20,0.655644
+beqok,"Distilled, BEq+-clean",21,0.639475
+beqok,"Distilled, BEq+-clean",22,0.669407
+beqok,"Distilled, BEq+-clean",23,0.632954
+beqok,"Distilled, BEq+-clean",24,0.642197
+beqok,"Distilled, BEq+-clean",25,0.655797
+beqok,"Distilled, BEq+-clean",26,0.501579
+beqok,"Distilled, BEq+-clean",27,0.515800
+beqok,"Distilled, BEq+-clean",28,0.490945
+beqok,"Distilled, BEq+-clean",29,0.518593
+beqok,"Distilled, BEq+-clean",30,0.482451
+beqok,"Distilled, BEq+-clean",31,0.516166
+beqok,"Distilled, BEq+-clean",32,0.483977
+beqok,"Distilled, BEq+-clean",33,0.488028
+beqok,"Distilled, BEq+-clean",34,0.458949
+beqok,"Distilled, BEq+-clean",35,0.503942
+beqok,"Distilled, BEq+-clean",36,0.487546
+beqok,"Distilled, BEq+-clean",37,0.447220
+beqok,"Distilled, BEq+-clean",38,0.463240
+beqok,"Distilled, BEq+-clean",39,0.485256
+beqok,"Distilled, BEq+-clean",40,0.466746
+beqok,"Distilled, BEq+-clean",41,0.446433
+beqok,"Distilled, BEq+-clean",42,0.415943
+beqok,"Distilled, BEq+-clean",43,0.450205
+beqok,"Distilled, BEq+-clean",44,0.434062
+beqok,"Distilled, BEq+-clean",45,0.450928
+beqok,"Distilled, BEq+-clean",46,0.449295
+beqok,"Distilled, BEq+-clean",47,0.465032
+beqok,"Distilled, BEq+-clean",48,0.446917
+beqok,"Distilled, BEq+-clean",49,0.445711
+beqok,"Distilled, BEq+-clean",50,0.469260
+beqok,"Distilled, BEq+-clean",51,0.312817
+beqok,"Distilled, BEq+-clean",52,0.319145
+beqok,"Distilled, BEq+-clean",53,0.299487
+beqok,"Distilled, BEq+-clean",54,0.302905
+beqok,"Distilled, BEq+-clean",55,0.298729
+beqok,"Distilled, BEq+-clean",56,0.271414
+beqok,"Distilled, BEq+-clean",57,0.283306
+beqok,"Distilled, BEq+-clean",58,0.289508
+beqok,"Distilled, BEq+-clean",59,0.304951
+beqok,"Distilled, BEq+-clean",60,0.292625
+beqok,"Distilled, BEq+-clean",61,0.293242
+beqok,"Distilled, BEq+-clean",62,0.296324
+beqok,"Distilled, BEq+-clean",63,0.287058
+beqok,"Distilled, BEq+-clean",64,0.287297
+beqok,"Distilled, BEq+-clean",65,0.278043
+beqok,"Distilled, BEq+-clean",66,0.310844
+beqok,"Distilled, BEq+-clean",67,0.284340
+beqok,"Distilled, BEq+-clean",68,0.301111
+beqok,"Distilled, BEq+-clean",69,0.277340
+beqok,"Distilled, BEq+-clean",70,0.261927
+beqok,"Distilled, BEq+-clean",71,0.281879
+beqok,"Distilled, BEq+-clean",72,0.311361
+beqok,"Distilled, BEq+-clean",73,0.259428
+beqok,"Distilled, BEq+-clean",74,0.277538
+beqok,"Distilled, BEq+-clean",75,0.272258
+beqok,"Distilled, BEq+-clean",76,0.171312
+beqok,"Distilled, BEq+-clean",77,0.172879
+beqok,"Distilled, BEq+-clean",78,0.163191
+beqok,"Distilled, BEq+-clean",79,0.158545
+beqok,"Distilled, BEq+-clean",80,0.148049
+beqok,"Distilled, BEq+-clean",81,0.156088
+beqok,"Distilled, BEq+-clean",82,0.133471
+beqok,"Distilled, BEq+-clean",83,0.155242
+beqok,"Distilled, BEq+-clean",84,0.151043
+beqok,"Distilled, BEq+-clean",85,0.152873
+beqok,"Distilled, BEq+-clean",86,0.147131
+beqok,"Distilled, BEq+-clean",87,0.157430
+beqok,"Distilled, BEq+-clean",88,0.145421
+beqok,"Distilled, BEq+-clean",89,0.148026
+beqok,"Distilled, BEq+-clean",90,0.167194
+beqok,"Distilled, BEq+-clean",91,0.154801
+beqok,"Distilled, BEq+-clean",92,0.156523
+beqok,"Distilled, BEq+-clean",93,0.168783
+beqok,"Distilled, BEq+-clean",94,0.157160
+beqok,"Distilled, BEq+-clean",95,0.155521
+beqok,"Distilled, BEq+-clean",96,0.161258
+beqok,"Distilled, BEq+-clean",97,0.168447
+beqok,"Distilled, BEq+-clean",98,0.163943
+beqok,"Distilled, BEq+-clean",99,0.162015
+beqok,"Distilled, BEq+-clean",100,0.157554
+beqok,"Distilled, BEq+-clean",101,0.087074
+beqok,"Distilled, BEq+-clean",102,0.086255
+beqok,"Distilled, BEq+-clean",103,0.080273
+beqok,"Distilled, BEq+-clean",104,0.085141
+beqok,"Distilled, BEq+-clean",105,0.076373
+beqok,"Distilled, BEq+-clean",106,0.080792
+beqok,"Distilled, BEq+-clean",107,0.079239
+beqok,"Distilled, BEq+-clean",108,0.078857
+beqok,"Distilled, BEq+-clean",109,0.078755
+beqok,"Distilled, BEq+-clean",110,0.085992
+beqok,"Distilled, BEq+-clean",111,0.089638
+beqok,"Distilled, BEq+-clean",112,0.082562
+beqok,"Distilled, BEq+-clean",113,0.083689
+beqok,"Distilled, BEq+-clean",114,0.088499
+beqok,"Distilled, BEq+-clean",115,0.081562
+beqok,"Distilled, BEq+-clean",116,0.082135
+beqok,"Distilled, BEq+-clean",117,0.089370
+beqok,"Distilled, BEq+-clean",118,0.082362
+beqok,"Distilled, BEq+-clean",119,0.088880
+beqok,"Distilled, BEq+-clean",120,0.087906
+beqok,"Distilled, BEq+-clean",121,0.088427
+beqok,"Distilled, BEq+-clean",122,0.085746
+beqok,"Distilled, BEq+-clean",123,0.091003
+beqok,"Distilled, BEq+-clean",124,0.086068
+beqok,"Distilled, BEq+-clean",125,0.086185
+beqok,"Distilled, BEq+-clean",126,0.043130
+beqok,"Distilled, BEq+-clean",127,0.045931
+beqok,"Distilled, BEq+-clean",128,0.046620
+beqok,"Distilled, BEq+-clean",129,0.045671
+beqok,"Distilled, BEq+-clean",130,0.048683
+beqok,"Distilled, BEq+-clean",131,0.044096
+beqok,"Distilled, BEq+-clean",132,0.043866
+beqok,"Distilled, BEq+-clean",133,0.049580
+beqok,"Distilled, BEq+-clean",134,0.043852
+beqok,"Distilled, BEq+-clean",135,0.047720
+beqok,"Distilled, BEq+-clean",136,0.046103
+beqok,"Distilled, BEq+-clean",137,0.047597
+beqok,"Distilled, BEq+-clean",138,0.046794
+beqok,"Distilled, BEq+-clean",139,0.048065
+beqok,"Distilled, BEq+-clean",140,0.053921
+beqok,"Distilled, BEq+-clean",141,0.051143
+beqok,"Distilled, BEq+-clean",142,0.050303
+beqok,"Distilled, BEq+-clean",143,0.050949
+beqok,"Distilled, BEq+-clean",144,0.046134
+beqok,"Distilled, BEq+-clean",145,0.050341
+beqok,"Distilled, BEq+-clean",146,0.046726
+beqok,"Distilled, BEq+-clean",147,0.051729
+beqok,"Distilled, BEq+-clean",148,0.047815
+beqok,"Distilled, BEq+-clean",149,0.047021
+beqok,"Distilled, BEq+-clean",150,0.051457
+beqok,"Distilled, BEq+-clean",151,0.024910
+beqok,"Distilled, BEq+-clean",152,0.028094
+beqok,"Distilled, BEq+-clean",153,0.028754
+beqok,"Distilled, BEq+-clean",154,0.027243
+beqok,"Distilled, BEq+-clean",155,0.029644
+beqok,"Distilled, BEq+-clean",156,0.026709
+beqok,"Distilled, BEq+-clean",157,0.029355
+beqok,"Distilled, BEq+-clean",158,0.028732
+beqok,"Distilled, BEq+-clean",159,0.029787
+beqok,"Distilled, BEq+-clean",160,0.030212
+beqok,"Distilled, BEq+-clean",161,0.027773
+beqok,"Distilled, BEq+-clean",162,0.030466
+beqok,"Distilled, BEq+-clean",163,0.030230
+beqok,"Distilled, BEq+-clean",164,0.027944
+beqok,"Distilled, BEq+-clean",165,0.030164
+beqok,"Distilled, BEq+-clean",166,0.034530
+beqok,"Distilled, BEq+-clean",167,0.029942
+beqok,"Distilled, BEq+-clean",168,0.028885
+beqok,"Distilled, BEq+-clean",169,0.032165
+beqok,"Distilled, BEq+-clean",170,0.031460
+beqok,"Distilled, BEq+-clean",171,0.029809
+beqok,"Distilled, BEq+-clean",172,0.032340
+beqok,"Distilled, BEq+-clean",173,0.032005
+beqok,"Distilled, BEq+-clean",174,0.034712
+beqok,"Distilled, BEq+-clean",175,0.030902
