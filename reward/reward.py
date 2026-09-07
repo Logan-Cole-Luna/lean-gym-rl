@@ -25,6 +25,16 @@ THE TABLE. This is the specification; everything else in this file only implemen
  yes         yes                 no              VERIFIED              --                        0.50
  yes         yes                 YES             VERIFIED              f in [0,1]                0.85 + 0.15*f
 
+ ROW 6 ONLY carries one further term, a DEDUCTION rather than a payment:
+
+ brevity     how close the candidate's proof body is in LENGTH to the reference proof's,
+             as b in [0,1] from `brevity_for`   ->  reward -= 0.10 * (1 - b)
+
+ b == 1 (in tolerance, or unmeasurable) subtracts nothing, so the five rows above and a
+ concise ROW 6 are all EXACTLY the numbers they were before brevity existed. Only ROW 6 is
+ reachable, which is what stops the degenerate exploit: a two-token non-proof scores 0.15 on
+ ROW 3 and never reaches the term.
+
 A crash, a timeout or a missing verdict is also 0.00 AND stays in the denominator, so a
 policy can never gain by failing to produce a result.
 
@@ -68,6 +78,7 @@ proof that follows the argument perfectly still proves whatever the statement sa
 """
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass
 
 # ---------------------------------------------------------------------------
@@ -121,6 +132,74 @@ DEFAULT_REWARDS = {
 # score, so turning this on moves no existing number.
 FAITHFULNESS_BAND = 0.15
 
+# ---------------------------------------------------------------------------
+# BREVITY. How close the candidate's proof is in LENGTH to the reference proof.
+#
+# A DEDUCTION FROM THE TOP ROW, NOT A PAYMENT. Every other signal here is paid
+# for, so an unknown must never RAISE a score. This one is subtracted, so an
+# unknown must never LOWER one: `brevity=None` means b == 1.0 means no change,
+# and every already-recorded SOLVED number survives turning this on.
+#
+# IT APPLIES TO `SOLVED` ONLY, and that gate -- not the ratio -- is what stops
+# the obvious exploit. A three-token proof that does not prove lands on
+# UNFINISHED (0.15) and never reaches this term at all. Tying the target to the
+# gold length is what stops the OTHER direction: a policy that has learned to
+# solve cannot then farm the band by emitting something degenerately short,
+# because short is scored against the gold's own length, not against zero.
+#
+# MEASURED, over the 18,550 LoCoLib golds carrying a real proof body: median 67
+# chars, p75 170, p90 405, p99 1452, max ~7.3k. That range is why the ratio is
+# SOFTENED. A raw len_pred/len_gold is degenerate at the short end -- against a
+# 5-char `rfl` gold, a perfectly good `by simp [foo]` reads as a 4x overrun --
+# and adding a constant to both sides makes the tolerance absolute where the
+# gold is tiny and relative where it is large. With soften=60 a 5-char gold is
+# free anywhere up to 38 chars, while a 1452-char gold is free from 948 to 2208.
+#
+# THE DEAD BAND IS ASYMMETRIC, and deliberately so. Bloat is the failure mode
+# this term exists to catch, so it is charged from 1.5x. Being SHORTER than the
+# gold is usually a WIN -- the reference proof is one human's first draft, not an
+# optimum -- so it is free down to gold/3 and only charged past that, purely as a
+# guard against BEq+ proxy exploitation (an extremely short proof of a "matched"
+# statement is the shape a cascade false positive takes).
+#
+# A symmetric band was tried first and rejected on evidence: against a 61-char
+# gold (`induction ... | zero => simp | succ n ih => omega`), the one-word proof
+# `by omega` -- strictly better, and `proved` sorry-free and axiom-clean -- scored
+# b=0.88 and lost 0.012 of reward for being good. That is the wrong sign.
+BREVITY_BAND = 0.10           # most this can ever cost a SOLVED rollout
+BREVITY_SOFTEN = 60.0         # chars added to BOTH sides before the ratio
+BREVITY_FREE_LONG = math.log(1.5)     # free up to 1.5x gold
+BREVITY_ZERO_LONG = math.log(4.0)     # b reaches 0 at ~4x gold
+BREVITY_FREE_SHORT = math.log(3.0)    # free down to gold/3
+BREVITY_ZERO_SHORT = math.log(10.0)   # b reaches 0 at ~gold/10
+
+
+def brevity_for(pred_len: int | None, gold_len: int | None,
+                *, soften: float = BREVITY_SOFTEN) -> float | None:
+    """Length agreement with the reference proof, in [0,1]. 1.0 == no penalty.
+
+    Computed in LOG space, so the tolerance is multiplicative, with an
+    ASYMMETRIC dead band (free to 1.5x long, gold/3 short) inside which the term
+    has exactly zero gradient and cannot distort the main objective. None means
+    there is no reference length (the gold carries no proof body -- 1.1% of
+    LoCoLib -- or the candidate could not be parsed), and MUST be treated as 1.0
+    by the caller.
+
+    The short side is a guard-rail, not a claim that short proofs are bad. A
+    verified, axiom-clean proof shorter than the gold is a genuine win, and is
+    charged nothing until gold/3 and nothing in full until gold/10 -- the guard
+    exists only because BEq+ is a proxy, and an extremely short proof of a
+    "matched" statement is the shape a cascade false positive would take.
+    """
+    if not gold_len or not pred_len:
+        return None
+    d = math.log((pred_len + soften) / (gold_len + soften))
+    over, free, zero = (d, BREVITY_FREE_LONG, BREVITY_ZERO_LONG) if d > 0 else \
+                       (-d, BREVITY_FREE_SHORT, BREVITY_ZERO_SHORT)
+    if over <= free:
+        return 1.0
+    return max(0.0, 1.0 - (over - free) / (zero - free))
+
 
 @dataclass(frozen=True)
 class Signals:
@@ -140,6 +219,9 @@ class Signals:
                                                      #   Lean statement, not the English
     proof_follows_argument: float | None = None      # NL vs FL: does the Lean proof
                                                      #   formalize the English proof?
+    brevity: float | None = None                     # FL vs FL: is the proof the same
+                                                     #   LENGTH as the reference proof?
+                                                     #   None == unmeasurable == no penalty
 
 
 def outcome_for(s: Signals) -> str:
@@ -194,7 +276,9 @@ def outcome_for(s: Signals) -> str:
 
 def reward_for_outcome(outcome: str, rewards: dict | None = None,
                        faithfulness: float | None = None,
-                       *, band: float = FAITHFULNESS_BAND) -> float:
+                       *, band: float = FAITHFULNESS_BAND,
+                       brevity: float | None = None,
+                       brevity_band: float = BREVITY_BAND) -> float:
     """Outcome -> scalar. Only the top outcome reads `faithfulness`.
 
     An unmeasured f scores as 0.0, the same convention every other unknown here follows: an
@@ -206,8 +290,12 @@ def reward_for_outcome(outcome: str, rewards: dict | None = None,
     value = rewards[outcome]
 
     # ROWS 1-5 are constants, straight from the table: 0.00 / 0.05 / 0.15 / 0.30 / 0.50.
-    if outcome != SOLVED or not band:
+    # Brevity does not reach them either, and that gate is the whole anti-exploit
+    # story: a degenerately short answer that does not prove never gets here.
+    if outcome != SOLVED:
         return value
+    if not band:
+        return _apply_brevity(value, brevity, brevity_band)
 
     # ROW 6 is the only one that is not a constant. `value` is the CEILING of the band, so
     # with the defaults (value = 1.00, band = 0.15) the line below IS the table's entry:
@@ -219,11 +307,25 @@ def reward_for_outcome(outcome: str, rewards: dict | None = None,
     #                           turning faithfulness on moves no already-recorded number
     #       f is None -> 0.85   unmeasured scores as 0, like every other unknown here
     f = 0.0 if faithfulness is None else min(1.0, max(0.0, float(faithfulness)))
-    return (value - band) + band * f
+    return _apply_brevity((value - band) + band * f, brevity, brevity_band)
+
+
+def _apply_brevity(top: float, brevity: float | None, brevity_band: float) -> float:
+    """Subtract the length penalty from an already-computed ROW 6 reward.
+
+    Written as `top - band*(1-b)` rather than as a second band carved off the
+    ceiling so that b == 1 -- in tolerance, or unmeasurable -- returns `top`
+    EXACTLY. That keeps every already-recorded SOLVED number intact and leaves
+    the table's documented step sizes (0.50 -> 0.85, and the 0.35 that finishing
+    a proof is worth) unchanged for a concise proof.
+    """
+    b = 1.0 if brevity is None else min(1.0, max(0.0, float(brevity)))
+    return top - brevity_band * (1.0 - b)
 
 
 def reward_for(s: Signals, rewards: dict | None = None,
-               *, band: float = FAITHFULNESS_BAND) -> float:
+               *, band: float = FAITHFULNESS_BAND,
+               brevity_band: float = BREVITY_BAND) -> float:
     """THE ENTRY POINT. Signals -> the scalar reward for one rollout.
 
     Two steps: `outcome_for` picks the row, `reward_for_outcome` turns it into a number and
@@ -231,7 +333,8 @@ def reward_for(s: Signals, rewards: dict | None = None,
     in which case call both, which is what the harness-evolution side does so it can report
     a histogram alongside the mean.
     """
-    return reward_for_outcome(outcome_for(s), rewards, s.proof_follows_argument, band=band)
+    return reward_for_outcome(outcome_for(s), rewards, s.proof_follows_argument,
+                              band=band, brevity=s.brevity, brevity_band=brevity_band)
 
 
 def proof_follows_argument(informal_proof: str | None, lean_proof: str | None) -> float | None:
@@ -240,10 +343,21 @@ def proof_follows_argument(informal_proof: str | None, lean_proof: str | None) -
     Returns f in [0,1]: 0.0 for a proof that ignores the argument (a `grind`, or an `exact?`
     that just retrieves the Mathlib lemma), 1.0 for one that follows it.
 
-    RETURNS 1.0 UNCONDITIONALLY FOR NOW, which makes the top outcome score exactly
-    `rewards[SOLVED]` and leaves every already-recorded number unchanged. Swapping in a real
+    RETURNS 1.0 UNCONDITIONALLY, but NOTHING CALLS IT: `signals_from_score` sets
+    `proof_follows_argument=None` explicitly, so the top outcome currently scores 0.85, not
+    `rewards[SOLVED]`. Both of those are deliberate and they disagree -- read the wiring, not
+    this function, for what a SOLVED rollout is actually worth today. Swapping in a real
     metric therefore CHANGES PAST NUMBERS, so for harness evolution it must go through
     `evolve.py rescore --into <dir>` rather than being edited in place.
+
+    NOT SATISFIED BY `scripts/eval/proof_alignment.py`, and the distinction is the whole
+    reason this stays None. That script compares the candidate's intermediate GOAL STATES
+    against a reference LEAN proof's -- FL <-> FL proof structure. This column is NL -> FL:
+    the Lean proof against the ENGLISH argument, and per the module header it is "the only
+    place the English enters the score". Feeding the alignment metric in here would quietly
+    redefine a documented column and, worse, would pay for agreement with the gold's proof
+    STRATEGY -- scoring a shorter, better proof at zero. It is reported alongside the reward
+    instead, never inside it.
 
     When the real one lands, three things come with it and none are optional:
 
@@ -275,7 +389,10 @@ def proof_follows_argument(informal_proof: str | None, lean_proof: str | None) -
 # ---------------------------------------------------------------------------
 
 
-def signals_from_score(r: dict, proof_check: dict | None = None) -> Signals:
+def signals_from_score(r: dict, proof_check: dict | None = None,
+                       brevity: float | None = None,
+                       *, typecheck_from_own_proof: bool = True,
+                       wrote_something: bool = True) -> Signals:
     """Build `Signals` from a `BEqPlusScorer.score()` result.
 
     `proof_check`, when given, is a `BEqPlusScorer.check_own_proof()` result
@@ -283,15 +400,39 @@ def signals_from_score(r: dict, proof_check: dict | None = None) -> Signals:
     full proof, not just a signature. Omitted (or None), `proved` stays False
     and `statement_is_trivial` stays unknown, matching the old signature-only
     behaviour exactly.
+
+    WHICH ELABORATION FEEDS COLUMN 2. `r["typecheck"]` is BEq+'s own check, and
+    it SORRIES THE PROOF AWAY before elaborating -- it answers "does the
+    statement elaborate", not the table's "`lean file.lean` exited 0". On the
+    proof-pair task those differ, and the difference was a live mis-calibration:
+    a submission whose proof body Lean rejects outright
+    (`:= by exact?_no_such_tactic`) still passed column 2, and with a matching
+    statement scored `incomplete_faithful` (0.50) -- the same as an honest
+    `sorry`, and on the `gated` arm a full 1.0. Measured over 120 golds it hit
+    100% of that perturbation.
+
+    So when a `proof_check` exists it wins: it elaborates the submission AS
+    WRITTEN. `typecheck_from_own_proof=False` restores the old wiring for
+    comparison against numbers recorded before this was fixed -- it is a real
+    change to what a run scores, not a no-op refactor.
     """
     failed = bool(r.get("error_kind"))
     proved = bool(proof_check and proof_check.get("proved"))
+    if proof_check and typecheck_from_own_proof:
+        type_correct = bool(proof_check.get("type_correct"))
+    else:
+        type_correct = bool(r.get("typecheck"))
     return Signals(
         # A Lean or infrastructure failure is not a verdict about the model, so
         # it is ungraded rather than a zero earned by the rollout.
         graded=not failed,
-        wrote_something=True,
-        type_correct=bool(r.get("typecheck")),
+        # Was hardcoded True, which made ROW 1 unreachable: an empty completion
+        # scored `no_elaborate` (0.05) rather than `no_answer` (0.00), so "wrote
+        # nothing" and "wrote broken Lean" were the same reward. Small in
+        # magnitude and it creates no within-group variance on its own, but the
+        # table's floor is 0.00 and it should be reachable.
+        wrote_something=wrote_something,
+        type_correct=type_correct,
         proved=proved,
         # BEq+'s cascade already computes this as a side effect (rung 3's
         # `provable_without_have`): whether the SECOND theorem of the pair --
@@ -302,6 +443,10 @@ def signals_from_score(r: dict, proof_check: dict | None = None) -> Signals:
         statement_is_trivial=(r.get("provable_alone") if proof_check else None),
         statement_matches_reference=bool(r.get("beq_plus")) or None,
         proof_follows_argument=None,
+        # Only ever set by a caller that measured BOTH proof bodies; see
+        # `brevity_for`. It reaches the score on the SOLVED row alone, so it is
+        # inert for `gated` and `typecheck`, which never reach that row.
+        brevity=brevity,
     )
 
 
@@ -362,3 +507,56 @@ def typecheck_reward(ok: bool, error_kind: str | None = None) -> float:
     """The type-check arm: 1.0 if the statement elaborates, else 0."""
     return reward_for_outcome(outcome_for(signals_from_typecheck(ok, error_kind)),
                               TYPECHECK_REWARDS)
+
+
+if __name__ == "__main__":
+    # Stdlib-only invariant check, matching this file's contract: no Lean, no
+    # config, no record shapes. `python -m reward.reward`.
+    def _s(**kw) -> Signals:
+        base = dict(graded=True, wrote_something=True, type_correct=True)
+        return Signals(**{**base, **kw})
+
+    ladder = [
+        ("no_answer",            _s(graded=False),                                    0.00),
+        ("no_elaborate",         _s(type_correct=False),                              0.05),
+        ("incomplete",           _s(),                                                0.15),
+        ("compiles",             _s(proved=True),                                     0.30),
+        ("incomplete_faithful",  _s(statement_matches_reference=True),                0.50),
+        ("solved",               _s(proved=True, statement_matches_reference=True),   0.85),
+    ]
+    print("THE LADDER, with brevity unmeasured -- must equal the pre-brevity numbers")
+    for name, sig, expect in ladder:
+        got = reward_for(sig)
+        assert abs(got - expect) < 1e-9, f"{name}: {got} != {expect}"
+        assert outcome_for(sig) == name, f"{name}: {outcome_for(sig)}"
+        print(f"  {name:22s} {got:.2f}  ok")
+
+    print("\nBREVITY REACHES ROW 6 ONLY (b=0.0 is the worst possible length)")
+    for name, sig, expect in ladder:
+        worst = reward_for(Signals(**{**sig.__dict__, "brevity": 0.0}))
+        delta = worst - expect
+        assert abs(delta) < 1e-9 or name == "solved", \
+            f"{name} moved by {delta}, but only `solved` may"
+        print(f"  {name:22s} {expect:.2f} -> {worst:.2f}   delta {delta:+.2f}")
+    assert abs(reward_for(Signals(**{**ladder[-1][1].__dict__, "brevity": 0.0}))
+               - (0.85 - BREVITY_BAND)) < 1e-9
+
+    print("\nb == 1 AND b is None BOTH leave every number untouched")
+    for b in (1.0, None):
+        for name, sig, expect in ladder:
+            got = reward_for(Signals(**{**sig.__dict__, "brevity": b}))
+            assert abs(got - expect) < 1e-9, f"b={b} {name}: {got} != {expect}"
+    print("  ok")
+
+    print("\nbrevity_for, against the measured LoCoLib gold percentiles")
+    print(f"  {'gold':>6} {'free window (chars)':>24}   b(3x)  b(10x)  b(1/10x)")
+    for lg in (5, 28, 67, 170, 405, 1452):
+        lo = (lg + BREVITY_SOFTEN) / 3.0 - BREVITY_SOFTEN
+        hi = (lg + BREVITY_SOFTEN) * 1.5 - BREVITY_SOFTEN
+        print(f"  {lg:>6} {f'[{max(0, lo):.0f}, {hi:.0f}]':>24}   "
+              f"{brevity_for(3 * lg, lg):.2f}   {brevity_for(10 * lg, lg):.2f}   "
+              f"{brevity_for(max(1, lg // 10), lg):.2f}")
+
+    assert brevity_for(0, 67) is None and brevity_for(67, 0) is None
+    assert brevity_for(67, 67) == 1.0
+    print("\nall invariants hold")

@@ -1,0 +1,937 @@
+{
+  "nodes": [
+    {
+      "id": 0,
+      "category": "THEOREM",
+      "statement": "∀ (a b : ℤ), 2 ∣ a → 2 ∣ b → 2 ∣ a + b",
+      "proof": "by\n    rcases ha with ⟨k, hk⟩\n    rcases hb with ⟨l, hl⟩\n    use k + l\n    calc\n      a + b = 2 * k + 2 * l := by rw [hk, hl]\n      _ = 2 * (k + l) := by ring",
+      "definition": null,
+      "directory": "/Users/vietbachhoang/AutoFaith/faithful_metric/FLproof/FLproof/proof.lean",
+      "module_name": "FLproof.proof",
+      "source_declaration": "theorem main (a b : ℤ) (ha : 2 ∣ a) (hb : 2 ∣ b) :\n    2 ∣ a + b :=\n  by\n    rcases ha with ⟨k, hk⟩\n    rcases hb with ⟨l, hl⟩\n    use k + l\n    calc\n      a + b = 2 * k + 2 * l := by rw [hk, hl]\n      _ = 2 * (k + l) := by ring",
+      "name": "main"
+    },
+    {
+      "id": 1,
+      "category": "INDUCTIVE",
+      "statement": "Type u → Type u",
+      "proof": null,
+      "definition": null,
+      "directory": "/Users/vietbachhoang/.elan/toolchains/leanprover--lean4---v4.34.0-rc1/src/lean/Init/Prelude.lean",
+      "module_name": "Init.Prelude",
+      "source_declaration": "/-- The homogeneous version of `HAdd`: `a + b : α` where `a b : α`. -/\nclass Add (α : Type u) where\n  /-- `a + b` computes the sum of `a` and `b`. See `HAdd`. -/\n  add : α → α → α",
+      "name": "Add"
+    },
+    {
+      "id": 2,
+      "category": "DEFINITION",
+      "statement": "{α : Type u} → [self : Add α] → α → α → α",
+      "proof": null,
+      "definition": null,
+      "directory": "/Users/vietbachhoang/.elan/toolchains/leanprover--lean4---v4.34.0-rc1/src/lean/Init/Prelude.lean",
+      "module_name": "Init.Prelude",
+      "source_declaration": "@[extern \"lean_nat_add\", instance_reducible]\nprotected def Nat.add : (@& Nat) → (@& Nat) → Nat\n  | a, Nat.zero   => a\n  | a, Nat.succ b => Nat.succ (Nat.add a b)",
+      "name": "Add.add"
+    },
+    {
+      "id": 3,
+      "category": "INDUCTIVE",
+      "statement": "Type u_1 → Type u_1",
+      "proof": null,
+      "definition": null,
+      "directory": "/Users/vietbachhoang/.elan/toolchains/leanprover--lean4---v4.34.0-rc1/src/lean/Init/Prelude.lean",
+      "module_name": "Init.Prelude",
+      "source_declaration": "/-- Notation typeclass for the `∣` operation (typed as `\\|`), which represents divisibility. -/\nclass Dvd (α : Type _) where\n  /-- Divisibility. `a ∣ b` (typed as `\\|`) means that there is some `c` such that `b = a * c`. -/\n  dvd : α → α → Prop",
+      "name": "Dvd"
+    },
+    {
+      "id": 4,
+      "category": "DEFINITION",
+      "statement": "{α : Type u_1} → [self : Dvd α] → α → α → Prop",
+      "proof": null,
+      "definition": null,
+      "directory": "/Users/vietbachhoang/.elan/toolchains/leanprover--lean4---v4.34.0-rc1/src/lean/Init/Prelude.lean",
+      "module_name": "Init.Prelude",
+      "source_declaration": null,
+      "name": "Dvd.dvd"
+    },
+    {
+      "id": 5,
+      "category": "DEFINITION",
+      "statement": "(n : ℕ) → 0 < n → ℕ → Fin n",
+      "proof": null,
+      "definition": "Fin.Internal.ofNat (HPow.hPow 2 n) (Nat.pow_pos (Nat.zero_lt_succ _)) i\n\n  /--\n  Return the underlying `Nat` that represents a bitvector.\n\n  This is O(1) because `BitVec` is a (zero-cost) wrapper around a `Nat`.\n  -/",
+      "directory": "/Users/vietbachhoang/.elan/toolchains/leanprover--lean4---v4.34.0-rc1/src/lean/Init/Prelude.lean",
+      "module_name": "Init.Prelude",
+      "source_declaration": "@[match_pattern, implicit_reducible]\nprotected def BitVec.ofNat (n : Nat) (i : Nat) : BitVec n where\n  toFin :=\n  Fin.Internal.ofNat (HPow.hPow 2 n) (Nat.pow_pos (Nat.zero_lt_succ _)) i\n\n  /--\n  Return the underlying `Nat` that represents a bitvector.\n\n  This is O(1) because `BitVec` is a (zero-cost) wrapper around a `Nat`.\n  -/",
+      "name": "Fin.Internal.ofNat"
+    },
+    {
+      "id": 6,
+      "category": "INDUCTIVE",
+      "statement": "Type u → Type v → outParam (Type w) → Type (max (max u v) w)",
+      "proof": null,
+      "definition": null,
+      "directory": "/Users/vietbachhoang/.elan/toolchains/leanprover--lean4---v4.34.0-rc1/src/lean/Init/Prelude.lean",
+      "module_name": "Init.Prelude",
+      "source_declaration": "/--\nThe notation typeclass for heterogeneous addition.\nThis enables the notation `a + b : γ` where `a : α`, `b : β`.\n-/\nclass HAdd (α : Type u) (β : Type v) (γ : outParam (Type w)) where\n  /-- `a + b` computes the sum of `a` and `b`.\n  The meaning of this notation is type-dependent. -/\n  hAdd : α → β → γ",
+      "name": "HAdd"
+    },
+    {
+      "id": 7,
+      "category": "DEFINITION",
+      "statement": "{α : Type u} → {β : Type v} → {γ : outParam (Type w)} → [self : HAdd α β γ] → α → β → γ",
+      "proof": null,
+      "definition": null,
+      "directory": "/Users/vietbachhoang/.elan/toolchains/leanprover--lean4---v4.34.0-rc1/src/lean/Init/Prelude.lean",
+      "module_name": "Init.Prelude",
+      "source_declaration": null,
+      "name": "HAdd.hAdd"
+    },
+    {
+      "id": 8,
+      "category": "DEFINITION",
+      "statement": "{α : Type u} → {β : Type v} → {γ : outParam (Type w)} → [self : HPow α β γ] → α → β → γ",
+      "proof": null,
+      "definition": null,
+      "directory": "/Users/vietbachhoang/.elan/toolchains/leanprover--lean4---v4.34.0-rc1/src/lean/Init/Prelude.lean",
+      "module_name": "Init.Prelude",
+      "source_declaration": null,
+      "name": "HPow.hPow"
+    },
+    {
+      "id": 9,
+      "category": "INDUCTIVE",
+      "statement": "Type",
+      "proof": null,
+      "definition": null,
+      "directory": "/Users/vietbachhoang/.elan/toolchains/leanprover--lean4---v4.34.0-rc1/src/lean/Init/Data/Int/Basic.lean",
+      "module_name": "Init.Data.Int.Basic",
+      "source_declaration": "/--\nThe integers.\n\nThis type is special-cased by the compiler and overridden with an efficient implementation. The\nruntime has a special representation for `Int` that stores “small” signed numbers directly, while\nlarger numbers use a fast arbitrary-precision arithmetic library (usually\n[GMP](https://gmplib.org/)). A “small number” is an integer that can be encoded with one fewer bits\nthan the platform's pointer size (i.e. 63 bits on 64-bit architectures and 31 bits on 32-bit\narchitectures).\n-/\n@[suggest_for ℤ]\ninductive Int : Type where\n  /--\n  A natural number is an integer.\n\n  This constructor covers the non-negative integers (from `0` to `∞`).\n  -/\n  | ofNat   : Nat → Int\n  /--\n  The negation of the successor of a natural number is an integer.\n\n  This constructor covers the negative integers (from `-1` to `-∞`).\n  -/\n  | negSucc : Nat → Int",
+      "name": "Int"
+    },
+    {
+      "id": 10,
+      "category": "INSTANCE",
+      "statement": "Add ℤ",
+      "proof": null,
+      "definition": null,
+      "directory": "/Users/vietbachhoang/.elan/toolchains/leanprover--lean4---v4.34.0-rc1/src/lean/Init/Data/Int/Basic.lean",
+      "module_name": "Init.Data.Int.Basic",
+      "source_declaration": null,
+      "name": "Int.instAdd"
+    },
+    {
+      "id": 11,
+      "category": "INSTANCE",
+      "statement": "Dvd ℤ",
+      "proof": null,
+      "definition": null,
+      "directory": "/Users/vietbachhoang/.elan/toolchains/leanprover--lean4---v4.34.0-rc1/src/lean/Init/Data/Int/Basic.lean",
+      "module_name": "Init.Data.Int.Basic",
+      "source_declaration": null,
+      "name": "Int.instDvd"
+    },
+    {
+      "id": 12,
+      "category": "CONSTRUCTOR",
+      "statement": "ℕ → ℤ",
+      "proof": null,
+      "definition": null,
+      "directory": "/Users/vietbachhoang/.elan/toolchains/leanprover--lean4---v4.34.0-rc1/src/lean/Init/Data/Int/Basic.lean",
+      "module_name": "Init.Data.Int.Basic",
+      "source_declaration": null,
+      "name": "Int.ofNat"
+    },
+    {
+      "id": 13,
+      "category": "INDUCTIVE",
+      "statement": "Type",
+      "proof": null,
+      "definition": null,
+      "directory": "/Users/vietbachhoang/.elan/toolchains/leanprover--lean4---v4.34.0-rc1/src/lean/Init/Prelude.lean",
+      "module_name": "Init.Prelude",
+      "source_declaration": "/--\nThe natural numbers, starting at zero.\n\nThis type is special-cased by both the kernel and the compiler, and overridden with an efficient\nimplementation. Both use a fast arbitrary-precision arithmetic library (usually\n[GMP](https://gmplib.org/)); at runtime, `Nat` values that are sufficiently small are unboxed.\n-/\n@[suggest_for ℕ]\ninductive Nat where\n  /--\n  Zero, the smallest natural number.\n\n  Using `Nat.zero` explicitly should usually be avoided in favor of the literal `0`, which is the\n  [simp normal form](lean-manual://section/simp-normal-forms).\n  -/\n  | zero : Nat\n  /--\n  The successor of a natural number `n`.\n\n  Using `Nat.succ n` should usually be avoided in favor of `n + 1`, which is the [simp normal\n  form](lean-manual://section/simp-normal-forms).\n  -/\n  | succ (n : Nat) : Nat",
+      "name": "Nat"
+    },
+    {
+      "id": 14,
+      "category": "THEOREM",
+      "statement": "∀ {a n : ℕ}, 0 < a → 0 < a ^ n",
+      "proof": null,
+      "definition": null,
+      "directory": "/Users/vietbachhoang/.elan/toolchains/leanprover--lean4---v4.34.0-rc1/src/lean/Init/Prelude.lean",
+      "module_name": "Init.Prelude",
+      "source_declaration": "protected theorem Nat.pow_pos {a : Nat} : {n : Nat} → (h : LT.lt 0 a) → LT.lt 0 (HPow.hPow a n)\n  | zero, _ => Nat.zero_lt_succ _\n  | succ _, h => Nat.mul_pos (Nat.pow_pos h) h",
+      "name": "Nat.pow_pos"
+    },
+    {
+      "id": 15,
+      "category": "THEOREM",
+      "statement": "∀ (n : ℕ), 0 < n.succ",
+      "proof": "succ_le_succ (zero_le n)",
+      "definition": null,
+      "directory": "/Users/vietbachhoang/.elan/toolchains/leanprover--lean4---v4.34.0-rc1/src/lean/Init/Prelude.lean",
+      "module_name": "Init.Prelude",
+      "source_declaration": "theorem Nat.zero_lt_succ (n : Nat) : LT.lt 0 (succ n) :=\n  succ_le_succ (zero_le n)",
+      "name": "Nat.zero_lt_succ"
+    },
+    {
+      "id": 16,
+      "category": "INDUCTIVE",
+      "statement": "Type u → ℕ → Type u",
+      "proof": null,
+      "definition": null,
+      "directory": "/Users/vietbachhoang/.elan/toolchains/leanprover--lean4---v4.34.0-rc1/src/lean/Init/Prelude.lean",
+      "module_name": "Init.Prelude",
+      "source_declaration": "/--\nThe class `OfNat α n` powers the numeric literal parser. If you write\n`37 : α`, Lean will attempt to synthesize `OfNat α 37`, and will generate\nthe term `(OfNat.ofNat 37 : α)`.\n\nThere is a bit of infinite regress here since the desugaring apparently\nstill contains a literal `37` in it. The type of expressions contains a\nprimitive constructor for \"raw natural number literals\", which you can directly\naccess using the macro `nat_lit 37`. Raw number literals are always of type `Nat`.\nSo it would be more correct to say that Lean looks for an instance of\n`OfNat α (nat_lit 37)`, and it generates the term `(OfNat.ofNat (nat_lit 37) : α)`.\n-/\nclass OfNat (α : Type u) (_ : Nat) where\n  /-- The `OfNat.ofNat` function is automatically inserted by the parser when\n  the user writes a numeric literal like `1 : α`. Implementations of this\n  typeclass can therefore customize the behavior of `n : α` based on `n` and\n  `α`. -/\n  ofNat : α",
+      "name": "OfNat"
+    },
+    {
+      "id": 17,
+      "category": "DEFINITION",
+      "statement": "{α : Type u} → (x : ℕ) → [self : OfNat α x] → α",
+      "proof": null,
+      "definition": "Fin.Internal.ofNat (HPow.hPow 2 n) (Nat.pow_pos (Nat.zero_lt_succ _)) i\n\n  /--\n  Return the underlying `Nat` that represents a bitvector.\n\n  This is O(1) because `BitVec` is a (zero-cost) wrapper around a `Nat`.\n  -/",
+      "directory": "/Users/vietbachhoang/.elan/toolchains/leanprover--lean4---v4.34.0-rc1/src/lean/Init/Prelude.lean",
+      "module_name": "Init.Prelude",
+      "source_declaration": "@[match_pattern, implicit_reducible]\nprotected def BitVec.ofNat (n : Nat) (i : Nat) : BitVec n where\n  toFin :=\n  Fin.Internal.ofNat (HPow.hPow 2 n) (Nat.pow_pos (Nat.zero_lt_succ _)) i\n\n  /--\n  Return the underlying `Nat` that represents a bitvector.\n\n  This is O(1) because `BitVec` is a (zero-cost) wrapper around a `Nat`.\n  -/",
+      "name": "OfNat.ofNat"
+    },
+    {
+      "id": 18,
+      "category": "INSTANCE",
+      "statement": "{α : Type u_1} → [Add α] → HAdd α α α",
+      "proof": null,
+      "definition": "Add.add a b",
+      "directory": "/Users/vietbachhoang/.elan/toolchains/leanprover--lean4---v4.34.0-rc1/src/lean/Init/Prelude.lean",
+      "module_name": "Init.Prelude",
+      "source_declaration": "@[default_instance]\ninstance instHAdd [Add α] : HAdd α α α where\n  hAdd a b :=\n  Add.add a b",
+      "name": "instHAdd"
+    },
+    {
+      "id": 19,
+      "category": "INSTANCE",
+      "statement": "{n : ℕ} → OfNat ℤ n",
+      "proof": null,
+      "definition": "Int.ofNat n",
+      "directory": "/Users/vietbachhoang/.elan/toolchains/leanprover--lean4---v4.34.0-rc1/src/lean/Init/Data/Int/Basic.lean",
+      "module_name": "Init.Data.Int.Basic",
+      "source_declaration": "instance instOfNat : OfNat Int n where\n  ofNat :=\n  Int.ofNat n",
+      "name": "instOfNat"
+    },
+    {
+      "id": 20,
+      "category": "DEFINITION",
+      "statement": "Sort u → Sort u",
+      "proof": null,
+      "definition": null,
+      "directory": "/Users/vietbachhoang/.elan/toolchains/leanprover--lean4---v4.34.0-rc1/src/lean/Init/Prelude.lean",
+      "module_name": "Init.Prelude",
+      "source_declaration": null,
+      "name": "outParam"
+    }
+  ],
+  "edges": [
+    {
+      "source": {
+        "id": 0,
+        "category": "THEOREM",
+        "statement": "∀ (a b : ℤ), 2 ∣ a → 2 ∣ b → 2 ∣ a + b",
+        "proof": "by\n    rcases ha with ⟨k, hk⟩\n    rcases hb with ⟨l, hl⟩\n    use k + l\n    calc\n      a + b = 2 * k + 2 * l := by rw [hk, hl]\n      _ = 2 * (k + l) := by ring",
+        "definition": null,
+        "directory": "/Users/vietbachhoang/AutoFaith/faithful_metric/FLproof/FLproof/proof.lean",
+        "module_name": "FLproof.proof",
+        "source_declaration": "theorem main (a b : ℤ) (ha : 2 ∣ a) (hb : 2 ∣ b) :\n    2 ∣ a + b :=\n  by\n    rcases ha with ⟨k, hk⟩\n    rcases hb with ⟨l, hl⟩\n    use k + l\n    calc\n      a + b = 2 * k + 2 * l := by rw [hk, hl]\n      _ = 2 * (k + l) := by ring",
+        "name": "main"
+      },
+      "target": {
+        "id": 9,
+        "category": "INDUCTIVE",
+        "statement": "Type",
+        "proof": null,
+        "definition": null,
+        "directory": "/Users/vietbachhoang/.elan/toolchains/leanprover--lean4---v4.34.0-rc1/src/lean/Init/Data/Int/Basic.lean",
+        "module_name": "Init.Data.Int.Basic",
+        "source_declaration": "/--\nThe integers.\n\nThis type is special-cased by the compiler and overridden with an efficient implementation. The\nruntime has a special representation for `Int` that stores “small” signed numbers directly, while\nlarger numbers use a fast arbitrary-precision arithmetic library (usually\n[GMP](https://gmplib.org/)). A “small number” is an integer that can be encoded with one fewer bits\nthan the platform's pointer size (i.e. 63 bits on 64-bit architectures and 31 bits on 32-bit\narchitectures).\n-/\n@[suggest_for ℤ]\ninductive Int : Type where\n  /--\n  A natural number is an integer.\n\n  This constructor covers the non-negative integers (from `0` to `∞`).\n  -/\n  | ofNat   : Nat → Int\n  /--\n  The negation of the successor of a natural number is an integer.\n\n  This constructor covers the negative integers (from `-1` to `-∞`).\n  -/\n  | negSucc : Nat → Int",
+        "name": "Int"
+      },
+      "type": "STATEMENT_USES"
+    },
+    {
+      "source": {
+        "id": 0,
+        "category": "THEOREM",
+        "statement": "∀ (a b : ℤ), 2 ∣ a → 2 ∣ b → 2 ∣ a + b",
+        "proof": "by\n    rcases ha with ⟨k, hk⟩\n    rcases hb with ⟨l, hl⟩\n    use k + l\n    calc\n      a + b = 2 * k + 2 * l := by rw [hk, hl]\n      _ = 2 * (k + l) := by ring",
+        "definition": null,
+        "directory": "/Users/vietbachhoang/AutoFaith/faithful_metric/FLproof/FLproof/proof.lean",
+        "module_name": "FLproof.proof",
+        "source_declaration": "theorem main (a b : ℤ) (ha : 2 ∣ a) (hb : 2 ∣ b) :\n    2 ∣ a + b :=\n  by\n    rcases ha with ⟨k, hk⟩\n    rcases hb with ⟨l, hl⟩\n    use k + l\n    calc\n      a + b = 2 * k + 2 * l := by rw [hk, hl]\n      _ = 2 * (k + l) := by ring",
+        "name": "main"
+      },
+      "target": {
+        "id": 4,
+        "category": "DEFINITION",
+        "statement": "{α : Type u_1} → [self : Dvd α] → α → α → Prop",
+        "proof": null,
+        "definition": null,
+        "directory": "/Users/vietbachhoang/.elan/toolchains/leanprover--lean4---v4.34.0-rc1/src/lean/Init/Prelude.lean",
+        "module_name": "Init.Prelude",
+        "source_declaration": null,
+        "name": "Dvd.dvd"
+      },
+      "type": "STATEMENT_USES"
+    },
+    {
+      "source": {
+        "id": 0,
+        "category": "THEOREM",
+        "statement": "∀ (a b : ℤ), 2 ∣ a → 2 ∣ b → 2 ∣ a + b",
+        "proof": "by\n    rcases ha with ⟨k, hk⟩\n    rcases hb with ⟨l, hl⟩\n    use k + l\n    calc\n      a + b = 2 * k + 2 * l := by rw [hk, hl]\n      _ = 2 * (k + l) := by ring",
+        "definition": null,
+        "directory": "/Users/vietbachhoang/AutoFaith/faithful_metric/FLproof/FLproof/proof.lean",
+        "module_name": "FLproof.proof",
+        "source_declaration": "theorem main (a b : ℤ) (ha : 2 ∣ a) (hb : 2 ∣ b) :\n    2 ∣ a + b :=\n  by\n    rcases ha with ⟨k, hk⟩\n    rcases hb with ⟨l, hl⟩\n    use k + l\n    calc\n      a + b = 2 * k + 2 * l := by rw [hk, hl]\n      _ = 2 * (k + l) := by ring",
+        "name": "main"
+      },
+      "target": {
+        "id": 11,
+        "category": "INSTANCE",
+        "statement": "Dvd ℤ",
+        "proof": null,
+        "definition": null,
+        "directory": "/Users/vietbachhoang/.elan/toolchains/leanprover--lean4---v4.34.0-rc1/src/lean/Init/Data/Int/Basic.lean",
+        "module_name": "Init.Data.Int.Basic",
+        "source_declaration": null,
+        "name": "Int.instDvd"
+      },
+      "type": "STATEMENT_USES"
+    },
+    {
+      "source": {
+        "id": 0,
+        "category": "THEOREM",
+        "statement": "∀ (a b : ℤ), 2 ∣ a → 2 ∣ b → 2 ∣ a + b",
+        "proof": "by\n    rcases ha with ⟨k, hk⟩\n    rcases hb with ⟨l, hl⟩\n    use k + l\n    calc\n      a + b = 2 * k + 2 * l := by rw [hk, hl]\n      _ = 2 * (k + l) := by ring",
+        "definition": null,
+        "directory": "/Users/vietbachhoang/AutoFaith/faithful_metric/FLproof/FLproof/proof.lean",
+        "module_name": "FLproof.proof",
+        "source_declaration": "theorem main (a b : ℤ) (ha : 2 ∣ a) (hb : 2 ∣ b) :\n    2 ∣ a + b :=\n  by\n    rcases ha with ⟨k, hk⟩\n    rcases hb with ⟨l, hl⟩\n    use k + l\n    calc\n      a + b = 2 * k + 2 * l := by rw [hk, hl]\n      _ = 2 * (k + l) := by ring",
+        "name": "main"
+      },
+      "target": {
+        "id": 17,
+        "category": "DEFINITION",
+        "statement": "{α : Type u} → (x : ℕ) → [self : OfNat α x] → α",
+        "proof": null,
+        "definition": "Fin.Internal.ofNat (HPow.hPow 2 n) (Nat.pow_pos (Nat.zero_lt_succ _)) i\n\n  /--\n  Return the underlying `Nat` that represents a bitvector.\n\n  This is O(1) because `BitVec` is a (zero-cost) wrapper around a `Nat`.\n  -/",
+        "directory": "/Users/vietbachhoang/.elan/toolchains/leanprover--lean4---v4.34.0-rc1/src/lean/Init/Prelude.lean",
+        "module_name": "Init.Prelude",
+        "source_declaration": "@[match_pattern, implicit_reducible]\nprotected def BitVec.ofNat (n : Nat) (i : Nat) : BitVec n where\n  toFin :=\n  Fin.Internal.ofNat (HPow.hPow 2 n) (Nat.pow_pos (Nat.zero_lt_succ _)) i\n\n  /--\n  Return the underlying `Nat` that represents a bitvector.\n\n  This is O(1) because `BitVec` is a (zero-cost) wrapper around a `Nat`.\n  -/",
+        "name": "OfNat.ofNat"
+      },
+      "type": "STATEMENT_USES"
+    },
+    {
+      "source": {
+        "id": 0,
+        "category": "THEOREM",
+        "statement": "∀ (a b : ℤ), 2 ∣ a → 2 ∣ b → 2 ∣ a + b",
+        "proof": "by\n    rcases ha with ⟨k, hk⟩\n    rcases hb with ⟨l, hl⟩\n    use k + l\n    calc\n      a + b = 2 * k + 2 * l := by rw [hk, hl]\n      _ = 2 * (k + l) := by ring",
+        "definition": null,
+        "directory": "/Users/vietbachhoang/AutoFaith/faithful_metric/FLproof/FLproof/proof.lean",
+        "module_name": "FLproof.proof",
+        "source_declaration": "theorem main (a b : ℤ) (ha : 2 ∣ a) (hb : 2 ∣ b) :\n    2 ∣ a + b :=\n  by\n    rcases ha with ⟨k, hk⟩\n    rcases hb with ⟨l, hl⟩\n    use k + l\n    calc\n      a + b = 2 * k + 2 * l := by rw [hk, hl]\n      _ = 2 * (k + l) := by ring",
+        "name": "main"
+      },
+      "target": {
+        "id": 19,
+        "category": "INSTANCE",
+        "statement": "{n : ℕ} → OfNat ℤ n",
+        "proof": null,
+        "definition": "Int.ofNat n",
+        "directory": "/Users/vietbachhoang/.elan/toolchains/leanprover--lean4---v4.34.0-rc1/src/lean/Init/Data/Int/Basic.lean",
+        "module_name": "Init.Data.Int.Basic",
+        "source_declaration": "instance instOfNat : OfNat Int n where\n  ofNat :=\n  Int.ofNat n",
+        "name": "instOfNat"
+      },
+      "type": "STATEMENT_USES"
+    },
+    {
+      "source": {
+        "id": 0,
+        "category": "THEOREM",
+        "statement": "∀ (a b : ℤ), 2 ∣ a → 2 ∣ b → 2 ∣ a + b",
+        "proof": "by\n    rcases ha with ⟨k, hk⟩\n    rcases hb with ⟨l, hl⟩\n    use k + l\n    calc\n      a + b = 2 * k + 2 * l := by rw [hk, hl]\n      _ = 2 * (k + l) := by ring",
+        "definition": null,
+        "directory": "/Users/vietbachhoang/AutoFaith/faithful_metric/FLproof/FLproof/proof.lean",
+        "module_name": "FLproof.proof",
+        "source_declaration": "theorem main (a b : ℤ) (ha : 2 ∣ a) (hb : 2 ∣ b) :\n    2 ∣ a + b :=\n  by\n    rcases ha with ⟨k, hk⟩\n    rcases hb with ⟨l, hl⟩\n    use k + l\n    calc\n      a + b = 2 * k + 2 * l := by rw [hk, hl]\n      _ = 2 * (k + l) := by ring",
+        "name": "main"
+      },
+      "target": {
+        "id": 7,
+        "category": "DEFINITION",
+        "statement": "{α : Type u} → {β : Type v} → {γ : outParam (Type w)} → [self : HAdd α β γ] → α → β → γ",
+        "proof": null,
+        "definition": null,
+        "directory": "/Users/vietbachhoang/.elan/toolchains/leanprover--lean4---v4.34.0-rc1/src/lean/Init/Prelude.lean",
+        "module_name": "Init.Prelude",
+        "source_declaration": null,
+        "name": "HAdd.hAdd"
+      },
+      "type": "STATEMENT_USES"
+    },
+    {
+      "source": {
+        "id": 0,
+        "category": "THEOREM",
+        "statement": "∀ (a b : ℤ), 2 ∣ a → 2 ∣ b → 2 ∣ a + b",
+        "proof": "by\n    rcases ha with ⟨k, hk⟩\n    rcases hb with ⟨l, hl⟩\n    use k + l\n    calc\n      a + b = 2 * k + 2 * l := by rw [hk, hl]\n      _ = 2 * (k + l) := by ring",
+        "definition": null,
+        "directory": "/Users/vietbachhoang/AutoFaith/faithful_metric/FLproof/FLproof/proof.lean",
+        "module_name": "FLproof.proof",
+        "source_declaration": "theorem main (a b : ℤ) (ha : 2 ∣ a) (hb : 2 ∣ b) :\n    2 ∣ a + b :=\n  by\n    rcases ha with ⟨k, hk⟩\n    rcases hb with ⟨l, hl⟩\n    use k + l\n    calc\n      a + b = 2 * k + 2 * l := by rw [hk, hl]\n      _ = 2 * (k + l) := by ring",
+        "name": "main"
+      },
+      "target": {
+        "id": 18,
+        "category": "INSTANCE",
+        "statement": "{α : Type u_1} → [Add α] → HAdd α α α",
+        "proof": null,
+        "definition": "Add.add a b",
+        "directory": "/Users/vietbachhoang/.elan/toolchains/leanprover--lean4---v4.34.0-rc1/src/lean/Init/Prelude.lean",
+        "module_name": "Init.Prelude",
+        "source_declaration": "@[default_instance]\ninstance instHAdd [Add α] : HAdd α α α where\n  hAdd a b :=\n  Add.add a b",
+        "name": "instHAdd"
+      },
+      "type": "STATEMENT_USES"
+    },
+    {
+      "source": {
+        "id": 0,
+        "category": "THEOREM",
+        "statement": "∀ (a b : ℤ), 2 ∣ a → 2 ∣ b → 2 ∣ a + b",
+        "proof": "by\n    rcases ha with ⟨k, hk⟩\n    rcases hb with ⟨l, hl⟩\n    use k + l\n    calc\n      a + b = 2 * k + 2 * l := by rw [hk, hl]\n      _ = 2 * (k + l) := by ring",
+        "definition": null,
+        "directory": "/Users/vietbachhoang/AutoFaith/faithful_metric/FLproof/FLproof/proof.lean",
+        "module_name": "FLproof.proof",
+        "source_declaration": "theorem main (a b : ℤ) (ha : 2 ∣ a) (hb : 2 ∣ b) :\n    2 ∣ a + b :=\n  by\n    rcases ha with ⟨k, hk⟩\n    rcases hb with ⟨l, hl⟩\n    use k + l\n    calc\n      a + b = 2 * k + 2 * l := by rw [hk, hl]\n      _ = 2 * (k + l) := by ring",
+        "name": "main"
+      },
+      "target": {
+        "id": 10,
+        "category": "INSTANCE",
+        "statement": "Add ℤ",
+        "proof": null,
+        "definition": null,
+        "directory": "/Users/vietbachhoang/.elan/toolchains/leanprover--lean4---v4.34.0-rc1/src/lean/Init/Data/Int/Basic.lean",
+        "module_name": "Init.Data.Int.Basic",
+        "source_declaration": null,
+        "name": "Int.instAdd"
+      },
+      "type": "STATEMENT_USES"
+    },
+    {
+      "source": {
+        "id": 4,
+        "category": "DEFINITION",
+        "statement": "{α : Type u_1} → [self : Dvd α] → α → α → Prop",
+        "proof": null,
+        "definition": null,
+        "directory": "/Users/vietbachhoang/.elan/toolchains/leanprover--lean4---v4.34.0-rc1/src/lean/Init/Prelude.lean",
+        "module_name": "Init.Prelude",
+        "source_declaration": null,
+        "name": "Dvd.dvd"
+      },
+      "target": {
+        "id": 3,
+        "category": "INDUCTIVE",
+        "statement": "Type u_1 → Type u_1",
+        "proof": null,
+        "definition": null,
+        "directory": "/Users/vietbachhoang/.elan/toolchains/leanprover--lean4---v4.34.0-rc1/src/lean/Init/Prelude.lean",
+        "module_name": "Init.Prelude",
+        "source_declaration": "/-- Notation typeclass for the `∣` operation (typed as `\\|`), which represents divisibility. -/\nclass Dvd (α : Type _) where\n  /-- Divisibility. `a ∣ b` (typed as `\\|`) means that there is some `c` such that `b = a * c`. -/\n  dvd : α → α → Prop",
+        "name": "Dvd"
+      },
+      "type": "STATEMENT_USES"
+    },
+    {
+      "source": {
+        "id": 11,
+        "category": "INSTANCE",
+        "statement": "Dvd ℤ",
+        "proof": null,
+        "definition": null,
+        "directory": "/Users/vietbachhoang/.elan/toolchains/leanprover--lean4---v4.34.0-rc1/src/lean/Init/Data/Int/Basic.lean",
+        "module_name": "Init.Data.Int.Basic",
+        "source_declaration": null,
+        "name": "Int.instDvd"
+      },
+      "target": {
+        "id": 3,
+        "category": "INDUCTIVE",
+        "statement": "Type u_1 → Type u_1",
+        "proof": null,
+        "definition": null,
+        "directory": "/Users/vietbachhoang/.elan/toolchains/leanprover--lean4---v4.34.0-rc1/src/lean/Init/Prelude.lean",
+        "module_name": "Init.Prelude",
+        "source_declaration": "/-- Notation typeclass for the `∣` operation (typed as `\\|`), which represents divisibility. -/\nclass Dvd (α : Type _) where\n  /-- Divisibility. `a ∣ b` (typed as `\\|`) means that there is some `c` such that `b = a * c`. -/\n  dvd : α → α → Prop",
+        "name": "Dvd"
+      },
+      "type": "STATEMENT_USES"
+    },
+    {
+      "source": {
+        "id": 11,
+        "category": "INSTANCE",
+        "statement": "Dvd ℤ",
+        "proof": null,
+        "definition": null,
+        "directory": "/Users/vietbachhoang/.elan/toolchains/leanprover--lean4---v4.34.0-rc1/src/lean/Init/Data/Int/Basic.lean",
+        "module_name": "Init.Data.Int.Basic",
+        "source_declaration": null,
+        "name": "Int.instDvd"
+      },
+      "target": {
+        "id": 9,
+        "category": "INDUCTIVE",
+        "statement": "Type",
+        "proof": null,
+        "definition": null,
+        "directory": "/Users/vietbachhoang/.elan/toolchains/leanprover--lean4---v4.34.0-rc1/src/lean/Init/Data/Int/Basic.lean",
+        "module_name": "Init.Data.Int.Basic",
+        "source_declaration": "/--\nThe integers.\n\nThis type is special-cased by the compiler and overridden with an efficient implementation. The\nruntime has a special representation for `Int` that stores “small” signed numbers directly, while\nlarger numbers use a fast arbitrary-precision arithmetic library (usually\n[GMP](https://gmplib.org/)). A “small number” is an integer that can be encoded with one fewer bits\nthan the platform's pointer size (i.e. 63 bits on 64-bit architectures and 31 bits on 32-bit\narchitectures).\n-/\n@[suggest_for ℤ]\ninductive Int : Type where\n  /--\n  A natural number is an integer.\n\n  This constructor covers the non-negative integers (from `0` to `∞`).\n  -/\n  | ofNat   : Nat → Int\n  /--\n  The negation of the successor of a natural number is an integer.\n\n  This constructor covers the negative integers (from `-1` to `-∞`).\n  -/\n  | negSucc : Nat → Int",
+        "name": "Int"
+      },
+      "type": "STATEMENT_USES"
+    },
+    {
+      "source": {
+        "id": 17,
+        "category": "DEFINITION",
+        "statement": "{α : Type u} → (x : ℕ) → [self : OfNat α x] → α",
+        "proof": null,
+        "definition": "Fin.Internal.ofNat (HPow.hPow 2 n) (Nat.pow_pos (Nat.zero_lt_succ _)) i\n\n  /--\n  Return the underlying `Nat` that represents a bitvector.\n\n  This is O(1) because `BitVec` is a (zero-cost) wrapper around a `Nat`.\n  -/",
+        "directory": "/Users/vietbachhoang/.elan/toolchains/leanprover--lean4---v4.34.0-rc1/src/lean/Init/Prelude.lean",
+        "module_name": "Init.Prelude",
+        "source_declaration": "@[match_pattern, implicit_reducible]\nprotected def BitVec.ofNat (n : Nat) (i : Nat) : BitVec n where\n  toFin :=\n  Fin.Internal.ofNat (HPow.hPow 2 n) (Nat.pow_pos (Nat.zero_lt_succ _)) i\n\n  /--\n  Return the underlying `Nat` that represents a bitvector.\n\n  This is O(1) because `BitVec` is a (zero-cost) wrapper around a `Nat`.\n  -/",
+        "name": "OfNat.ofNat"
+      },
+      "target": {
+        "id": 13,
+        "category": "INDUCTIVE",
+        "statement": "Type",
+        "proof": null,
+        "definition": null,
+        "directory": "/Users/vietbachhoang/.elan/toolchains/leanprover--lean4---v4.34.0-rc1/src/lean/Init/Prelude.lean",
+        "module_name": "Init.Prelude",
+        "source_declaration": "/--\nThe natural numbers, starting at zero.\n\nThis type is special-cased by both the kernel and the compiler, and overridden with an efficient\nimplementation. Both use a fast arbitrary-precision arithmetic library (usually\n[GMP](https://gmplib.org/)); at runtime, `Nat` values that are sufficiently small are unboxed.\n-/\n@[suggest_for ℕ]\ninductive Nat where\n  /--\n  Zero, the smallest natural number.\n\n  Using `Nat.zero` explicitly should usually be avoided in favor of the literal `0`, which is the\n  [simp normal form](lean-manual://section/simp-normal-forms).\n  -/\n  | zero : Nat\n  /--\n  The successor of a natural number `n`.\n\n  Using `Nat.succ n` should usually be avoided in favor of `n + 1`, which is the [simp normal\n  form](lean-manual://section/simp-normal-forms).\n  -/\n  | succ (n : Nat) : Nat",
+        "name": "Nat"
+      },
+      "type": "STATEMENT_USES"
+    },
+    {
+      "source": {
+        "id": 17,
+        "category": "DEFINITION",
+        "statement": "{α : Type u} → (x : ℕ) → [self : OfNat α x] → α",
+        "proof": null,
+        "definition": "Fin.Internal.ofNat (HPow.hPow 2 n) (Nat.pow_pos (Nat.zero_lt_succ _)) i\n\n  /--\n  Return the underlying `Nat` that represents a bitvector.\n\n  This is O(1) because `BitVec` is a (zero-cost) wrapper around a `Nat`.\n  -/",
+        "directory": "/Users/vietbachhoang/.elan/toolchains/leanprover--lean4---v4.34.0-rc1/src/lean/Init/Prelude.lean",
+        "module_name": "Init.Prelude",
+        "source_declaration": "@[match_pattern, implicit_reducible]\nprotected def BitVec.ofNat (n : Nat) (i : Nat) : BitVec n where\n  toFin :=\n  Fin.Internal.ofNat (HPow.hPow 2 n) (Nat.pow_pos (Nat.zero_lt_succ _)) i\n\n  /--\n  Return the underlying `Nat` that represents a bitvector.\n\n  This is O(1) because `BitVec` is a (zero-cost) wrapper around a `Nat`.\n  -/",
+        "name": "OfNat.ofNat"
+      },
+      "target": {
+        "id": 16,
+        "category": "INDUCTIVE",
+        "statement": "Type u → ℕ → Type u",
+        "proof": null,
+        "definition": null,
+        "directory": "/Users/vietbachhoang/.elan/toolchains/leanprover--lean4---v4.34.0-rc1/src/lean/Init/Prelude.lean",
+        "module_name": "Init.Prelude",
+        "source_declaration": "/--\nThe class `OfNat α n` powers the numeric literal parser. If you write\n`37 : α`, Lean will attempt to synthesize `OfNat α 37`, and will generate\nthe term `(OfNat.ofNat 37 : α)`.\n\nThere is a bit of infinite regress here since the desugaring apparently\nstill contains a literal `37` in it. The type of expressions contains a\nprimitive constructor for \"raw natural number literals\", which you can directly\naccess using the macro `nat_lit 37`. Raw number literals are always of type `Nat`.\nSo it would be more correct to say that Lean looks for an instance of\n`OfNat α (nat_lit 37)`, and it generates the term `(OfNat.ofNat (nat_lit 37) : α)`.\n-/\nclass OfNat (α : Type u) (_ : Nat) where\n  /-- The `OfNat.ofNat` function is automatically inserted by the parser when\n  the user writes a numeric literal like `1 : α`. Implementations of this\n  typeclass can therefore customize the behavior of `n : α` based on `n` and\n  `α`. -/\n  ofNat : α",
+        "name": "OfNat"
+      },
+      "type": "STATEMENT_USES"
+    },
+    {
+      "source": {
+        "id": 17,
+        "category": "DEFINITION",
+        "statement": "{α : Type u} → (x : ℕ) → [self : OfNat α x] → α",
+        "proof": null,
+        "definition": "Fin.Internal.ofNat (HPow.hPow 2 n) (Nat.pow_pos (Nat.zero_lt_succ _)) i\n\n  /--\n  Return the underlying `Nat` that represents a bitvector.\n\n  This is O(1) because `BitVec` is a (zero-cost) wrapper around a `Nat`.\n  -/",
+        "directory": "/Users/vietbachhoang/.elan/toolchains/leanprover--lean4---v4.34.0-rc1/src/lean/Init/Prelude.lean",
+        "module_name": "Init.Prelude",
+        "source_declaration": "@[match_pattern, implicit_reducible]\nprotected def BitVec.ofNat (n : Nat) (i : Nat) : BitVec n where\n  toFin :=\n  Fin.Internal.ofNat (HPow.hPow 2 n) (Nat.pow_pos (Nat.zero_lt_succ _)) i\n\n  /--\n  Return the underlying `Nat` that represents a bitvector.\n\n  This is O(1) because `BitVec` is a (zero-cost) wrapper around a `Nat`.\n  -/",
+        "name": "OfNat.ofNat"
+      },
+      "target": {
+        "id": 5,
+        "category": "DEFINITION",
+        "statement": "(n : ℕ) → 0 < n → ℕ → Fin n",
+        "proof": null,
+        "definition": "Fin.Internal.ofNat (HPow.hPow 2 n) (Nat.pow_pos (Nat.zero_lt_succ _)) i\n\n  /--\n  Return the underlying `Nat` that represents a bitvector.\n\n  This is O(1) because `BitVec` is a (zero-cost) wrapper around a `Nat`.\n  -/",
+        "directory": "/Users/vietbachhoang/.elan/toolchains/leanprover--lean4---v4.34.0-rc1/src/lean/Init/Prelude.lean",
+        "module_name": "Init.Prelude",
+        "source_declaration": "@[match_pattern, implicit_reducible]\nprotected def BitVec.ofNat (n : Nat) (i : Nat) : BitVec n where\n  toFin :=\n  Fin.Internal.ofNat (HPow.hPow 2 n) (Nat.pow_pos (Nat.zero_lt_succ _)) i\n\n  /--\n  Return the underlying `Nat` that represents a bitvector.\n\n  This is O(1) because `BitVec` is a (zero-cost) wrapper around a `Nat`.\n  -/",
+        "name": "Fin.Internal.ofNat"
+      },
+      "type": "DEFINITION_USES"
+    },
+    {
+      "source": {
+        "id": 17,
+        "category": "DEFINITION",
+        "statement": "{α : Type u} → (x : ℕ) → [self : OfNat α x] → α",
+        "proof": null,
+        "definition": "Fin.Internal.ofNat (HPow.hPow 2 n) (Nat.pow_pos (Nat.zero_lt_succ _)) i\n\n  /--\n  Return the underlying `Nat` that represents a bitvector.\n\n  This is O(1) because `BitVec` is a (zero-cost) wrapper around a `Nat`.\n  -/",
+        "directory": "/Users/vietbachhoang/.elan/toolchains/leanprover--lean4---v4.34.0-rc1/src/lean/Init/Prelude.lean",
+        "module_name": "Init.Prelude",
+        "source_declaration": "@[match_pattern, implicit_reducible]\nprotected def BitVec.ofNat (n : Nat) (i : Nat) : BitVec n where\n  toFin :=\n  Fin.Internal.ofNat (HPow.hPow 2 n) (Nat.pow_pos (Nat.zero_lt_succ _)) i\n\n  /--\n  Return the underlying `Nat` that represents a bitvector.\n\n  This is O(1) because `BitVec` is a (zero-cost) wrapper around a `Nat`.\n  -/",
+        "name": "OfNat.ofNat"
+      },
+      "target": {
+        "id": 8,
+        "category": "DEFINITION",
+        "statement": "{α : Type u} → {β : Type v} → {γ : outParam (Type w)} → [self : HPow α β γ] → α → β → γ",
+        "proof": null,
+        "definition": null,
+        "directory": "/Users/vietbachhoang/.elan/toolchains/leanprover--lean4---v4.34.0-rc1/src/lean/Init/Prelude.lean",
+        "module_name": "Init.Prelude",
+        "source_declaration": null,
+        "name": "HPow.hPow"
+      },
+      "type": "DEFINITION_USES"
+    },
+    {
+      "source": {
+        "id": 17,
+        "category": "DEFINITION",
+        "statement": "{α : Type u} → (x : ℕ) → [self : OfNat α x] → α",
+        "proof": null,
+        "definition": "Fin.Internal.ofNat (HPow.hPow 2 n) (Nat.pow_pos (Nat.zero_lt_succ _)) i\n\n  /--\n  Return the underlying `Nat` that represents a bitvector.\n\n  This is O(1) because `BitVec` is a (zero-cost) wrapper around a `Nat`.\n  -/",
+        "directory": "/Users/vietbachhoang/.elan/toolchains/leanprover--lean4---v4.34.0-rc1/src/lean/Init/Prelude.lean",
+        "module_name": "Init.Prelude",
+        "source_declaration": "@[match_pattern, implicit_reducible]\nprotected def BitVec.ofNat (n : Nat) (i : Nat) : BitVec n where\n  toFin :=\n  Fin.Internal.ofNat (HPow.hPow 2 n) (Nat.pow_pos (Nat.zero_lt_succ _)) i\n\n  /--\n  Return the underlying `Nat` that represents a bitvector.\n\n  This is O(1) because `BitVec` is a (zero-cost) wrapper around a `Nat`.\n  -/",
+        "name": "OfNat.ofNat"
+      },
+      "target": {
+        "id": 14,
+        "category": "THEOREM",
+        "statement": "∀ {a n : ℕ}, 0 < a → 0 < a ^ n",
+        "proof": null,
+        "definition": null,
+        "directory": "/Users/vietbachhoang/.elan/toolchains/leanprover--lean4---v4.34.0-rc1/src/lean/Init/Prelude.lean",
+        "module_name": "Init.Prelude",
+        "source_declaration": "protected theorem Nat.pow_pos {a : Nat} : {n : Nat} → (h : LT.lt 0 a) → LT.lt 0 (HPow.hPow a n)\n  | zero, _ => Nat.zero_lt_succ _\n  | succ _, h => Nat.mul_pos (Nat.pow_pos h) h",
+        "name": "Nat.pow_pos"
+      },
+      "type": "DEFINITION_USES"
+    },
+    {
+      "source": {
+        "id": 17,
+        "category": "DEFINITION",
+        "statement": "{α : Type u} → (x : ℕ) → [self : OfNat α x] → α",
+        "proof": null,
+        "definition": "Fin.Internal.ofNat (HPow.hPow 2 n) (Nat.pow_pos (Nat.zero_lt_succ _)) i\n\n  /--\n  Return the underlying `Nat` that represents a bitvector.\n\n  This is O(1) because `BitVec` is a (zero-cost) wrapper around a `Nat`.\n  -/",
+        "directory": "/Users/vietbachhoang/.elan/toolchains/leanprover--lean4---v4.34.0-rc1/src/lean/Init/Prelude.lean",
+        "module_name": "Init.Prelude",
+        "source_declaration": "@[match_pattern, implicit_reducible]\nprotected def BitVec.ofNat (n : Nat) (i : Nat) : BitVec n where\n  toFin :=\n  Fin.Internal.ofNat (HPow.hPow 2 n) (Nat.pow_pos (Nat.zero_lt_succ _)) i\n\n  /--\n  Return the underlying `Nat` that represents a bitvector.\n\n  This is O(1) because `BitVec` is a (zero-cost) wrapper around a `Nat`.\n  -/",
+        "name": "OfNat.ofNat"
+      },
+      "target": {
+        "id": 15,
+        "category": "THEOREM",
+        "statement": "∀ (n : ℕ), 0 < n.succ",
+        "proof": "succ_le_succ (zero_le n)",
+        "definition": null,
+        "directory": "/Users/vietbachhoang/.elan/toolchains/leanprover--lean4---v4.34.0-rc1/src/lean/Init/Prelude.lean",
+        "module_name": "Init.Prelude",
+        "source_declaration": "theorem Nat.zero_lt_succ (n : Nat) : LT.lt 0 (succ n) :=\n  succ_le_succ (zero_le n)",
+        "name": "Nat.zero_lt_succ"
+      },
+      "type": "DEFINITION_USES"
+    },
+    {
+      "source": {
+        "id": 19,
+        "category": "INSTANCE",
+        "statement": "{n : ℕ} → OfNat ℤ n",
+        "proof": null,
+        "definition": "Int.ofNat n",
+        "directory": "/Users/vietbachhoang/.elan/toolchains/leanprover--lean4---v4.34.0-rc1/src/lean/Init/Data/Int/Basic.lean",
+        "module_name": "Init.Data.Int.Basic",
+        "source_declaration": "instance instOfNat : OfNat Int n where\n  ofNat :=\n  Int.ofNat n",
+        "name": "instOfNat"
+      },
+      "target": {
+        "id": 13,
+        "category": "INDUCTIVE",
+        "statement": "Type",
+        "proof": null,
+        "definition": null,
+        "directory": "/Users/vietbachhoang/.elan/toolchains/leanprover--lean4---v4.34.0-rc1/src/lean/Init/Prelude.lean",
+        "module_name": "Init.Prelude",
+        "source_declaration": "/--\nThe natural numbers, starting at zero.\n\nThis type is special-cased by both the kernel and the compiler, and overridden with an efficient\nimplementation. Both use a fast arbitrary-precision arithmetic library (usually\n[GMP](https://gmplib.org/)); at runtime, `Nat` values that are sufficiently small are unboxed.\n-/\n@[suggest_for ℕ]\ninductive Nat where\n  /--\n  Zero, the smallest natural number.\n\n  Using `Nat.zero` explicitly should usually be avoided in favor of the literal `0`, which is the\n  [simp normal form](lean-manual://section/simp-normal-forms).\n  -/\n  | zero : Nat\n  /--\n  The successor of a natural number `n`.\n\n  Using `Nat.succ n` should usually be avoided in favor of `n + 1`, which is the [simp normal\n  form](lean-manual://section/simp-normal-forms).\n  -/\n  | succ (n : Nat) : Nat",
+        "name": "Nat"
+      },
+      "type": "STATEMENT_USES"
+    },
+    {
+      "source": {
+        "id": 19,
+        "category": "INSTANCE",
+        "statement": "{n : ℕ} → OfNat ℤ n",
+        "proof": null,
+        "definition": "Int.ofNat n",
+        "directory": "/Users/vietbachhoang/.elan/toolchains/leanprover--lean4---v4.34.0-rc1/src/lean/Init/Data/Int/Basic.lean",
+        "module_name": "Init.Data.Int.Basic",
+        "source_declaration": "instance instOfNat : OfNat Int n where\n  ofNat :=\n  Int.ofNat n",
+        "name": "instOfNat"
+      },
+      "target": {
+        "id": 16,
+        "category": "INDUCTIVE",
+        "statement": "Type u → ℕ → Type u",
+        "proof": null,
+        "definition": null,
+        "directory": "/Users/vietbachhoang/.elan/toolchains/leanprover--lean4---v4.34.0-rc1/src/lean/Init/Prelude.lean",
+        "module_name": "Init.Prelude",
+        "source_declaration": "/--\nThe class `OfNat α n` powers the numeric literal parser. If you write\n`37 : α`, Lean will attempt to synthesize `OfNat α 37`, and will generate\nthe term `(OfNat.ofNat 37 : α)`.\n\nThere is a bit of infinite regress here since the desugaring apparently\nstill contains a literal `37` in it. The type of expressions contains a\nprimitive constructor for \"raw natural number literals\", which you can directly\naccess using the macro `nat_lit 37`. Raw number literals are always of type `Nat`.\nSo it would be more correct to say that Lean looks for an instance of\n`OfNat α (nat_lit 37)`, and it generates the term `(OfNat.ofNat (nat_lit 37) : α)`.\n-/\nclass OfNat (α : Type u) (_ : Nat) where\n  /-- The `OfNat.ofNat` function is automatically inserted by the parser when\n  the user writes a numeric literal like `1 : α`. Implementations of this\n  typeclass can therefore customize the behavior of `n : α` based on `n` and\n  `α`. -/\n  ofNat : α",
+        "name": "OfNat"
+      },
+      "type": "STATEMENT_USES"
+    },
+    {
+      "source": {
+        "id": 19,
+        "category": "INSTANCE",
+        "statement": "{n : ℕ} → OfNat ℤ n",
+        "proof": null,
+        "definition": "Int.ofNat n",
+        "directory": "/Users/vietbachhoang/.elan/toolchains/leanprover--lean4---v4.34.0-rc1/src/lean/Init/Data/Int/Basic.lean",
+        "module_name": "Init.Data.Int.Basic",
+        "source_declaration": "instance instOfNat : OfNat Int n where\n  ofNat :=\n  Int.ofNat n",
+        "name": "instOfNat"
+      },
+      "target": {
+        "id": 9,
+        "category": "INDUCTIVE",
+        "statement": "Type",
+        "proof": null,
+        "definition": null,
+        "directory": "/Users/vietbachhoang/.elan/toolchains/leanprover--lean4---v4.34.0-rc1/src/lean/Init/Data/Int/Basic.lean",
+        "module_name": "Init.Data.Int.Basic",
+        "source_declaration": "/--\nThe integers.\n\nThis type is special-cased by the compiler and overridden with an efficient implementation. The\nruntime has a special representation for `Int` that stores “small” signed numbers directly, while\nlarger numbers use a fast arbitrary-precision arithmetic library (usually\n[GMP](https://gmplib.org/)). A “small number” is an integer that can be encoded with one fewer bits\nthan the platform's pointer size (i.e. 63 bits on 64-bit architectures and 31 bits on 32-bit\narchitectures).\n-/\n@[suggest_for ℤ]\ninductive Int : Type where\n  /--\n  A natural number is an integer.\n\n  This constructor covers the non-negative integers (from `0` to `∞`).\n  -/\n  | ofNat   : Nat → Int\n  /--\n  The negation of the successor of a natural number is an integer.\n\n  This constructor covers the negative integers (from `-1` to `-∞`).\n  -/\n  | negSucc : Nat → Int",
+        "name": "Int"
+      },
+      "type": "STATEMENT_USES"
+    },
+    {
+      "source": {
+        "id": 19,
+        "category": "INSTANCE",
+        "statement": "{n : ℕ} → OfNat ℤ n",
+        "proof": null,
+        "definition": "Int.ofNat n",
+        "directory": "/Users/vietbachhoang/.elan/toolchains/leanprover--lean4---v4.34.0-rc1/src/lean/Init/Data/Int/Basic.lean",
+        "module_name": "Init.Data.Int.Basic",
+        "source_declaration": "instance instOfNat : OfNat Int n where\n  ofNat :=\n  Int.ofNat n",
+        "name": "instOfNat"
+      },
+      "target": {
+        "id": 12,
+        "category": "CONSTRUCTOR",
+        "statement": "ℕ → ℤ",
+        "proof": null,
+        "definition": null,
+        "directory": "/Users/vietbachhoang/.elan/toolchains/leanprover--lean4---v4.34.0-rc1/src/lean/Init/Data/Int/Basic.lean",
+        "module_name": "Init.Data.Int.Basic",
+        "source_declaration": null,
+        "name": "Int.ofNat"
+      },
+      "type": "DEFINITION_USES"
+    },
+    {
+      "source": {
+        "id": 7,
+        "category": "DEFINITION",
+        "statement": "{α : Type u} → {β : Type v} → {γ : outParam (Type w)} → [self : HAdd α β γ] → α → β → γ",
+        "proof": null,
+        "definition": null,
+        "directory": "/Users/vietbachhoang/.elan/toolchains/leanprover--lean4---v4.34.0-rc1/src/lean/Init/Prelude.lean",
+        "module_name": "Init.Prelude",
+        "source_declaration": null,
+        "name": "HAdd.hAdd"
+      },
+      "target": {
+        "id": 20,
+        "category": "DEFINITION",
+        "statement": "Sort u → Sort u",
+        "proof": null,
+        "definition": null,
+        "directory": "/Users/vietbachhoang/.elan/toolchains/leanprover--lean4---v4.34.0-rc1/src/lean/Init/Prelude.lean",
+        "module_name": "Init.Prelude",
+        "source_declaration": null,
+        "name": "outParam"
+      },
+      "type": "STATEMENT_USES"
+    },
+    {
+      "source": {
+        "id": 7,
+        "category": "DEFINITION",
+        "statement": "{α : Type u} → {β : Type v} → {γ : outParam (Type w)} → [self : HAdd α β γ] → α → β → γ",
+        "proof": null,
+        "definition": null,
+        "directory": "/Users/vietbachhoang/.elan/toolchains/leanprover--lean4---v4.34.0-rc1/src/lean/Init/Prelude.lean",
+        "module_name": "Init.Prelude",
+        "source_declaration": null,
+        "name": "HAdd.hAdd"
+      },
+      "target": {
+        "id": 6,
+        "category": "INDUCTIVE",
+        "statement": "Type u → Type v → outParam (Type w) → Type (max (max u v) w)",
+        "proof": null,
+        "definition": null,
+        "directory": "/Users/vietbachhoang/.elan/toolchains/leanprover--lean4---v4.34.0-rc1/src/lean/Init/Prelude.lean",
+        "module_name": "Init.Prelude",
+        "source_declaration": "/--\nThe notation typeclass for heterogeneous addition.\nThis enables the notation `a + b : γ` where `a : α`, `b : β`.\n-/\nclass HAdd (α : Type u) (β : Type v) (γ : outParam (Type w)) where\n  /-- `a + b` computes the sum of `a` and `b`.\n  The meaning of this notation is type-dependent. -/\n  hAdd : α → β → γ",
+        "name": "HAdd"
+      },
+      "type": "STATEMENT_USES"
+    },
+    {
+      "source": {
+        "id": 18,
+        "category": "INSTANCE",
+        "statement": "{α : Type u_1} → [Add α] → HAdd α α α",
+        "proof": null,
+        "definition": "Add.add a b",
+        "directory": "/Users/vietbachhoang/.elan/toolchains/leanprover--lean4---v4.34.0-rc1/src/lean/Init/Prelude.lean",
+        "module_name": "Init.Prelude",
+        "source_declaration": "@[default_instance]\ninstance instHAdd [Add α] : HAdd α α α where\n  hAdd a b :=\n  Add.add a b",
+        "name": "instHAdd"
+      },
+      "target": {
+        "id": 1,
+        "category": "INDUCTIVE",
+        "statement": "Type u → Type u",
+        "proof": null,
+        "definition": null,
+        "directory": "/Users/vietbachhoang/.elan/toolchains/leanprover--lean4---v4.34.0-rc1/src/lean/Init/Prelude.lean",
+        "module_name": "Init.Prelude",
+        "source_declaration": "/-- The homogeneous version of `HAdd`: `a + b : α` where `a b : α`. -/\nclass Add (α : Type u) where\n  /-- `a + b` computes the sum of `a` and `b`. See `HAdd`. -/\n  add : α → α → α",
+        "name": "Add"
+      },
+      "type": "STATEMENT_USES"
+    },
+    {
+      "source": {
+        "id": 18,
+        "category": "INSTANCE",
+        "statement": "{α : Type u_1} → [Add α] → HAdd α α α",
+        "proof": null,
+        "definition": "Add.add a b",
+        "directory": "/Users/vietbachhoang/.elan/toolchains/leanprover--lean4---v4.34.0-rc1/src/lean/Init/Prelude.lean",
+        "module_name": "Init.Prelude",
+        "source_declaration": "@[default_instance]\ninstance instHAdd [Add α] : HAdd α α α where\n  hAdd a b :=\n  Add.add a b",
+        "name": "instHAdd"
+      },
+      "target": {
+        "id": 6,
+        "category": "INDUCTIVE",
+        "statement": "Type u → Type v → outParam (Type w) → Type (max (max u v) w)",
+        "proof": null,
+        "definition": null,
+        "directory": "/Users/vietbachhoang/.elan/toolchains/leanprover--lean4---v4.34.0-rc1/src/lean/Init/Prelude.lean",
+        "module_name": "Init.Prelude",
+        "source_declaration": "/--\nThe notation typeclass for heterogeneous addition.\nThis enables the notation `a + b : γ` where `a : α`, `b : β`.\n-/\nclass HAdd (α : Type u) (β : Type v) (γ : outParam (Type w)) where\n  /-- `a + b` computes the sum of `a` and `b`.\n  The meaning of this notation is type-dependent. -/\n  hAdd : α → β → γ",
+        "name": "HAdd"
+      },
+      "type": "STATEMENT_USES"
+    },
+    {
+      "source": {
+        "id": 18,
+        "category": "INSTANCE",
+        "statement": "{α : Type u_1} → [Add α] → HAdd α α α",
+        "proof": null,
+        "definition": "Add.add a b",
+        "directory": "/Users/vietbachhoang/.elan/toolchains/leanprover--lean4---v4.34.0-rc1/src/lean/Init/Prelude.lean",
+        "module_name": "Init.Prelude",
+        "source_declaration": "@[default_instance]\ninstance instHAdd [Add α] : HAdd α α α where\n  hAdd a b :=\n  Add.add a b",
+        "name": "instHAdd"
+      },
+      "target": {
+        "id": 2,
+        "category": "DEFINITION",
+        "statement": "{α : Type u} → [self : Add α] → α → α → α",
+        "proof": null,
+        "definition": null,
+        "directory": "/Users/vietbachhoang/.elan/toolchains/leanprover--lean4---v4.34.0-rc1/src/lean/Init/Prelude.lean",
+        "module_name": "Init.Prelude",
+        "source_declaration": "@[extern \"lean_nat_add\", instance_reducible]\nprotected def Nat.add : (@& Nat) → (@& Nat) → Nat\n  | a, Nat.zero   => a\n  | a, Nat.succ b => Nat.succ (Nat.add a b)",
+        "name": "Add.add"
+      },
+      "type": "DEFINITION_USES"
+    },
+    {
+      "source": {
+        "id": 10,
+        "category": "INSTANCE",
+        "statement": "Add ℤ",
+        "proof": null,
+        "definition": null,
+        "directory": "/Users/vietbachhoang/.elan/toolchains/leanprover--lean4---v4.34.0-rc1/src/lean/Init/Data/Int/Basic.lean",
+        "module_name": "Init.Data.Int.Basic",
+        "source_declaration": null,
+        "name": "Int.instAdd"
+      },
+      "target": {
+        "id": 1,
+        "category": "INDUCTIVE",
+        "statement": "Type u → Type u",
+        "proof": null,
+        "definition": null,
+        "directory": "/Users/vietbachhoang/.elan/toolchains/leanprover--lean4---v4.34.0-rc1/src/lean/Init/Prelude.lean",
+        "module_name": "Init.Prelude",
+        "source_declaration": "/-- The homogeneous version of `HAdd`: `a + b : α` where `a b : α`. -/\nclass Add (α : Type u) where\n  /-- `a + b` computes the sum of `a` and `b`. See `HAdd`. -/\n  add : α → α → α",
+        "name": "Add"
+      },
+      "type": "STATEMENT_USES"
+    },
+    {
+      "source": {
+        "id": 10,
+        "category": "INSTANCE",
+        "statement": "Add ℤ",
+        "proof": null,
+        "definition": null,
+        "directory": "/Users/vietbachhoang/.elan/toolchains/leanprover--lean4---v4.34.0-rc1/src/lean/Init/Data/Int/Basic.lean",
+        "module_name": "Init.Data.Int.Basic",
+        "source_declaration": null,
+        "name": "Int.instAdd"
+      },
+      "target": {
+        "id": 9,
+        "category": "INDUCTIVE",
+        "statement": "Type",
+        "proof": null,
+        "definition": null,
+        "directory": "/Users/vietbachhoang/.elan/toolchains/leanprover--lean4---v4.34.0-rc1/src/lean/Init/Data/Int/Basic.lean",
+        "module_name": "Init.Data.Int.Basic",
+        "source_declaration": "/--\nThe integers.\n\nThis type is special-cased by the compiler and overridden with an efficient implementation. The\nruntime has a special representation for `Int` that stores “small” signed numbers directly, while\nlarger numbers use a fast arbitrary-precision arithmetic library (usually\n[GMP](https://gmplib.org/)). A “small number” is an integer that can be encoded with one fewer bits\nthan the platform's pointer size (i.e. 63 bits on 64-bit architectures and 31 bits on 32-bit\narchitectures).\n-/\n@[suggest_for ℤ]\ninductive Int : Type where\n  /--\n  A natural number is an integer.\n\n  This constructor covers the non-negative integers (from `0` to `∞`).\n  -/\n  | ofNat   : Nat → Int\n  /--\n  The negation of the successor of a natural number is an integer.\n\n  This constructor covers the negative integers (from `-1` to `-∞`).\n  -/\n  | negSucc : Nat → Int",
+        "name": "Int"
+      },
+      "type": "STATEMENT_USES"
+    }
+  ]
+}

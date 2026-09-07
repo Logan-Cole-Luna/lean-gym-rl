@@ -1,0 +1,19 @@
+version = 1
+revision = 3
+requires-python = ">=3.11"
+
+[[package]]
+name = "autofaith"
+version = "0.1.0"
+source = { editable = "." }
+dependencies = [
+    { name = "pantograph" },
+]
+
+[package.metadata]
+requires-dist = [{ name = "pantograph", git = "https://github.com/stanford-centaur/PyPantograph" }]
+
+[[package]]
+name = "pantograph"
+version = "0.3.15"
+source = { git = "https://github.com/stanford-centaur/PyPantograph#f8aee320ee5550ea2677e414534618a61e7e1497" }

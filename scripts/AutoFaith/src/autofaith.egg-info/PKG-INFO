@@ -1,0 +1,20 @@
+Metadata-Version: 2.4
+Name: autofaith
+Version: 0.1.0
+Summary: AutoFaith project
+Author: Your Name
+Requires-Python: >=3.11
+Description-Content-Type: text/markdown
+Requires-Dist: pantograph
+
+### Project about Faithfulness in Autoformalization
+
+
+Approach: Intermediate check
+NL proof -> Chain of Reasoning -- IR --> List of Args -> Formalize each Args one by one -> FL proof.
+
+
+Evaluating tbe faithfulness
+
+FL proof vs List of Args.
+List of Args vs FL proofs.

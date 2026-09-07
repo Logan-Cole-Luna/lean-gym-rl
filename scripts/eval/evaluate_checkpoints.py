@@ -74,7 +74,8 @@ def has_full_weights(hf_dir: Path) -> bool:
     return any(hf_dir.glob("*.safetensors")) or any(hf_dir.glob("pytorch_model*.bin"))
 
 
-def generate(model_dir: str, prompts: list[str], max_new_tokens: int, gpu_frac: float) -> list[str]:
+def generate(model_dir: str, prompts: list[str], max_new_tokens: int,
+             gpu_frac: float) -> tuple[list[str], int]:
     """Generate completions, applying the model's chat template.
 
     This MUST match how the prompt is formatted during training, or the model is
@@ -120,7 +121,16 @@ def generate(model_dir: str, prompts: list[str], max_new_tokens: int, gpu_frac: 
     )
     # Greedy: we're measuring the policy's mode, not sampling diversity.
     out = llm.generate(prompts, SamplingParams(max_tokens=max_new_tokens, temperature=0.0))
-    return [o.outputs[0].text for o in out]
+    # `length` means the generation hit the cap instead of stopping on its own.
+    # Report it: a truncated proof still elaborates as a statement, so it scores
+    # 0.50 rather than 0, and silent truncation reads as a real verdict.
+    n_trunc = sum(o.outputs[0].finish_reason == "length" for o in out)
+    if n_trunc:
+        print(f"[eval] WARNING {n_trunc}/{len(out)} completions ({100*n_trunc/len(out):.1f}%) "
+              f"hit the {max_new_tokens}-token cap and were cut mid-generation. "
+              f"Raise --max-new-tokens; these score as unfinished proofs, not as errors.",
+              flush=True)
+    return [o.outputs[0].text for o in out], n_trunc
 
 
 _W_SCORER = None
@@ -160,7 +170,18 @@ def main() -> None:
                     help="'base' or a verl checkpoint dir (repeatable)")
     ap.add_argument("--val-parquet", default=str(PROJECT_ROOT / "data" / "val.parquet"))
     ap.add_argument("--n-eval", type=int, default=80, help="number of val examples to score")
-    ap.add_argument("--max-new-tokens", type=int, default=128)
+    # 512, not the old 128. MEASURED over the 760-row LoCoLib proof val slice,
+    # the gold ANSWER (theorem+proof; the context is in the prompt, not emitted)
+    # is p50 54 / p90 115 / p99 192 / max 275 Qwen tokens -- so 128 truncates
+    # 6.1% of reference-length answers, and 384 covers 100%. 512 leaves headroom
+    # without letting a runaway generation dominate eval wall-clock.
+    #
+    # The old 128 was the 16GB-era `max_response_length`, and it silently cut
+    # 5.3% of completions mid-expression on the shipped RL evals -- a truncated
+    # proof still elaborates as a STATEMENT, so it scores `incomplete_faithful`
+    # (0.50) rather than failing, and nothing in the report said it happened.
+    # Hence `truncated_rate` below: never let this be silent again.
+    ap.add_argument("--max-new-tokens", type=int, default=512)
     ap.add_argument("--gpu-frac", type=float, default=0.35)
     # BEq+ scoring is the wall-clock cost of an eval (the cascade makes up to
     # ~18 Lean calls per example). Each worker builds its OWN BEqPlusScorer /
@@ -220,7 +241,7 @@ def main() -> None:
 
         print(f"\n[eval] ===== {label} =====")
         print(f"[eval] generating from {model_dir} ...")
-        completions = generate(model_dir, prompts, args.max_new_tokens, args.gpu_frac)
+        completions, n_truncated = generate(model_dir, prompts, args.max_new_tokens, args.gpu_frac)
 
         from reward.reward_fn import _clean_solution
 
@@ -295,10 +316,17 @@ def main() -> None:
                 1 for e in per_example if e["gold_implies_pred"] and not e["beq_plus"]
             ) / n if n else 0.0,
             "scorer_error_rate": n_err / n if n else 0.0,
+            # Generation budget and how much of the slice it cut. Recorded, not
+            # just warned about: the shipped RL evals ran at 128 and truncated
+            # 5.3% of completions with nothing in the JSON to say so, which made
+            # a capped run indistinguishable from an uncapped one after the fact.
+            "max_new_tokens": args.max_new_tokens,
+            "truncated_rate": n_truncated / n if n else 0.0,
             "per_example": per_example,
         }
         print(f"[eval] {label}: typecheck {n_tc}/{n} ({100*n_tc/n:.1f}%)  "
-              f"beq_plus {n_beq}/{n} ({100*n_beq/n:.1f}%)")
+              f"beq_plus {n_beq}/{n} ({100*n_beq/n:.1f}%)  "
+              f"truncated {n_truncated}/{n} ({100*n_truncated/n:.1f}%)")
         if n_err:
             # These are scored as failures but are not verdicts about the model.
             print(f"[eval] WARNING: {n_err}/{n} examples hit a Lean scorer failure "

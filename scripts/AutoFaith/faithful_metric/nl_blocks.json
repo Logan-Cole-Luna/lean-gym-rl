@@ -1,0 +1,188 @@
+{
+  "theorem_statement": "\\begin{theorem}\nLet $a,b \\in \\mathbb{Z}$. If $a$ and $b$ are even, then $a+b$ is even.\n\\end{theorem}",
+  "natural_language_proof": "\\begin{proof}\nSince $a$ is even, there exists an integer $k$ such that\n\\[\na = 2k.\n\\]\nSimilarly, since $b$ is even, there exists an integer $\\ell$ such that\n\\[\nb = 2\\ell.\n\\]\nTherefore,\n\\[\na+b = 2k + 2\\ell = 2(k+\\ell).\n\\]\nBecause $k+\\ell$ is an integer, $a+b$ is divisible by $2$.\nHence $a+b$ is even.\n\\end{proof}",
+  "blocks": [
+    {
+      "previous_checkpoint": {
+        "premises": [
+          "a ∈ ℤ",
+          "b ∈ ℤ",
+          "a is even",
+          "b is even"
+        ],
+        "goal": [
+          "a + b is even"
+        ]
+      },
+      "arguments": [
+        "Since a is even, there exists an integer k such that a = 2k."
+      ],
+      "next_checkpoint": {
+        "premises": [
+          "a ∈ ℤ",
+          "b ∈ ℤ",
+          "a is even",
+          "b is even",
+          "k ∈ ℤ",
+          "a = 2k"
+        ],
+        "goal": [
+          "a + b is even"
+        ]
+      },
+      "reasoning_category": "introduce_object"
+    },
+    {
+      "previous_checkpoint": {
+        "premises": [
+          "a ∈ ℤ",
+          "b ∈ ℤ",
+          "a is even",
+          "b is even",
+          "k ∈ ℤ",
+          "a = 2k"
+        ],
+        "goal": [
+          "a + b is even"
+        ]
+      },
+      "arguments": [
+        "Similarly, since b is even, there exists an integer ℓ such that b = 2ℓ."
+      ],
+      "next_checkpoint": {
+        "premises": [
+          "a ∈ ℤ",
+          "b ∈ ℤ",
+          "a is even",
+          "b is even",
+          "k ∈ ℤ",
+          "a = 2k",
+          "ℓ ∈ ℤ",
+          "b = 2ℓ"
+        ],
+        "goal": [
+          "a + b is even"
+        ]
+      },
+      "reasoning_category": "introduce_object"
+    },
+    {
+      "previous_checkpoint": {
+        "premises": [
+          "a ∈ ℤ",
+          "b ∈ ℤ",
+          "a is even",
+          "b is even",
+          "k ∈ ℤ",
+          "a = 2k",
+          "ℓ ∈ ℤ",
+          "b = 2ℓ"
+        ],
+        "goal": [
+          "a + b is even"
+        ]
+      },
+      "arguments": [
+        "Therefore, a + b = 2k + 2ℓ = 2(k + ℓ)."
+      ],
+      "next_checkpoint": {
+        "premises": [
+          "a ∈ ℤ",
+          "b ∈ ℤ",
+          "a is even",
+          "b is even",
+          "k ∈ ℤ",
+          "a = 2k",
+          "ℓ ∈ ℤ",
+          "b = 2ℓ",
+          "a + b = 2(k + ℓ)"
+        ],
+        "goal": [
+          "a + b is even"
+        ]
+      },
+      "reasoning_category": "calculation"
+    },
+    {
+      "previous_checkpoint": {
+        "premises": [
+          "a ∈ ℤ",
+          "b ∈ ℤ",
+          "a is even",
+          "b is even",
+          "k ∈ ℤ",
+          "a = 2k",
+          "ℓ ∈ ℤ",
+          "b = 2ℓ",
+          "a + b = 2(k + ℓ)"
+        ],
+        "goal": [
+          "a + b is even"
+        ]
+      },
+      "arguments": [
+        "Because k + ℓ is an integer, a + b is divisible by 2."
+      ],
+      "next_checkpoint": {
+        "premises": [
+          "a ∈ ℤ",
+          "b ∈ ℤ",
+          "a is even",
+          "b is even",
+          "k ∈ ℤ",
+          "a = 2k",
+          "ℓ ∈ ℤ",
+          "b = 2ℓ",
+          "a + b = 2(k + ℓ)",
+          "k + ℓ ∈ ℤ",
+          "2 divides (a + b)"
+        ],
+        "goal": [
+          "a + b is even"
+        ]
+      },
+      "reasoning_category": "derive_fact"
+    },
+    {
+      "previous_checkpoint": {
+        "premises": [
+          "a ∈ ℤ",
+          "b ∈ ℤ",
+          "a is even",
+          "b is even",
+          "k ∈ ℤ",
+          "a = 2k",
+          "ℓ ∈ ℤ",
+          "b = 2ℓ",
+          "a + b = 2(k + ℓ)",
+          "k + ℓ ∈ ℤ",
+          "2 divides (a + b)"
+        ],
+        "goal": [
+          "a + b is even"
+        ]
+      },
+      "arguments": [
+        "Hence a + b is even."
+      ],
+      "next_checkpoint": {
+        "premises": [
+          "a ∈ ℤ",
+          "b ∈ ℤ",
+          "a is even",
+          "b is even",
+          "k ∈ ℤ",
+          "a = 2k",
+          "ℓ ∈ ℤ",
+          "b = 2ℓ",
+          "a + b = 2(k + ℓ)",
+          "k + ℓ ∈ ℤ",
+          "2 divides (a + b)",
+          "a + b is even"
+        ],
+        "goal": []
+      },
+      "reasoning_category": "conclude"
+    }
+  ]
+}

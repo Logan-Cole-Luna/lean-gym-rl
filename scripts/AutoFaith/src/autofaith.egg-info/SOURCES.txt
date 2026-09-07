@@ -1,0 +1,9 @@
+README.md
+pyproject.toml
+src/main.py
+src/measure.py
+src/autofaith.egg-info/PKG-INFO
+src/autofaith.egg-info/SOURCES.txt
+src/autofaith.egg-info/dependency_links.txt
+src/autofaith.egg-info/requires.txt
+src/autofaith.egg-info/top_level.txt

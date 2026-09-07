@@ -1,0 +1,550 @@
+{
+  "root": "main",
+  "max_depth": 2,
+  "nodes": [
+    {
+      "category": "THEOREM",
+      "moduleName": "FLproof.proof",
+      "name": "main",
+      "sourceEndColumn": 30,
+      "sourceEndLine": 14,
+      "sourceStartColumn": 0,
+      "sourceStartLine": 7,
+      "statement": "∀ (a b : ℤ), 2 ∣ a → 2 ∣ b → 2 ∣ a + b",
+      "statementUses": [
+        "Int",
+        "Dvd.dvd",
+        "Int.instDvd",
+        "OfNat.ofNat",
+        "instOfNat",
+        "HAdd.hAdd",
+        "instHAdd",
+        "Int.instAdd"
+      ],
+      "depth": 0,
+      "source_path": "/Users/vietbachhoang/AutoFaith/faithful_metric/FLproof/FLproof/proof.lean",
+      "source_declaration": "theorem main (a b : ℤ) (ha : 2 ∣ a) (hb : 2 ∣ b) :\n    2 ∣ a + b :=\n  by\n    rcases ha with ⟨k, hk⟩\n    rcases hb with ⟨l, hl⟩\n    use k + l\n    calc\n      a + b = 2 * k + 2 * l := by rw [hk, hl]\n      _ = 2 * (k + l) := by ring",
+      "proof": "by\n    rcases ha with ⟨k, hk⟩\n    rcases hb with ⟨l, hl⟩\n    use k + l\n    calc\n      a + b = 2 * k + 2 * l := by rw [hk, hl]\n      _ = 2 * (k + l) := by ring",
+      "definition": null
+    },
+    {
+      "category": "INDUCTIVE",
+      "moduleName": "Init.Data.Int.Basic",
+      "name": "Int",
+      "sourceEndColumn": 23,
+      "sourceEndLine": 58,
+      "sourceStartColumn": 0,
+      "sourceStartLine": 35,
+      "statement": "Type",
+      "statementUses": [],
+      "depth": 1,
+      "source_path": "/Users/vietbachhoang/.elan/toolchains/leanprover--lean4---v4.34.0-rc1/src/lean/Init/Data/Int/Basic.lean",
+      "source_declaration": "/--\nThe integers.\n\nThis type is special-cased by the compiler and overridden with an efficient implementation. The\nruntime has a special representation for `Int` that stores “small” signed numbers directly, while\nlarger numbers use a fast arbitrary-precision arithmetic library (usually\n[GMP](https://gmplib.org/)). A “small number” is an integer that can be encoded with one fewer bits\nthan the platform's pointer size (i.e. 63 bits on 64-bit architectures and 31 bits on 32-bit\narchitectures).\n-/\n@[suggest_for ℤ]\ninductive Int : Type where\n  /--\n  A natural number is an integer.\n\n  This constructor covers the non-negative integers (from `0` to `∞`).\n  -/\n  | ofNat   : Nat → Int\n  /--\n  The negation of the successor of a natural number is an integer.\n\n  This constructor covers the negative integers (from `-1` to `-∞`).\n  -/\n  | negSucc : Nat → Int",
+      "proof": null,
+      "definition": null
+    },
+    {
+      "category": "DEFINITION",
+      "moduleName": "Init.Prelude",
+      "name": "Dvd.dvd",
+      "sourceEndColumn": 5,
+      "sourceEndLine": 1554,
+      "sourceStartColumn": 2,
+      "sourceStartLine": 1554,
+      "statement": "{α : Type u_1} → [self : Dvd α] → α → α → Prop",
+      "statementUses": [
+        "Dvd"
+      ],
+      "depth": 1,
+      "source_path": "/Users/vietbachhoang/.elan/toolchains/leanprover--lean4---v4.34.0-rc1/src/lean/Init/Prelude.lean",
+      "source_declaration": null,
+      "proof": null,
+      "definition": null
+    },
+    {
+      "category": "INSTANCE",
+      "moduleName": "Init.Data.Int.Basic",
+      "name": "Int.instDvd",
+      "sourceEndColumn": 40,
+      "sourceEndLine": 390,
+      "sourceStartColumn": 0,
+      "sourceStartLine": 385,
+      "statement": "Dvd ℤ",
+      "statementUses": [
+        "Dvd",
+        "Int"
+      ],
+      "depth": 1,
+      "source_path": "/Users/vietbachhoang/.elan/toolchains/leanprover--lean4---v4.34.0-rc1/src/lean/Init/Data/Int/Basic.lean",
+      "source_declaration": null,
+      "proof": null,
+      "definition": null
+    },
+    {
+      "category": "DEFINITION",
+      "moduleName": "Init.Prelude",
+      "name": "OfNat.ofNat",
+      "sourceEndColumn": 7,
+      "sourceEndLine": 1266,
+      "sourceStartColumn": 2,
+      "sourceStartLine": 1266,
+      "statement": "{α : Type u} → (x : ℕ) → [self : OfNat α x] → α",
+      "statementUses": [
+        "Nat",
+        "OfNat"
+      ],
+      "depth": 1,
+      "source_path": "/Users/vietbachhoang/.elan/toolchains/leanprover--lean4---v4.34.0-rc1/src/lean/Init/Prelude.lean",
+      "source_declaration": "@[match_pattern, implicit_reducible]\nprotected def BitVec.ofNat (n : Nat) (i : Nat) : BitVec n where\n  toFin :=\n  Fin.Internal.ofNat (HPow.hPow 2 n) (Nat.pow_pos (Nat.zero_lt_succ _)) i\n\n  /--\n  Return the underlying `Nat` that represents a bitvector.\n\n  This is O(1) because `BitVec` is a (zero-cost) wrapper around a `Nat`.\n  -/",
+      "proof": null,
+      "definition": "Fin.Internal.ofNat (HPow.hPow 2 n) (Nat.pow_pos (Nat.zero_lt_succ _)) i\n\n  /--\n  Return the underlying `Nat` that represents a bitvector.\n\n  This is O(1) because `BitVec` is a (zero-cost) wrapper around a `Nat`.\n  -/"
+    },
+    {
+      "category": "INSTANCE",
+      "moduleName": "Init.Data.Int.Basic",
+      "name": "instOfNat",
+      "sourceEndColumn": 22,
+      "sourceEndLine": 66,
+      "sourceStartColumn": 0,
+      "sourceStartLine": 65,
+      "statement": "{n : ℕ} → OfNat ℤ n",
+      "statementUses": [
+        "Nat",
+        "OfNat",
+        "Int"
+      ],
+      "depth": 1,
+      "source_path": "/Users/vietbachhoang/.elan/toolchains/leanprover--lean4---v4.34.0-rc1/src/lean/Init/Data/Int/Basic.lean",
+      "source_declaration": "instance instOfNat : OfNat Int n where\n  ofNat :=\n  Int.ofNat n",
+      "proof": null,
+      "definition": "Int.ofNat n"
+    },
+    {
+      "category": "DEFINITION",
+      "moduleName": "Init.Prelude",
+      "name": "HAdd.hAdd",
+      "sourceEndColumn": 6,
+      "sourceEndLine": 1354,
+      "sourceStartColumn": 2,
+      "sourceStartLine": 1354,
+      "statement": "{α : Type u} → {β : Type v} → {γ : outParam (Type w)} → [self : HAdd α β γ] → α → β → γ",
+      "statementUses": [
+        "outParam",
+        "HAdd"
+      ],
+      "depth": 1,
+      "source_path": "/Users/vietbachhoang/.elan/toolchains/leanprover--lean4---v4.34.0-rc1/src/lean/Init/Prelude.lean",
+      "source_declaration": null,
+      "proof": null,
+      "definition": null
+    },
+    {
+      "category": "INSTANCE",
+      "moduleName": "Init.Prelude",
+      "name": "instHAdd",
+      "sourceEndColumn": 25,
+      "sourceEndLine": 1659,
+      "sourceStartColumn": 0,
+      "sourceStartLine": 1657,
+      "statement": "{α : Type u_1} → [Add α] → HAdd α α α",
+      "statementUses": [
+        "Add",
+        "HAdd"
+      ],
+      "depth": 1,
+      "source_path": "/Users/vietbachhoang/.elan/toolchains/leanprover--lean4---v4.34.0-rc1/src/lean/Init/Prelude.lean",
+      "source_declaration": "@[default_instance]\ninstance instHAdd [Add α] : HAdd α α α where\n  hAdd a b :=\n  Add.add a b",
+      "proof": null,
+      "definition": "Add.add a b"
+    },
+    {
+      "category": "INSTANCE",
+      "moduleName": "Init.Data.Int.Basic",
+      "name": "Int.instAdd",
+      "sourceEndColumn": 16,
+      "sourceEndLine": 171,
+      "sourceStartColumn": 0,
+      "sourceStartLine": 170,
+      "statement": "Add ℤ",
+      "statementUses": [
+        "Add",
+        "Int"
+      ],
+      "depth": 1,
+      "source_path": "/Users/vietbachhoang/.elan/toolchains/leanprover--lean4---v4.34.0-rc1/src/lean/Init/Data/Int/Basic.lean",
+      "source_declaration": null,
+      "proof": null,
+      "definition": null
+    },
+    {
+      "category": "INDUCTIVE",
+      "moduleName": "Init.Prelude",
+      "name": "Dvd",
+      "sourceEndColumn": 20,
+      "sourceEndLine": 1554,
+      "sourceStartColumn": 0,
+      "sourceStartLine": 1551,
+      "statement": "Type u_1 → Type u_1",
+      "statementUses": [],
+      "depth": 2,
+      "source_path": "/Users/vietbachhoang/.elan/toolchains/leanprover--lean4---v4.34.0-rc1/src/lean/Init/Prelude.lean",
+      "source_declaration": "/-- Notation typeclass for the `∣` operation (typed as `\\|`), which represents divisibility. -/\nclass Dvd (α : Type _) where\n  /-- Divisibility. `a ∣ b` (typed as `\\|`) means that there is some `c` such that `b = a * c`. -/\n  dvd : α → α → Prop",
+      "proof": null,
+      "definition": null
+    },
+    {
+      "category": "INDUCTIVE",
+      "moduleName": "Init.Prelude",
+      "name": "Nat",
+      "sourceEndColumn": 24,
+      "sourceEndLine": 1244,
+      "sourceStartColumn": 0,
+      "sourceStartLine": 1222,
+      "statement": "Type",
+      "statementUses": [],
+      "depth": 2,
+      "source_path": "/Users/vietbachhoang/.elan/toolchains/leanprover--lean4---v4.34.0-rc1/src/lean/Init/Prelude.lean",
+      "source_declaration": "/--\nThe natural numbers, starting at zero.\n\nThis type is special-cased by both the kernel and the compiler, and overridden with an efficient\nimplementation. Both use a fast arbitrary-precision arithmetic library (usually\n[GMP](https://gmplib.org/)); at runtime, `Nat` values that are sufficiently small are unboxed.\n-/\n@[suggest_for ℕ]\ninductive Nat where\n  /--\n  Zero, the smallest natural number.\n\n  Using `Nat.zero` explicitly should usually be avoided in favor of the literal `0`, which is the\n  [simp normal form](lean-manual://section/simp-normal-forms).\n  -/\n  | zero : Nat\n  /--\n  The successor of a natural number `n`.\n\n  Using `Nat.succ n` should usually be avoided in favor of `n + 1`, which is the [simp normal\n  form](lean-manual://section/simp-normal-forms).\n  -/\n  | succ (n : Nat) : Nat",
+      "proof": null,
+      "definition": null
+    },
+    {
+      "category": "INDUCTIVE",
+      "moduleName": "Init.Prelude",
+      "name": "OfNat",
+      "sourceEndColumn": 11,
+      "sourceEndLine": 1266,
+      "sourceStartColumn": 0,
+      "sourceStartLine": 1249,
+      "statement": "Type u → ℕ → Type u",
+      "statementUses": [
+        "Nat"
+      ],
+      "depth": 2,
+      "source_path": "/Users/vietbachhoang/.elan/toolchains/leanprover--lean4---v4.34.0-rc1/src/lean/Init/Prelude.lean",
+      "source_declaration": "/--\nThe class `OfNat α n` powers the numeric literal parser. If you write\n`37 : α`, Lean will attempt to synthesize `OfNat α 37`, and will generate\nthe term `(OfNat.ofNat 37 : α)`.\n\nThere is a bit of infinite regress here since the desugaring apparently\nstill contains a literal `37` in it. The type of expressions contains a\nprimitive constructor for \"raw natural number literals\", which you can directly\naccess using the macro `nat_lit 37`. Raw number literals are always of type `Nat`.\nSo it would be more correct to say that Lean looks for an instance of\n`OfNat α (nat_lit 37)`, and it generates the term `(OfNat.ofNat (nat_lit 37) : α)`.\n-/\nclass OfNat (α : Type u) (_ : Nat) where\n  /-- The `OfNat.ofNat` function is automatically inserted by the parser when\n  the user writes a numeric literal like `1 : α`. Implementations of this\n  typeclass can therefore customize the behavior of `n : α` based on `n` and\n  `α`. -/\n  ofNat : α",
+      "proof": null,
+      "definition": null
+    },
+    {
+      "category": "DEFINITION",
+      "moduleName": "Init.Prelude",
+      "name": "Fin.Internal.ofNat",
+      "sourceEndColumn": 34,
+      "sourceEndLine": 2359,
+      "sourceStartColumn": 0,
+      "sourceStartLine": 2353,
+      "statement": "(n : ℕ) → 0 < n → ℕ → Fin n",
+      "statementUses": [
+        "Nat",
+        "LT.lt",
+        "instLTNat",
+        "OfNat.ofNat",
+        "instOfNatNat",
+        "Fin"
+      ],
+      "depth": 2,
+      "source_path": "/Users/vietbachhoang/.elan/toolchains/leanprover--lean4---v4.34.0-rc1/src/lean/Init/Prelude.lean",
+      "source_declaration": "@[match_pattern, implicit_reducible]\nprotected def BitVec.ofNat (n : Nat) (i : Nat) : BitVec n where\n  toFin :=\n  Fin.Internal.ofNat (HPow.hPow 2 n) (Nat.pow_pos (Nat.zero_lt_succ _)) i\n\n  /--\n  Return the underlying `Nat` that represents a bitvector.\n\n  This is O(1) because `BitVec` is a (zero-cost) wrapper around a `Nat`.\n  -/",
+      "proof": null,
+      "definition": "Fin.Internal.ofNat (HPow.hPow 2 n) (Nat.pow_pos (Nat.zero_lt_succ _)) i\n\n  /--\n  Return the underlying `Nat` that represents a bitvector.\n\n  This is O(1) because `BitVec` is a (zero-cost) wrapper around a `Nat`.\n  -/"
+    },
+    {
+      "category": "DEFINITION",
+      "moduleName": "Init.Prelude",
+      "name": "HPow.hPow",
+      "sourceEndColumn": 6,
+      "sourceEndLine": 1411,
+      "sourceStartColumn": 2,
+      "sourceStartLine": 1411,
+      "statement": "{α : Type u} → {β : Type v} → {γ : outParam (Type w)} → [self : HPow α β γ] → α → β → γ",
+      "statementUses": [
+        "outParam",
+        "HPow"
+      ],
+      "depth": 2,
+      "source_path": "/Users/vietbachhoang/.elan/toolchains/leanprover--lean4---v4.34.0-rc1/src/lean/Init/Prelude.lean",
+      "source_declaration": null,
+      "proof": null,
+      "definition": null
+    },
+    {
+      "category": "THEOREM",
+      "moduleName": "Init.Prelude",
+      "name": "Nat.pow_pos",
+      "sourceEndColumn": 46,
+      "sourceEndLine": 2065,
+      "sourceStartColumn": 0,
+      "sourceStartLine": 2063,
+      "statement": "∀ {a n : ℕ}, 0 < a → 0 < a ^ n",
+      "statementUses": [
+        "Nat",
+        "LT.lt",
+        "instLTNat",
+        "OfNat.ofNat",
+        "instOfNatNat",
+        "HPow.hPow",
+        "instHPow",
+        "instPowNat",
+        "instNatPowNat"
+      ],
+      "depth": 2,
+      "source_path": "/Users/vietbachhoang/.elan/toolchains/leanprover--lean4---v4.34.0-rc1/src/lean/Init/Prelude.lean",
+      "source_declaration": "protected theorem Nat.pow_pos {a : Nat} : {n : Nat} → (h : LT.lt 0 a) → LT.lt 0 (HPow.hPow a n)\n  | zero, _ => Nat.zero_lt_succ _\n  | succ _, h => Nat.mul_pos (Nat.pow_pos h) h",
+      "proof": null,
+      "definition": null
+    },
+    {
+      "category": "THEOREM",
+      "moduleName": "Init.Prelude",
+      "name": "Nat.zero_lt_succ",
+      "sourceEndColumn": 26,
+      "sourceEndLine": 1932,
+      "sourceStartColumn": 0,
+      "sourceStartLine": 1931,
+      "statement": "∀ (n : ℕ), 0 < n.succ",
+      "statementUses": [
+        "Nat",
+        "LT.lt",
+        "instLTNat",
+        "OfNat.ofNat",
+        "instOfNatNat",
+        "Nat.succ"
+      ],
+      "depth": 2,
+      "source_path": "/Users/vietbachhoang/.elan/toolchains/leanprover--lean4---v4.34.0-rc1/src/lean/Init/Prelude.lean",
+      "source_declaration": "theorem Nat.zero_lt_succ (n : Nat) : LT.lt 0 (succ n) :=\n  succ_le_succ (zero_le n)",
+      "proof": "succ_le_succ (zero_le n)",
+      "definition": null
+    },
+    {
+      "category": "CONSTRUCTOR",
+      "moduleName": "Init.Data.Int.Basic",
+      "name": "Int.ofNat",
+      "sourceEndColumn": 23,
+      "sourceEndLine": 52,
+      "sourceStartColumn": 2,
+      "sourceStartLine": 47,
+      "statement": "ℕ → ℤ",
+      "statementUses": [
+        "Nat",
+        "Int"
+      ],
+      "depth": 2,
+      "source_path": "/Users/vietbachhoang/.elan/toolchains/leanprover--lean4---v4.34.0-rc1/src/lean/Init/Data/Int/Basic.lean",
+      "source_declaration": null,
+      "proof": null,
+      "definition": null
+    },
+    {
+      "category": "DEFINITION",
+      "moduleName": "Init.Prelude",
+      "name": "outParam",
+      "sourceEndColumn": 52,
+      "sourceEndLine": 693,
+      "sourceStartColumn": 0,
+      "sourceStartLine": 677,
+      "statement": "Sort u → Sort u",
+      "statementUses": [],
+      "depth": 2,
+      "source_path": "/Users/vietbachhoang/.elan/toolchains/leanprover--lean4---v4.34.0-rc1/src/lean/Init/Prelude.lean",
+      "source_declaration": null,
+      "proof": null,
+      "definition": null
+    },
+    {
+      "category": "INDUCTIVE",
+      "moduleName": "Init.Prelude",
+      "name": "HAdd",
+      "sourceEndColumn": 18,
+      "sourceEndLine": 1354,
+      "sourceStartColumn": 0,
+      "sourceStartLine": 1347,
+      "statement": "Type u → Type v → outParam (Type w) → Type (max (max u v) w)",
+      "statementUses": [
+        "outParam"
+      ],
+      "depth": 2,
+      "source_path": "/Users/vietbachhoang/.elan/toolchains/leanprover--lean4---v4.34.0-rc1/src/lean/Init/Prelude.lean",
+      "source_declaration": "/--\nThe notation typeclass for heterogeneous addition.\nThis enables the notation `a + b : γ` where `a : α`, `b : β`.\n-/\nclass HAdd (α : Type u) (β : Type v) (γ : outParam (Type w)) where\n  /-- `a + b` computes the sum of `a` and `b`.\n  The meaning of this notation is type-dependent. -/\n  hAdd : α → β → γ",
+      "proof": null,
+      "definition": null
+    },
+    {
+      "category": "INDUCTIVE",
+      "moduleName": "Init.Prelude",
+      "name": "Add",
+      "sourceEndColumn": 17,
+      "sourceEndLine": 1511,
+      "sourceStartColumn": 0,
+      "sourceStartLine": 1508,
+      "statement": "Type u → Type u",
+      "statementUses": [],
+      "depth": 2,
+      "source_path": "/Users/vietbachhoang/.elan/toolchains/leanprover--lean4---v4.34.0-rc1/src/lean/Init/Prelude.lean",
+      "source_declaration": "/-- The homogeneous version of `HAdd`: `a + b : α` where `a b : α`. -/\nclass Add (α : Type u) where\n  /-- `a + b` computes the sum of `a` and `b`. See `HAdd`. -/\n  add : α → α → α",
+      "proof": null,
+      "definition": null
+    },
+    {
+      "category": "DEFINITION",
+      "moduleName": "Init.Prelude",
+      "name": "Add.add",
+      "sourceEndColumn": 5,
+      "sourceEndLine": 1511,
+      "sourceStartColumn": 2,
+      "sourceStartLine": 1511,
+      "statement": "{α : Type u} → [self : Add α] → α → α → α",
+      "statementUses": [
+        "Add"
+      ],
+      "depth": 2,
+      "source_path": "/Users/vietbachhoang/.elan/toolchains/leanprover--lean4---v4.34.0-rc1/src/lean/Init/Prelude.lean",
+      "source_declaration": "@[extern \"lean_nat_add\", instance_reducible]\nprotected def Nat.add : (@& Nat) → (@& Nat) → Nat\n  | a, Nat.zero   => a\n  | a, Nat.succ b => Nat.succ (Nat.add a b)",
+      "proof": null,
+      "definition": null
+    }
+  ],
+  "edges": [
+    {
+      "source": "main",
+      "target": "Int",
+      "kind": "STATEMENT_USES"
+    },
+    {
+      "source": "main",
+      "target": "Dvd.dvd",
+      "kind": "STATEMENT_USES"
+    },
+    {
+      "source": "main",
+      "target": "Int.instDvd",
+      "kind": "STATEMENT_USES"
+    },
+    {
+      "source": "main",
+      "target": "OfNat.ofNat",
+      "kind": "STATEMENT_USES"
+    },
+    {
+      "source": "main",
+      "target": "instOfNat",
+      "kind": "STATEMENT_USES"
+    },
+    {
+      "source": "main",
+      "target": "HAdd.hAdd",
+      "kind": "STATEMENT_USES"
+    },
+    {
+      "source": "main",
+      "target": "instHAdd",
+      "kind": "STATEMENT_USES"
+    },
+    {
+      "source": "main",
+      "target": "Int.instAdd",
+      "kind": "STATEMENT_USES"
+    },
+    {
+      "source": "Dvd.dvd",
+      "target": "Dvd",
+      "kind": "STATEMENT_USES"
+    },
+    {
+      "source": "Int.instDvd",
+      "target": "Dvd",
+      "kind": "STATEMENT_USES"
+    },
+    {
+      "source": "Int.instDvd",
+      "target": "Int",
+      "kind": "STATEMENT_USES"
+    },
+    {
+      "source": "OfNat.ofNat",
+      "target": "Nat",
+      "kind": "STATEMENT_USES"
+    },
+    {
+      "source": "OfNat.ofNat",
+      "target": "OfNat",
+      "kind": "STATEMENT_USES"
+    },
+    {
+      "source": "OfNat.ofNat",
+      "target": "Fin.Internal.ofNat",
+      "kind": "DEFINITION_USES"
+    },
+    {
+      "source": "OfNat.ofNat",
+      "target": "HPow.hPow",
+      "kind": "DEFINITION_USES"
+    },
+    {
+      "source": "OfNat.ofNat",
+      "target": "Nat.pow_pos",
+      "kind": "DEFINITION_USES"
+    },
+    {
+      "source": "OfNat.ofNat",
+      "target": "Nat.zero_lt_succ",
+      "kind": "DEFINITION_USES"
+    },
+    {
+      "source": "instOfNat",
+      "target": "Nat",
+      "kind": "STATEMENT_USES"
+    },
+    {
+      "source": "instOfNat",
+      "target": "OfNat",
+      "kind": "STATEMENT_USES"
+    },
+    {
+      "source": "instOfNat",
+      "target": "Int",
+      "kind": "STATEMENT_USES"
+    },
+    {
+      "source": "instOfNat",
+      "target": "Int.ofNat",
+      "kind": "DEFINITION_USES"
+    },
+    {
+      "source": "HAdd.hAdd",
+      "target": "outParam",
+      "kind": "STATEMENT_USES"
+    },
+    {
+      "source": "HAdd.hAdd",
+      "target": "HAdd",
+      "kind": "STATEMENT_USES"
+    },
+    {
+      "source": "instHAdd",
+      "target": "Add",
+      "kind": "STATEMENT_USES"
+    },
+    {
+      "source": "instHAdd",
+      "target": "HAdd",
+      "kind": "STATEMENT_USES"
+    },
+    {
+      "source": "instHAdd",
+      "target": "Add.add",
+      "kind": "DEFINITION_USES"
+    },
+    {
+      "source": "Int.instAdd",
+      "target": "Add",
+      "kind": "STATEMENT_USES"
+    },
+    {
+      "source": "Int.instAdd",
+      "target": "Int",
+      "kind": "STATEMENT_USES"
+    }
+  ]
+}

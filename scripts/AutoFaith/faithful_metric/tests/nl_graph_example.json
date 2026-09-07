@@ -1,0 +1,237 @@
+{
+  "root_id": 0,
+  "nodes": [
+    {
+      "id": 0,
+      "category": "THEOREM",
+      "statement": "Let $a,b \\in \\mathbb{Z}$. If $a$ and $b$ are even, then $a+b$ is even.",
+      "proof": "\\begin{theorem}\nLet $a,b \\in \\mathbb{Z}$. If $a$ and $b$ are even, then $a+b$ is even.\n\\end{theorem}\n\n\\begin{proof}\nSince $a$ is even, there exists an integer $k$ such that\n\\[\na = 2k.\n\\]\nSimilarly, since $b$ is even, there exists an integer $\\ell$ such that\n\\[\nb = 2\\ell.\n\\]\nTherefore,\n\\[\na+b = 2k + 2\\ell = 2(k+\\ell).\n\\]\nBecause $k+\\ell$ is an integer, $a+b$ is divisible by $2$.\nHence $a+b$ is even.\n\\end{proof}",
+      "name": "Sum of two even integers is even",
+      "depth": 0,
+      "evidence": null
+    },
+    {
+      "id": 1,
+      "category": "DEFINITION",
+      "statement": "An integer $n$ is even iff there exists an integer $k$ such that $n=2k$ (equivalently, $2\\mid n$).",
+      "proof": null,
+      "name": "Even integer (definition)",
+      "depth": 1,
+      "evidence": null
+    },
+    {
+      "id": 2,
+      "category": "THEOREM",
+      "statement": "If $k,\\ell\\in\\mathbb Z$, then $k+\\ell\\in\\mathbb Z$.",
+      "proof": null,
+      "name": "Integers are closed under addition",
+      "depth": 1,
+      "evidence": null
+    },
+    {
+      "id": 3,
+      "category": "DEFINITION",
+      "statement": "For integers $n,d$, $d$ divides $n$ (written $d\\mid n$) iff there exists an integer $m$ with $n=dm$; in particular, “divisible by $2$” means $\\exists m\\in\\mathbb Z,\\ n=2m$.",
+      "proof": null,
+      "name": "Divisibility by 2 (definition)",
+      "depth": 1,
+      "evidence": null
+    },
+    {
+      "id": 4,
+      "category": "DEFINITION",
+      "statement": "The number system of integers and membership in ℤ, since both n and k are required to be integers.",
+      "proof": null,
+      "name": "Integer (ℤ)",
+      "depth": 2,
+      "evidence": null
+    },
+    {
+      "id": 5,
+      "category": "DEFINITION",
+      "statement": "The operation used in the defining equation n = 2k.",
+      "proof": null,
+      "name": "Integer multiplication",
+      "depth": 2,
+      "evidence": null
+    },
+    {
+      "id": 6,
+      "category": "DEFINITION",
+      "statement": "The relation a ∣ b meaning ∃k∈ℤ such that b = ak; used in the equivalent characterization 2 ∣ n.",
+      "proof": null,
+      "name": "Divisibility relation on integers",
+      "depth": 2,
+      "evidence": null
+    },
+    {
+      "id": 7,
+      "category": "DEFINITION",
+      "statement": "The logical notion of “there exists an integer k such that …” used in the definition.",
+      "proof": null,
+      "name": "Existential quantification (∃)",
+      "depth": 2,
+      "evidence": null
+    },
+    {
+      "id": 8,
+      "category": "DEFINITION",
+      "statement": "The set of integers as a number system (e.g., {...,−2,−1,0,1,2,...}), typically constructed from the natural numbers or as a ring.",
+      "proof": null,
+      "name": "Integer",
+      "depth": 2,
+      "evidence": null
+    },
+    {
+      "id": 9,
+      "category": "DEFINITION",
+      "statement": "The binary operation + defined on pairs of integers, giving their sum as an integer-valued result (however constructed/defined).",
+      "proof": null,
+      "name": "Integer addition",
+      "depth": 2,
+      "evidence": null
+    },
+    {
+      "id": 10,
+      "category": "DEFINITION",
+      "statement": "A set S is closed under a binary operation ⋆ if for all a,b∈S, one has a⋆b∈S.",
+      "proof": null,
+      "name": "Closure (mathematics)",
+      "depth": 2,
+      "evidence": null
+    },
+    {
+      "id": 11,
+      "category": "DEFINITION",
+      "statement": "The number system of integers, serving as the domain for n, d, and m in the divisibility definition.",
+      "proof": null,
+      "name": "Integers (ℤ)",
+      "depth": 2,
+      "evidence": null
+    },
+    {
+      "id": 12,
+      "category": "DEFINITION",
+      "statement": "The binary operation on ℤ used to form the product dm and the specific product 2m.",
+      "proof": null,
+      "name": "Multiplication in the integers",
+      "depth": 2,
+      "evidence": null
+    },
+    {
+      "id": 13,
+      "category": "DEFINITION",
+      "statement": "The general predicate on integers defined by: d divides n iff there exists m ∈ ℤ such that n = d m; “divisible by 2” is the special case d = 2.",
+      "proof": null,
+      "name": "Divisibility (d ∣ n)",
+      "depth": 2,
+      "evidence": null
+    }
+  ],
+  "edges": [
+    {
+      "source": 0,
+      "target": 1,
+      "type": "STATEMENT_USES",
+      "evidence": "If $a$ and $b$ are even, then $a+b$ is even.",
+      "explicit": true,
+      "confidence": 0.98
+    },
+    {
+      "source": 0,
+      "target": 2,
+      "type": "PROOF_USES",
+      "evidence": "Because $k+\\ell$ is an integer",
+      "explicit": true,
+      "confidence": 0.93
+    },
+    {
+      "source": 0,
+      "target": 3,
+      "type": "PROOF_USES",
+      "evidence": "$a+b$ is divisible by $2$",
+      "explicit": true,
+      "confidence": 0.82
+    },
+    {
+      "source": 1,
+      "target": 4,
+      "type": "REQUIRES",
+      "evidence": null,
+      "explicit": false,
+      "confidence": 0.95
+    },
+    {
+      "source": 1,
+      "target": 5,
+      "type": "REQUIRES",
+      "evidence": null,
+      "explicit": false,
+      "confidence": 0.9
+    },
+    {
+      "source": 1,
+      "target": 6,
+      "type": "REQUIRES",
+      "evidence": null,
+      "explicit": false,
+      "confidence": 0.92
+    },
+    {
+      "source": 1,
+      "target": 7,
+      "type": "REQUIRES",
+      "evidence": null,
+      "explicit": false,
+      "confidence": 0.75
+    },
+    {
+      "source": 2,
+      "target": 8,
+      "type": "REQUIRES",
+      "evidence": null,
+      "explicit": false,
+      "confidence": 0.86
+    },
+    {
+      "source": 2,
+      "target": 9,
+      "type": "DEFINES_AS",
+      "evidence": null,
+      "explicit": false,
+      "confidence": 0.84
+    },
+    {
+      "source": 2,
+      "target": 10,
+      "type": "DEFINES_AS",
+      "evidence": null,
+      "explicit": false,
+      "confidence": 0.83
+    },
+    {
+      "source": 3,
+      "target": 11,
+      "type": "REQUIRES",
+      "evidence": null,
+      "explicit": false,
+      "confidence": 0.93
+    },
+    {
+      "source": 3,
+      "target": 12,
+      "type": "REQUIRES",
+      "evidence": null,
+      "explicit": false,
+      "confidence": 0.81
+    },
+    {
+      "source": 3,
+      "target": 13,
+      "type": "DEFINES_AS",
+      "evidence": null,
+      "explicit": false,
+      "confidence": 0.88
+    }
+  ]
+}

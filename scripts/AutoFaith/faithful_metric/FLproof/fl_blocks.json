@@ -1,0 +1,169 @@
+{
+  "blocks": [
+    {
+      "kind": "leaf",
+      "block": {
+        "previous_checkpoint": {
+          "premises": [
+            "a b : ℤ",
+            "ha : 2 ∣ a",
+            "hb : 2 ∣ b"
+          ],
+          "goal": [
+            "2 ∣ a + b"
+          ]
+        },
+        "arguments": [
+          "rcases ha with ⟨k, hk⟩"
+        ],
+        "next_checkpoint": {
+          "premises": [
+            "a b : ℤ",
+            "hb : 2 ∣ b",
+            "k : ℤ",
+            "hk : a = 2 * k"
+          ],
+          "goal": [
+            "2 ∣ a + b"
+          ]
+        }
+      },
+      "children": []
+    },
+    {
+      "kind": "leaf",
+      "block": {
+        "previous_checkpoint": {
+          "premises": [
+            "a b : ℤ",
+            "hb : 2 ∣ b",
+            "k : ℤ",
+            "hk : a = 2 * k"
+          ],
+          "goal": [
+            "2 ∣ a + b"
+          ]
+        },
+        "arguments": [
+          "rcases hb with ⟨l, hl⟩"
+        ],
+        "next_checkpoint": {
+          "premises": [
+            "a b k : ℤ",
+            "hk : a = 2 * k",
+            "l : ℤ",
+            "hl : b = 2 * l"
+          ],
+          "goal": [
+            "2 ∣ a + b"
+          ]
+        }
+      },
+      "children": []
+    },
+    {
+      "kind": "leaf",
+      "block": {
+        "previous_checkpoint": {
+          "premises": [
+            "a b k : ℤ",
+            "hk : a = 2 * k",
+            "l : ℤ",
+            "hl : b = 2 * l"
+          ],
+          "goal": [
+            "2 ∣ a + b"
+          ]
+        },
+        "arguments": [
+          "use k + l"
+        ],
+        "next_checkpoint": {
+          "premises": [
+            "a b k : ℤ",
+            "hk : a = 2 * k",
+            "l : ℤ",
+            "hl : b = 2 * l"
+          ],
+          "goal": [
+            "a + b = 2 * (k + l)"
+          ]
+        }
+      },
+      "children": []
+    },
+    {
+      "kind": "compound",
+      "block": {
+        "previous_checkpoint": {
+          "premises": [
+            "a b k : ℤ",
+            "hk : a = 2 * k",
+            "l : ℤ",
+            "hl : b = 2 * l"
+          ],
+          "goal": [
+            "a + b = 2 * (k + l)"
+          ]
+        },
+        "arguments": [
+          "calc\n  a + b = 2 * k + 2 * l := by rw [hk, hl]\n  _ = 2 * (k + l) := by ring"
+        ],
+        "next_checkpoint": {
+          "premises": [],
+          "goal": []
+        }
+      },
+      "children": [
+        {
+          "kind": "leaf",
+          "block": {
+            "previous_checkpoint": {
+              "premises": [
+                "a b k : ℤ",
+                "hk : a = 2 * k",
+                "l : ℤ",
+                "hl : b = 2 * l"
+              ],
+              "goal": [
+                "a + b = 2 * k + 2 * l"
+              ]
+            },
+            "arguments": [
+              "rw [hk, hl]"
+            ],
+            "next_checkpoint": {
+              "premises": [],
+              "goal": []
+            }
+          },
+          "children": []
+        },
+        {
+          "kind": "leaf",
+          "block": {
+            "previous_checkpoint": {
+              "premises": [
+                "a b k : ℤ",
+                "hk : a = 2 * k",
+                "l : ℤ",
+                "hl : b = 2 * l"
+              ],
+              "goal": [
+                "2 * k + 2 * l = 2 * (k + l)"
+              ]
+            },
+            "arguments": [
+              "ring"
+            ],
+            "next_checkpoint": {
+              "premises": [],
+              "goal": []
+            }
+          },
+          "children": []
+        }
+      ]
+    }
+  ]
+}
