@@ -153,7 +153,10 @@ FAITHFULNESS_BAND = 0.15
 # 5-char `rfl` gold, a perfectly good `by simp [foo]` reads as a 4x overrun --
 # and adding a constant to both sides makes the tolerance absolute where the
 # gold is tiny and relative where it is large. With soften=60 a 5-char gold is
-# free anywhere up to 38 chars, while a 1452-char gold is free from 948 to 2208.
+# free anywhere up to 38 chars, while a 1452-char gold is free from 444 to 2208.
+# (444, not 948: the short edge is (1452+60)/3 - 60. The free ratios differ per
+# side -- 1.5x long, 3x short -- and this line used to quote the long one twice.
+# `python -m reward.reward` prints the real window per gold percentile.)
 #
 # THE DEAD BAND IS ASYMMETRIC, and deliberately so. Bloat is the failure mode
 # this term exists to catch, so it is charged from 1.5x. Being SHORTER than the

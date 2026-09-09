@@ -4,9 +4,20 @@
 Selected per run via `custom_reward_function.name`:
 
 - `compute_score_outcome` (default): the six-outcome ladder from reward/reward.py.
+- `compute_score_outcome_brevity`: the ladder, plus a proof-LENGTH deduction on
+  the top row.
+- `compute_score_outcome_faith`: the ladder, plus the NL -> FL faithfulness band
+  on the top row. Needs a judge server and an informal-carrying corpus.
+- `compute_score_outcome_v2`: the ladder with BOTH of the above live.
 - `compute_score_gated`: pays only for BEq+ equivalence, flat floor below it.
 - `compute_score_typecheck`: pays for elaboration alone. Exploitable, and
   kept as the ablation baseline.
+
+The four `outcome*` arms share one body, `_outcome_core`, and differ only in two
+keyword flags, so `outcome` is a true control for the other three. They are
+separate NAMES rather than one name plus env vars on purpose: verl writes
+`custom_reward_function.name` into its config dump, and that dump is how a run
+is identified after the fact.
 
 Each returns a dict, not a float. verl forwards every key other than `score`
 into `reward_extra_info` and aggregates it into a train/val metric. Emitting
@@ -18,6 +29,7 @@ calls reuse a single Lean REPL instead of re-importing Mathlib.
 """
 from __future__ import annotations
 
+import dataclasses
 import functools
 import os
 import re
@@ -26,9 +38,9 @@ import threading
 from lean_interact.utils import split_implementation
 
 from reward.beq_plus import BEqPlusScorer, split_header_and_theorem
-from reward.reward import (BREVITY_BAND, OUTCOMES, brevity_for, gated_reward,
-                           outcome_for, reward_for, signals_from_score,
-                           typecheck_reward)
+from reward.reward import (BREVITY_BAND, FAITHFULNESS_BAND, OUTCOMES, SOLVED,
+                           brevity_for, gated_reward, outcome_for, reward_for,
+                           signals_from_score, typecheck_reward)
 
 _scorer: BEqPlusScorer | None = None
 _scorer_failures = 0
@@ -169,6 +181,29 @@ _SCHEMA = {
     # which a mean over `brevity` alone would conflate.
     "brevity": 1.0, "brevity_known": 0.0,
     "pred_proof_chars": 0.0, "gold_proof_chars": 0.0,
+    # NL -> FL faithfulness. The "not applicable" value is 0.0, the OPPOSITE of
+    # brevity's, and the asymmetry is the point: faithfulness is PAID and
+    # brevity is DEDUCTED, so an unknown must never award the one nor charge the
+    # other. `faith_known` is the number to actually watch. Coverage is
+    # structurally bounded here -- a term-mode proof emits no tactics and so has
+    # no FL blocks to judge, which was 43.8% of the policy's own proofs -- so
+    # mean(faith) alone cannot distinguish "unfaithful" from "unjudgeable", and
+    # a faith arm that raises mean(faith) purely by raising `faith_known` has
+    # learned to write tactic-mode proofs, not faithful ones. Watch both.
+    "faith": 0.0, "faith_known": 0.0, "faith_seconds": 0.0,
+    # Index into _FAITH_ERROR_CODE; 0 means "scored, no error".
+    "faith_error": 0.0,
+}
+
+# Why a faithfulness verdict was unavailable. Numeric because verl aggregates
+# reward_extra_info by mean, so the useful reading is the SHIFT in the mix, not
+# any one value: `fl_blocks_empty` (term-mode) is a property of the policy's
+# output and is expected to move during training, while `no_judge` is the judge
+# server falling over and must not be mistaken for it.
+_FAITH_ERROR_CODE = {
+    None: 0, "no_informal": 1, "no_autofaith": 2, "no_judge": 3, "bad_json": 4,
+    "no_declaration": 5, "fl_extract_failed": 6, "fl_blocks_empty": 7,
+    "nl_blocks_failed": 8,
 }
 
 # `outcome`'s zero-fallback: the full schema above.
@@ -210,7 +245,8 @@ def _diagnostics(r: dict, proof_check: dict | None = None,
                  brevity: float | None = None,
                  pred_chars: int | None = None,
                  gold_chars: int | None = None,
-                 wrote_something: bool = True) -> dict[str, float]:
+                 wrote_something: bool = True,
+                 faith=None) -> dict[str, float]:
     """Per-sample fields forwarded into `reward_extra_info`. All numeric.
     Used only by `compute_score_outcome` -- see the module note above `_SCHEMA`.
 
@@ -260,6 +296,13 @@ def _diagnostics(r: dict, proof_check: dict | None = None,
         # this term exists to prevent is the first climbing away from the second.
         "pred_proof_chars": float(pred_chars or 0),
         "gold_proof_chars": float(gold_chars or 0),
+        # 0.0 when unmeasured, matching the band's own convention that an
+        # unknown is not paid. Read alongside `faith_known`, never alone.
+        "faith": 0.0 if (faith is None or faith.score is None) else float(faith.score),
+        "faith_known": float(faith is not None and faith.score is not None),
+        "faith_seconds": float(faith.seconds) if faith is not None else 0.0,
+        "faith_error": float(_FAITH_ERROR_CODE.get(
+            faith.error if faith is not None else None, 0)),
     }
 
 
@@ -301,24 +344,22 @@ def compute_score_typecheck(data_source, solution_str, ground_truth, extra_info=
 
 W_GATED_ONE_DIR = float(os.environ.get("BEQ_W_GATED_ONE_DIR", "0.25"))
 
-# How much of a SOLVED rollout's reward the proof-length term can take.
+# How much of a SOLVED rollout's reward the proof-length term can take, for the
+# arms that turn it on. `compute_score_outcome` passes 0.0 and is unaffected.
 #
-# DEFAULTS TO 0, i.e. OFF, ON EVIDENCE. Recomputed over the finished HPC arms'
-# raw rollouts (results/hpc_ablation/), the term fires on ZERO of the 182 SOLVED
-# rollouts across gated/outcome/typecheck at step 90: median pred/gold proof
-# length is 1.00, and mean b is 1.0000. Conditioning on a proof that actually
-# closes already selects for gold-length proofs, so the brevity gate and the
-# correctness gate select the same population and the term buys nothing.
-#
-# It is kept, and kept correct, because that is a property of the CURRENT
-# 128-token response cap (`MAX_RESPONSE_LENGTH`). MEASURED on the 760-row proof
-# val slice, the gold ANSWER (theorem+proof; the context is in the prompt) is
-# p50 54 / p90 115 / max 275 Qwen tokens, so that cap truncates 6.1% of
-# reference-length answers -- enough to bound the top of the length distribution,
-# and the reason nothing in the reachable population is ever long enough to
-# penalise. Raise the cap and long-winded proofs become expressible; that is when
-# to set this to 0.10 and A/B it.
-W_BREVITY_BAND = float(os.environ.get("BEQ_BREVITY_BAND", "0"))
+# THIS TERM ONLY MEANS ANYTHING ABOVE A ~384-TOKEN RESPONSE CAP. Recomputed over
+# the finished HPC arms' raw rollouts (results/hpc_ablation/), it fires on ZERO
+# of the 182 SOLVED rollouts across gated/outcome/typecheck at step 90: median
+# pred/gold proof length is 1.00, and mean b is 1.0000. That is not evidence
+# that proof length does not matter -- it is a property of the 128-token
+# `max_response_length` those arms ran under. MEASURED on the 760-row proof val
+# slice, the gold ANSWER (theorem+proof; the context is in the prompt) is p50 54
+# / p90 115 / max 275 Qwen tokens, so a 128-token cap truncates 6.1% of
+# reference-length answers and thereby bounds the top of the length
+# distribution: nothing in the reachable population was ever long enough to
+# penalise. `configs/run_grpo.sh` now defaults to 512, which is what makes the
+# term expressible and this arm worth running.
+W_BREVITY_BAND_ARM = float(os.environ.get("BEQ_BREVITY_BAND", str(BREVITY_BAND)))
 
 # Column 2 of reward.py's table ("Lean compiles it") now reads the SUBMISSION AS
 # WRITTEN via check_own_proof, not BEq+'s statement-only check which sorries the
@@ -353,6 +394,115 @@ def compute_score_gated(data_source, solution_str, ground_truth, extra_info=None
             "scorer_error": float(bool(r.get("error_kind")))}
 
 
+# How much of a SOLVED rollout the faithfulness band is worth, for the arms that
+# turn it on. This is reward/reward.py's FAITHFULNESS_BAND, restated here only
+# so a reader of the arm sees the number without a second file.
+#
+# THE BAND IS ALREADY CARVED OUT WHETHER OR NOT AN ARM MEASURES f. With f=None,
+# `reward_for_outcome` scores SOLVED at 0.85, and that is what every arm before
+# this one recorded. Turning faithfulness on therefore does not move the floor;
+# it makes the top 0.15 REACHABLE. So `outcome` and `outcome_faith` differ only
+# in whether a solved rollout can earn above 0.85 -- which is exactly the
+# contrast the arm is supposed to isolate.
+W_FAITH_BAND = float(os.environ.get("BEQ_FAITH_BAND", str(FAITHFULNESS_BAND)))
+
+_faith_calls = 0
+_faith_unknown = 0
+_FAITH_LOG_EVERY = int(os.environ.get("BEQ_FAITH_LOG_EVERY", "100"))
+
+
+def _note_faith(res) -> None:
+    """Periodic coverage line for the faithfulness judge.
+
+    A judge server that dies scores every rollout `no_judge` -> f unknown -> a
+    flat 0.85 on every SOLVED row, which is silently identical to running the
+    plain `outcome` arm. Nothing else in the loop would say so: the reward keeps
+    returning plausible numbers and the run completes. Hence this.
+    """
+    global _faith_calls, _faith_unknown
+    _faith_calls += 1
+    _faith_unknown += res.score is None
+    if _FAITH_LOG_EVERY and _faith_calls % _FAITH_LOG_EVERY == 0:
+        rate = _faith_unknown / _faith_calls
+        print(f"[reward] faith: {_faith_calls} judged, "
+              f"{100 * rate:.1f}% unknown (last cause: {res.error})", flush=True)
+        if rate > 0.9:
+            print("[reward] WARNING: >90% of faithfulness verdicts are unknown. "
+                  "If the cause is `no_judge` the judge server is down and this "
+                  "arm has silently degenerated into plain `outcome`; check "
+                  f"FAITH_JUDGE_URL ({os.environ.get('FAITH_JUDGE_URL', 'default')}).",
+                  flush=True)
+
+
+def _faithfulness(pred: str, context: str, extra_info):
+    """f in [0,1] for one rollout, as a FaithfulnessResult. Never raises.
+
+    THE INFORMAL TEXT COMES FROM `extra_info`, not from the prompt: a verl
+    custom reward is handed (data_source, solution_str, ground_truth,
+    extra_info) and never sees the prompt the rollout answered. The stock
+    LoCoLib parquets carry only split/index/id/domain, so a faith arm must
+    train on a corpus built by `scripts/data/add_informal_to_extra_info.py`,
+    which copies the two fields out of each row's own prompt. Missing fields
+    are `no_informal`, i.e. UNKNOWN -- never a zero the rollout earned.
+    """
+    from reward.faithfulness import FaithfulnessResult, score_faithfulness
+    info = extra_info or {}
+    statement = info.get("informal") or ""
+    proof_nl = info.get("informal_proof") or ""
+    if not proof_nl:
+        return FaithfulnessResult(None, "no_informal")
+    # `_lean_slot` is handed in, not held around this call: score_faithfulness
+    # takes it for its Lean step and drops it before the judge, per that
+    # module's "never holds the Lean semaphore across a network call".
+    res = score_faithfulness(statement, proof_nl, pred, scorer=_get_scorer(),
+                             context=context, lean_lock=_lean_slot)
+    _note_faith(res)
+    return res
+
+
+def _outcome_core(solution_str: str, ground_truth: str, extra_info,
+                  *, brevity_band: float, faith: bool) -> dict:
+    """The shared body of every `outcome`-family arm.
+
+    ONE BODY, THREE ARMS, differing only in the two keyword flags. They are
+    separate named entry points rather than one function reading env vars
+    because verl records `custom_reward_function.name` in its config dump, and
+    that dump is how a finished run is identified months later -- two arms that
+    differ only by an environment variable are indistinguishable there.
+
+    FAITHFULNESS IS COMPUTED ON THE `SOLVED` ROW ALONE, and that is a cost
+    decision as much as a semantic one: `reward_for_outcome` reads f nowhere
+    else, and ~24% of rollouts reach that row, so gating here removes ~76% of
+    the judge traffic without changing a single score.
+    """
+    scorer = _get_scorer()
+    r, pred, _gold = _score_pair(solution_str, ground_truth)
+    context, _gold_theorem = split_header_and_theorem(ground_truth)
+    with _lean_slot:
+        proof_check = scorer.check_own_proof(pred, context)
+    # Both sides measured the same way, from the same splitter. No Lean call:
+    # this is pure string work and adds nothing to the reward's latency.
+    # Computed for EVERY arm even when the band is 0, because it is a
+    # diagnostic first: `pred_proof_chars` drifting away from
+    # `gold_proof_chars` is the failure the band exists to catch, and an arm
+    # that does not charge for it still needs to report it.
+    pred_chars = _proof_body_len(pred)
+    gold_chars = _proof_body_len(ground_truth)
+    brevity = brevity_for(pred_chars, gold_chars)
+    wrote_something = bool(pred.strip())
+    s = signals_from_score(r, proof_check, brevity=brevity,
+                           typecheck_from_own_proof=TYPECHECK_FROM_OWN_PROOF,
+                           wrote_something=wrote_something)
+    f_res = None
+    if faith and outcome_for(s) == SOLVED:
+        f_res = _faithfulness(pred, context, extra_info)
+        s = dataclasses.replace(s, proof_follows_argument=f_res.score)
+    return {"score": reward_for(s, band=W_FAITH_BAND, brevity_band=brevity_band),
+            **_diagnostics(r, proof_check=proof_check, brevity=brevity,
+                           pred_chars=pred_chars, gold_chars=gold_chars,
+                           wrote_something=wrote_something, faith=f_res)}
+
+
 @_never_raises(_OUTCOME_ZERO)
 def compute_score_outcome(data_source, solution_str, ground_truth, extra_info=None) -> dict:
     """The six-outcome ladder from reward/reward.py, now fully reachable on the
@@ -363,8 +513,9 @@ def compute_score_outcome(data_source, solution_str, ground_truth, extra_info=No
         0.15  elaborates, does not match the gold, proof unfinished/absent
         0.30  a real finished proof, but of a theorem BEq+ could not match
         0.50  BEq+ matches the gold, proof still unfinished
-        0.85-1.00  BEq+ matches AND the candidate's own proof is sorry-free
-                   and axiom-clean (`solved`)
+        0.85  BEq+ matches AND the candidate's own proof is sorry-free and
+              axiom-clean (`solved`). Flat at 0.85, not 0.85-1.00: this arm
+              measures no faithfulness, and an unmeasured f is not paid.
 
     `_score_pair` runs BEq+'s statement cascade (ignores proof bodies on both
     sides, unchanged); `check_own_proof` separately elaborates the candidate's
@@ -373,24 +524,84 @@ def compute_score_outcome(data_source, solution_str, ground_truth, extra_info=No
     carry a within-group gradient. That is the property `gated` deliberately
     removes, so the two are an A/B and this is not yet the default. Emits
     `outcome_code` for the per-example histogram.
+
+    This is also the CONTROL for the three arms below: they are this function
+    plus one term each, so a difference between them and this is attributable
+    to that term and to nothing else -- provided all four run at the same
+    `max_response_length`, which is why the 128-token cap had to be lifted
+    before any of them could be interpreted.
     """
-    scorer = _get_scorer()
-    r, pred, _gold = _score_pair(solution_str, ground_truth)
-    context, _gold_theorem = split_header_and_theorem(ground_truth)
-    with _lean_slot:
-        proof_check = scorer.check_own_proof(pred, context)
-    # Both sides measured the same way, from the same splitter. No Lean call:
-    # this is pure string work and adds nothing to the reward's latency.
-    pred_chars = _proof_body_len(pred)
-    gold_chars = _proof_body_len(ground_truth)
-    brevity = brevity_for(pred_chars, gold_chars)
-    s = signals_from_score(r, proof_check, brevity=brevity,
-                           typecheck_from_own_proof=TYPECHECK_FROM_OWN_PROOF,
-                           wrote_something=bool(pred.strip()))
-    return {"score": reward_for(s, brevity_band=W_BREVITY_BAND),
-            **_diagnostics(r, proof_check=proof_check, brevity=brevity,
-                           pred_chars=pred_chars, gold_chars=gold_chars,
-                           wrote_something=bool(pred.strip()))}
+    return _outcome_core(solution_str, ground_truth, extra_info,
+                         brevity_band=0.0, faith=False)
+
+
+@_never_raises(_OUTCOME_ZERO)
+def compute_score_outcome_brevity(data_source, solution_str, ground_truth,
+                                  extra_info=None) -> dict:
+    """`compute_score_outcome` plus the proof-LENGTH deduction. Nothing else.
+
+    A SOLVED rollout is charged up to `W_BREVITY_BAND_ARM` for a proof body far
+    from the gold's length, on an asymmetric log-space dead band (free to 1.5x
+    long, free down to gold/3) -- see `reward.reward.brevity_for`. Rows 1-5 are
+    untouched, which is the anti-exploit: a degenerately short non-proof lands
+    on `incomplete` (0.15) and never reaches the term.
+
+    THIS ARM IS A NO-OP BELOW A ~384-TOKEN RESPONSE CAP. At the old
+    `max_response_length=128` the term fired on 0 of 182 SOLVED rollouts,
+    because the cap already bounded the length distribution below anything the
+    band charges for. Running it there produces a bit-identical copy of
+    `compute_score_outcome`, not a null result.
+    """
+    return _outcome_core(solution_str, ground_truth, extra_info,
+                         brevity_band=W_BREVITY_BAND_ARM, faith=False)
+
+
+@_never_raises(_OUTCOME_ZERO)
+def compute_score_outcome_faith(data_source, solution_str, ground_truth,
+                                extra_info=None) -> dict:
+    """`compute_score_outcome` plus the NL -> FL faithfulness band. Nothing else.
+
+    A SOLVED rollout scores `0.85 + 0.15 * f`, where f asks whether the Lean
+    proof carries out the ENGLISH argument the prompt supplied. This is the only
+    place the informal text enters the score.
+
+    REQUIRES A JUDGE SERVER on `FAITH_JUDGE_URL` and a corpus whose `extra_info`
+    carries `informal` / `informal_proof`. Both missing pieces degrade to
+    unknown, i.e. to a flat 0.85, i.e. to plain `outcome` -- silently, except
+    for `_note_faith`'s coverage line and the `faith_known` metric. Check both
+    before trusting a finished run.
+
+    KNOWN CONFOUND, and it is not fixable inside the reward. Coverage is
+    structural: a term-mode proof (`:= rfl`) emits no tactics, so AutoFaith has
+    no FL blocks to judge and f is unknown, which pays nothing. Term-mode was
+    43.8% of the policy's own proofs. So this band pays tactic-mode proofs and
+    not term-mode ones, independently of whether either is faithful, and part of
+    any gain it shows will be the policy learning to write `by ...` instead of a
+    proof term. `faith_known` measures exactly that share and must be reported
+    beside any headline this arm produces.
+    """
+    return _outcome_core(solution_str, ground_truth, extra_info,
+                         brevity_band=0.0, faith=True)
+
+
+@_never_raises(_OUTCOME_ZERO)
+def compute_score_outcome_v2(data_source, solution_str, ground_truth,
+                             extra_info=None) -> dict:
+    """OUTCOME V2: the six-outcome ladder with BOTH new terms live.
+
+    A SOLVED rollout scores `0.85 + 0.15*f - 0.10*(1-b)`, so the two terms pull
+    in opposite directions by construction -- faithfulness pays for a proof that
+    follows the argument, brevity charges for one that rambles to get there --
+    and this arm is where they are allowed to interact. Rows 1-5 are the
+    untouched constants in every case.
+
+    Run it against `outcome_brevity` and `outcome_faith`, not only against
+    `outcome`: the three-way contrast is what separates "the two terms add" from
+    "one of them is carrying the whole difference".
+    """
+    return _outcome_core(solution_str, ground_truth, extra_info,
+                         brevity_band=W_BREVITY_BAND_ARM, faith=True)
+
 
 
 # Used when custom_reward_function.name is left unset. Every job here sets the

@@ -52,6 +52,7 @@ behind the judge.
 """
 from __future__ import annotations
 
+import contextlib
 import json
 import os
 import sys
@@ -84,6 +85,23 @@ def _debug(where: str, exc: BaseException) -> None:
         print(f"[faithfulness] {where}: {type(exc).__name__}: {exc}", flush=True)
 
 
+def _debug_raw(where: str, raw: str) -> None:
+    """Show what the judge actually said when its reply would not parse.
+
+    WITHOUT THIS, `bad_json` IS UNDIAGNOSABLE. It is returned identically
+    whether the judge emitted prose, refused, or produced valid JSON that was
+    cut in half by the token budget -- and those need opposite fixes. The head
+    and the TAIL are both printed because truncation is only visible at the end:
+    a reply that stops mid-token with no closing brace is a budget problem, a
+    reply that never opened one is a prompting problem.
+    """
+    if not FAITH_DEBUG:
+        return
+    r = raw or ""
+    print(f"[faithfulness] {where}: unparseable reply, {len(r)} chars\n"
+          f"  head: {r[:300]!r}\n  tail: {r[-300:]!r}", flush=True)
+
+
 @dataclass(frozen=True)
 class FaithfulnessResult:
     """`score` is None whenever we could not find out. Never a number on failure.
@@ -105,6 +123,7 @@ class FaithfulnessResult:
 
 
 _ERRORS = (
+    "no_informal",        # the row carries no informal proof to compare against
     "no_autofaith",       # the clone is missing or unimportable
     "no_judge",           # judge server unreachable / errored
     "bad_json",           # judge returned something that is not the schema
@@ -145,10 +164,89 @@ def _autofaith():
 # ---------------------------------------------------------------------------
 # The judge: one HTTP call to our own FormalRx server.
 # ---------------------------------------------------------------------------
+# ---------------------------------------------------------------------------
+# THE SCHEMAS. These mirror the "Output format" section of AutoFaith's two
+# prompts exactly; they do not invent a contract, they enforce the one the
+# prompt already states in prose.
+#
+# WHY THEY EXIST. MEASURED on the first validity-gate run, 8 of 12 replies were
+# unparseable, and every failure was the same shape: mathematical notation
+# written into JSON without quotes (`#iota < cof (c.ord)` bare inside an array,
+# `∃ p q : ℤ, p * a + q * b = 1,` unquoted, `"prime_number,` unterminated,
+# `C_0` as a bare value). A math-specialised judge treats JSON as prose. Asking
+# it more nicely does not fix that, and repairing the output afterwards would
+# mean guessing what it meant. Constraining the decoder makes the failure
+# unrepresentable, which is the only version of this that keeps `bad_json`
+# meaning "the judge had nothing to say" rather than "the judge cannot type".
+#
+# Every leaf that can hold mathematics is typed `string`, which is the whole
+# point: it forces the quoting the model omits.
+# ---------------------------------------------------------------------------
+_STRINGS = {"type": "array", "items": {"type": "string"}}
+_CHECKPOINT = {
+    "type": "object",
+    "properties": {"premises": _STRINGS, "goal": _STRINGS},
+    "required": ["premises", "goal"], "additionalProperties": False,
+}
+# The 14 categories the NL prompt enumerates. Enumerated here too, so a
+# hallucinated category cannot reach AutoFaith's NLReasoningCategory and raise.
+_NL_CATEGORIES = [
+    "introduce_object", "introduce_assumption", "unpack_definition",
+    "apply_theorem", "derive_fact", "rewrite", "calculation", "reduce_goal",
+    "case_split", "induction", "contradiction", "contrapositive", "conclude",
+    "other",
+]
+NL_BLOCKS_SCHEMA = {
+    "type": "object",
+    "properties": {"blocks": {
+        "type": "array", "minItems": 1,
+        "items": {
+            "type": "object",
+            "properties": {
+                "reasoning_category": {"type": "string", "enum": _NL_CATEGORIES},
+                "previous_checkpoint": _CHECKPOINT,
+                "arguments": _STRINGS,
+                "next_checkpoint": _CHECKPOINT,
+            },
+            "required": ["reasoning_category", "previous_checkpoint",
+                         "arguments", "next_checkpoint"],
+            "additionalProperties": False,
+        }}},
+    "required": ["blocks"], "additionalProperties": False,
+}
+_INTS = {"type": "array", "items": {"type": "integer"}}
+WHOLE_PROOF_SCHEMA = {
+    "type": "object",
+    "properties": {
+        # The only field the reward actually reads. Bounded here so a judge
+        # cannot hand back a score outside the band's domain.
+        "score": {"type": "number", "minimum": 0.0, "maximum": 1.0},
+        "strategy_match": {"type": "boolean"},
+        "nl_strategy": {"type": "string"},
+        "fl_strategy": {"type": "string"},
+        "alignment": {"type": "array", "items": {
+            "type": "object",
+            "properties": {"nl_blocks": _INTS, "fl_blocks": _INTS,
+                           "match_score": {"type": "number"},
+                           "reason": {"type": "string"}},
+            "required": ["nl_blocks", "fl_blocks", "match_score", "reason"],
+            "additionalProperties": False}},
+        "unmatched_nl_blocks": _INTS,
+        "unmatched_fl_blocks": _INTS,
+        "summary": {"type": "string"},
+    },
+    "required": ["score", "strategy_match", "summary"],
+    "additionalProperties": False,
+}
+
+
 def judge_generate(system: str | None, user: str, *, temperature: float = 0.0,
-                   url: str = JUDGE_URL, timeout: float = JUDGE_TIMEOUT) -> str | None:
+                   url: str = JUDGE_URL, timeout: float = JUDGE_TIMEOUT,
+                   json_schema: dict | None = None) -> str | None:
     """Raw text from the judge, or None. Never raises."""
     payload = {"user": user, "temperature": temperature}
+    if json_schema is not None:
+        payload["json_schema"] = json_schema
     if system:
         payload["system"] = system
     req = urllib.request.Request(
@@ -165,23 +263,82 @@ def judge_generate(system: str | None, user: str, *, temperature: float = 0.0,
 def _parse_json(text: str) -> dict | None:
     """Pull a JSON object out of the judge's reply. None if there isn't one.
 
-    Mirrors AutoFaith's `_parse_json` but does not raise, and falls back to the
-    outermost brace pair -- an unconstrained local model prepends prose more
-    often than a structured-output API does.
+    THE OLD VERSION'S `rfind("}")` WAS A REAL BUG, not a stylistic choice, and it
+    is why this is written out at length. MEASURED on the first faith_eval runs:
+    the judge routinely emits a correct ```json block and then keeps talking, and
+    the trailing prose is MATHEMATICS -- `mu_{A,B} : A tensor B -> S`, `C_0`,
+    set-builder braces. `rfind("}")` lands inside that prose, so a reply
+    containing perfectly good JSON was reported as `bad_json`. Since an
+    unparseable reply becomes UNKNOWN, and unknown pays nothing, the parser was
+    silently suppressing real faithfulness verdicts.
+
+    Three strategies, cheapest first. Each returns the first candidate that both
+    parses AND looks like the schema, because a reply can contain several brace
+    groups (a worked example, then the answer) and "parses" alone would take the
+    wrong one.
     """
     import re
-    t = re.sub(r"^```(?:json)?\s*", "", text.strip())
-    t = re.sub(r"\s*```$", "", t)
-    try:
-        return json.loads(t)
-    except json.JSONDecodeError:
-        pass
-    i, j = t.find("{"), t.rfind("}")
-    if i >= 0 and j > i:
+    t = text.strip()
+
+    def ok(obj):
+        """Is this the object we were asking for, rather than some other dict?
+
+        Both call sites want one of two shapes: `{"blocks": [...]}` from the NL
+        decomposition, or `{"score": ...}` from the whole-proof judgement.
+        """
+        return isinstance(obj, dict) and ("blocks" in obj or "score" in obj)
+
+    # 1. The whole reply is JSON, possibly in one tidy fence.
+    stripped = re.sub(r"^```(?:json)?\s*", "", t)
+    stripped = re.sub(r"\s*```$", "", stripped)
+    for cand in (t, stripped):
         try:
-            return json.loads(t[i:j + 1])
+            obj = json.loads(cand)
         except json.JSONDecodeError:
-            return None
+            continue
+        if ok(obj):
+            return obj
+
+    # 2. Any fenced block ANYWHERE, not just one anchored at both ends. This is
+    #    the case the old parser missed: fence, then commentary.
+    for m in re.finditer(r"```(?:json)?\s*(.*?)```", t, re.DOTALL):
+        try:
+            obj = json.loads(m.group(1))
+        except json.JSONDecodeError:
+            continue
+        if ok(obj):
+            return obj
+
+    # 3. Brace matching, scanning for a BALANCED object from each `{`. Depth
+    #    counting has to ignore braces inside strings and escaped quotes, or
+    #    a `"goal": "{x | x > 0}"` closes the object early.
+    for start in (i for i, c in enumerate(t) if c == "{"):
+        depth, in_str, esc = 0, False, False
+        for k in range(start, len(t)):
+            c = t[k]
+            if in_str:
+                if esc:
+                    esc = False
+                elif c == "\\":
+                    esc = True
+                elif c == '"':
+                    in_str = False
+                continue
+            if c == '"':
+                in_str = True
+            elif c == "{":
+                depth += 1
+            elif c == "}":
+                depth -= 1
+                if depth == 0:
+                    try:
+                        obj = json.loads(t[start:k + 1])
+                    except json.JSONDecodeError:
+                        break          # this `{` does not start valid JSON
+                    if ok(obj):
+                        return obj
+                    break
+        # fall through to the next `{`
     return None
 
 
@@ -280,6 +437,38 @@ def _repl_shim(flc, scorer):
 # ---------------------------------------------------------------------------
 # NL blocks, and the whole-proof judgement.
 # ---------------------------------------------------------------------------
+# ---------------------------------------------------------------------------
+# NL-block cache.
+#
+# THE DECOMPOSITION DOES NOT DEPEND ON THE ROLLOUT. It is a function of the
+# problem's (informal statement, informal proof) alone -- the candidate's Lean
+# proof enters only at the whole-proof judgement. In the GRPO loop the same
+# prompt is scored once per SOLVED rollout in its group, and again on every
+# later epoch, so without this the identical extraction is paid for repeatedly
+# at ~40s a time. It also removes a source of between-arm variance: with a cache
+# every arm judges against the same decomposition of a given problem rather than
+# a freshly sampled one.
+#
+# SAFE BECAUSE THE CALL IS GREEDY. Both call sites pass temperature 0.0, so a
+# repeat call returns the same text anyway; this changes cost, not semantics.
+#
+# FAILURES ARE NEVER CACHED. A judge outage is transient, and caching a `None`
+# would make one dead minute permanently poison every row it touched.
+_NL_CACHE: dict[str, list] = {}
+_NL_CACHE_LOCK = __import__("threading").Lock()
+NL_CACHE_MAX = int(os.environ.get("FAITH_NL_CACHE_MAX", "4096"))
+
+
+def _nl_key(statement_nl: str, proof_nl: str) -> str:
+    import hashlib
+    return hashlib.sha1(f"{statement_nl}\x00{proof_nl}".encode()).hexdigest()
+
+
+def nl_cache_stats() -> dict:
+    with _NL_CACHE_LOCK:
+        return {"entries": len(_NL_CACHE), "max": NL_CACHE_MAX}
+
+
 def nl_blocks(statement_nl: str, proof_nl: str, **kw) -> tuple[list | None, str | None]:
     """AutoFaith's NL-block extraction, run through OUR judge server.
 
@@ -293,31 +482,59 @@ def nl_blocks(statement_nl: str, proof_nl: str, **kw) -> tuple[list | None, str 
     af = _autofaith()
     if af is None:
         return None, "no_autofaith"
+    key = _nl_key(statement_nl, proof_nl)
+    with _NL_CACHE_LOCK:
+        hit = _NL_CACHE.get(key)
+    if hit is not None:
+        return hit, None
     prompt = (af["NL_PROMPT"].replace("{THEOREM_STATEMENT}", statement_nl)
               .replace("{NATURAL_LANGUAGE_PROOF}", proof_nl))
-    raw = judge_generate(None, prompt, **kw)
+    raw = judge_generate(None, prompt, json_schema=NL_BLOCKS_SCHEMA, **kw)
     if raw is None:
         return None, "no_judge"
     obj = _parse_json(raw)
     if not isinstance(obj, dict):
+        _debug_raw("nl_blocks", raw)
         return None, "bad_json"
     blocks = obj.get("blocks")
     if not isinstance(blocks, list) or not blocks:
         return None, "nl_blocks_failed"
+    with _NL_CACHE_LOCK:
+        # Plain FIFO eviction, not LRU: the access pattern is a training epoch
+        # sweeping the corpus, where recency carries no information about what
+        # will be needed next.
+        if len(_NL_CACHE) >= NL_CACHE_MAX:
+            _NL_CACHE.pop(next(iter(_NL_CACHE)), None)
+        _NL_CACHE[key] = blocks
     return blocks, None
 
 
+@contextlib.contextmanager
+def _nullcontext():
+    yield
+
+
 def score_faithfulness(statement_nl: str, proof_nl: str, lean_proof: str, *,
-                       scorer, context: str = "", **kw) -> FaithfulnessResult:
+                       scorer, context: str = "", lean_lock=None,
+                       **kw) -> FaithfulnessResult:
     """THE ENTRY POINT. Returns a result whose `score` is None on any failure.
 
     Order matters: Lean first (cheap, and its term-mode verdict short-circuits
     the whole judge cost), then the two judge calls.
+
+    `lean_lock` IS HELD ACROSS THE LEAN STEP ONLY, and that split is the module
+    docstring's "never holds the Lean semaphore across a network call" made
+    executable. An online caller (reward/reward_fn.py) owns a semaphore with
+    BEQ_MAX_CONCURRENT=1 because the REPL is not thread-safe; passing it here
+    lets this function take it for `fl_blocks` and drop it before the judge, so
+    a multi-second generation does not serialise every other rollout's Lean work
+    behind it. Offline callers pass nothing and get the old behaviour.
     """
     t0 = time.time()
     el = lambda: time.time() - t0
 
-    blocks_fl, err = fl_blocks(scorer, lean_proof, context)
+    with (lean_lock if lean_lock is not None else _nullcontext()):
+        blocks_fl, err = fl_blocks(scorer, lean_proof, context)
     if err:
         return FaithfulnessResult(None, err, seconds=el())
     if not blocks_fl:
@@ -333,11 +550,12 @@ def score_faithfulness(statement_nl: str, proof_nl: str, lean_proof: str, *,
     nl_json = json.dumps(blocks_nl, indent=2, ensure_ascii=False)
     prompt = (af["JUDGE_PROMPT"].replace("{NL_BLOCKS}", nl_json)
               .replace("{FL_BLOCKS}", fl_json))
-    raw = judge_generate(None, prompt, **kw)
+    raw = judge_generate(None, prompt, json_schema=WHOLE_PROOF_SCHEMA, **kw)
     if raw is None:
         return FaithfulnessResult(None, "no_judge", len(blocks_nl), len(blocks_fl), el())
     obj = _parse_json(raw)
     if not isinstance(obj, dict) or not isinstance(obj.get("score"), (int, float)):
+        _debug_raw("whole_proof_judge", raw)
         return FaithfulnessResult(None, "bad_json", len(blocks_nl), len(blocks_fl), el())
 
     return FaithfulnessResult(
@@ -349,12 +567,18 @@ def score_faithfulness(statement_nl: str, proof_nl: str, lean_proof: str, *,
 
 def proof_follows_argument(informal_proof: str | None, lean_proof: str | None,
                            *, statement_nl: str = "", scorer=None,
-                           context: str = "", **kw) -> float | None:
-    """The `reward.reward.proof_follows_argument` signature, for the day this is
-    wired in. Returns None -- unknown -- on every failure path, per that
-    function's own stated requirement. Not called from the reward loop today.
+                           context: str = "", lean_lock=None,
+                           **kw) -> float | None:
+    """The `reward.reward.proof_follows_argument` signature. Returns None --
+    unknown -- on every failure path, per that function's stated requirement.
+
+    NOW CALLED FROM THE REWARD LOOP, by `compute_score_outcome_faith` and
+    `compute_score_outcome_v2` in reward/reward_fn.py, and by nothing else. The
+    two plain arms (`outcome`, `outcome_brevity`) still pass None for this
+    column and so still score a SOLVED rollout at exactly 0.85.
     """
     if not informal_proof or not lean_proof or scorer is None:
         return None
     return score_faithfulness(statement_nl, informal_proof, lean_proof,
-                              scorer=scorer, context=context, **kw).score
+                              scorer=scorer, context=context,
+                              lean_lock=lean_lock, **kw).score
