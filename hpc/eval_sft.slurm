@@ -22,11 +22,16 @@ N_EVAL="${N_EVAL:-1000}"
 # A corpus must be evaluated against the val slice it was built from: BEq+ needs
 # a gold, so scoring against another corpus's golds measures transfer, not fit.
 VAL_PARQUET="${VAL_PARQUET:-${DATA_DIR}/val.parquet}"
-# Generation budget. 128 is enough for a bare theorem; a CoT-distilled model
-# emits a <think> block then a fenced proof and needs far more, or every
-# completion is truncated before the fence closes. Set MAX_NEW_TOKENS=1536 for
-# such a model (pair it with STANDALONE=1).
-MAX_NEW_TOKENS="${MAX_NEW_TOKENS:-128}"
+# Generation budget. 512, matching `evaluate_checkpoints.py`'s own default and
+# `run_grpo.sh`'s max_response_length, so a policy is scored against the budget
+# it was trained under. The old 128 was a 16GB-card artifact: it covers a bare
+# theorem but truncates 6.1% of reference-length proof-pair answers (gold answer
+# p99 192 / max 275 Qwen tokens), and a truncated proof still elaborates as a
+# STATEMENT, so it scored as an unfinished proof rather than as a failure and
+# nothing in the JSON said it had happened. `truncated_rate` now records it.
+# A CoT-distilled model emits a <think> block before its fenced proof and needs
+# far more still: set MAX_NEW_TOKENS=1536 for one (pair it with STANDALONE=1).
+MAX_NEW_TOKENS="${MAX_NEW_TOKENS:-512}"
 
 # TAG must match the one given to hpc/sft.slurm; it scopes the checkpoint dir,
 # every results/ filename, and the best-SFT pointer.

@@ -68,9 +68,26 @@ CORPORA = {
                             series="CORPUS_ABLATION"),
 }
 CORPUS = CORPORA["locolib"]      # main() resets this
+# The trained series the untrained base is compared against head-to-head. Every
+# roster has exactly one untrained "base"; which trained run it is paired with
+# differs per roster, so resolve it there rather than hardcoding one key.
+SUBJECT = "distilled"            # main() resets this
 OUT = FIGS = TABS = None
 N = 760
 EVAL, LOGS = ROOT / "results" / "eval", ROOT / "logs"
+# Series belonging to a finished study live one level down, under
+# results/eval/_completed/<study>/, so that discovery over results/eval/ returns
+# only what is still being trained. Labels are unique across both roots.
+EVAL_ROOTS = (EVAL, *sorted((EVAL / "_completed").glob("*")))
+
+
+def eval_dir(label: str) -> Path:
+    """The directory holding `label`'s records, live root first."""
+    for root in EVAL_ROOTS:
+        d = root / label
+        if d.is_dir():
+            return d
+    return EVAL / label
 TOKENIZER = "/scratch/logan03/ai4math_training_models/qwen2.5-coder-3b-instruct"
 
 DOM_DISTILLED = {"algebraic_structures": 3672, "foundations_logic": 3323, "number_theory": 1394}
@@ -180,16 +197,22 @@ def parse_logs(names):
 
 
 def load_evals(c):
+    # Glob rather than walk the roster's `steps` list: a run's last checkpoint is
+    # whatever the walltime chunk stopped on (164, 240, 252 ...), and since the
+    # reported step is now the final one, a hardcoded list would silently report
+    # the second-to-last checkpoint as final.
     out = {}
-    for s in c["steps"]:
-        p = EVAL / c["label"] / f"eval_{c['label']}-step{s}_n{N}.json"
-        if p.exists():
-            out[s] = next(iter(json.load(open(p)).values()))
+    pat = re.compile(rf"^eval_{re.escape(c['label'])}-step(\d+)_n{N}\.json$")
+    d = eval_dir(c["label"])
+    for f in sorted(d.glob(f"eval_{c['label']}-step*_n{N}.json")) if d.is_dir() else []:
+        m = pat.match(f.name)
+        if m:
+            out[int(m.group(1))] = next(iter(json.load(open(f)).values()))
     return out
 
 
 def load_gen(c, s):
-    p = EVAL / c["label"] / f"gen_{c['label']}-step{s}_n{N}.jsonl"
+    p = eval_dir(c["label"]) / f"gen_{c['label']}-step{s}_n{N}.jsonl"
     return [json.loads(l) for l in open(p)] if p.exists() else []
 
 
@@ -346,7 +369,7 @@ def figures(tok, trajs, evs, gens, full):
     fig, ax = plt.subplots(figsize=(7.4, 4.4))
     bins = range(0, 1600, 40)
     for c in live:
-        if c["key"] not in ("base", "distilled"):
+        if c["key"] not in ("base", SUBJECT):
             continue
         ax.hist(gens[c["key"]], bins=bins, color=C[c["col"]], alpha=.55, label=c["tex"])
     ax.axvline(1536, color=C["CONTROL"], ls=":", lw=1.4)
@@ -418,9 +441,9 @@ def _tex(body, cap, lab):
 def tables(evs, gens, full):
     live = [c for c in SERIES if evs[c["key"]]]
     base = next(c for c in live if c["key"] == "base")
-    dist = next(c for c in live if c["key"] == "distilled")
-    b_ev, d_ev = evs["base"][0], evs["distilled"][final(evs["distilled"])]
-    d_final = final(evs["distilled"])
+    dist = next(c for c in live if c["key"] == SUBJECT)
+    d_final = final(evs[SUBJECT])
+    b_ev, d_ev = evs["base"][0], evs[SUBJECT][d_final]
     pr = paired(b_ev, d_ev)
 
     # headline: every trained series against the untrained floor
@@ -486,17 +509,17 @@ def tables(evs, gens, full):
         "dvb-outcome"))
 
     # output lengths, untrained vs distilled
-    bs, ds = summ(gens["base"]), summ(gens["distilled"])
+    bs, ds = summ(gens["base"]), summ(gens[SUBJECT])
     bf = sum(1 for g in load_gen(base, 0) if _FENCE.search(g["completion"]))
     df_ = sum(1 for g in load_gen(dist, d_final) if _FENCE.search(g["completion"]))
-    body = ("\\begin{tabular}{lcc}\n\\toprule\n & Untrained base & Distilled (CoT) \\\\\n\\midrule\n"
+    body = ("\\begin{tabular}{lcc}\n\\toprule\n & Untrained base & " + dist["tex"] + " \\\\\n\\midrule\n"
             f"mean & {bs['mean']:.0f} & {ds['mean']:.0f} \\\\\n"
             f"median & {bs['p50']} & {ds['p50']} \\\\\n"
             f"p90 & {bs['p90']} & {ds['p90']} \\\\\n"
             f"p95 & {bs['p95']} & {ds['p95']} \\\\\n"
             f"max & {bs['max']} & {ds['max']} \\\\\n\\midrule\n"
             f"hit the 1536-tok cap & {sum(1 for x in gens['base'] if x>=1530)}/{N} & "
-            f"{sum(1 for x in gens['distilled'] if x>=1530)}/{N} \\\\\n"
+            f"{sum(1 for x in gens[SUBJECT] if x>=1530)}/{N} \\\\\n"
             f"closed \\texttt{{```lean}} fence & {bf}/{N} & {df_}/{N} \\\\\n"
             "\\bottomrule\n\\end{tabular}")
     (TABS / "table_output_lengths.tex").write_text(_tex(
@@ -512,7 +535,7 @@ def tables(evs, gens, full):
             ("LR / schedule", "---", "5e-5 / constant"),
             ("eval scoring", "\\texttt{score\\_standalone}", "\\texttt{score\\_standalone}"),
             ("gen budget at eval", "1536 tok", "1536 tok")]
-    body = ("\\begin{tabular}{lll}\n\\toprule\n & Untrained base & Distilled (CoT) \\\\\n\\midrule\n"
+    body = ("\\begin{tabular}{lll}\n\\toprule\n & Untrained base & " + dist["tex"] + " \\\\\n\\midrule\n"
             + "".join(f"{a} & {b} & {c} \\\\\n" for a, b, c in rows) + "\\bottomrule\n\\end{tabular}")
     (TABS / "table_config.tex").write_text(_tex(
         body, "Configuration. Both are scored identically and given the same "
@@ -571,13 +594,19 @@ def main():
         SERIES = _BEQOK
     elif CORPUS.get("series") == "CORPUS_ABLATION":
         SERIES = _CORPUS
-    OUT = ROOT / "results" / CORPUS["out"]
+    # Study outputs live under results/reports/, keeping the top of results/ to
+    # the directories that jobs write to directly.
+    OUT = ROOT / "results" / "reports" / CORPUS["out"]
     FIGS, TABS = OUT / "figures", OUT / "tables"
     # the two series carry a different eval label per corpus; everything else
     # about them (colour, role, training logs, corpus stats) is identical
     if "base_label" in CORPUS:
         for c in SERIES:
             c["label"] = CORPUS["base_label"] if c["key"] == "base" else CORPUS["dist_label"]
+    global SUBJECT
+    prim = [c["key"] for c in SERIES
+            if c["role"] == "primary" and (EVAL / c["label"]).is_dir()]
+    SUBJECT = "distilled" if "distilled" in prim else (prim[0] if prim else "distilled")
     FIGS.mkdir(parents=True, exist_ok=True)
     TABS.mkdir(parents=True, exist_ok=True)
     global _pd
@@ -589,7 +618,7 @@ def main():
     evs = {c["key"]: load_evals(c) for c in SERIES}
     gens = {}
     for c in SERIES:
-        if evs[c["key"]] and c["key"] in ("base", "distilled"):
+        if evs[c["key"]] and c["key"] in ("base", SUBJECT):
             gens[c["key"]] = toklen(tok, [g["completion"] for g in load_gen(c, final(evs[c["key"]]))])
     print("[dvb] series with evals: " + ", ".join(
         f"{c['tex']}({len(evs[c['key']])})" for c in SERIES if evs[c["key"]]))
@@ -598,7 +627,14 @@ def main():
 
     roster = CORPUS.get("series") == "ALL_MINIF2F"
     ablation = CORPUS.get("series") == "BEQOK_ABLATION"
-    if ablation:
+    corpusab = CORPUS.get("series") == "CORPUS_ABLATION"
+    if corpusab:
+        md = ["# Which corpus, and does the reasoning trace matter? (miniF2F, OOD)\n",
+              "Four SFT runs crossing two factors: the distillation **corpus** (LoCoLib vs",
+              "Mizar) and whether the assistant target keeps the teacher's `<think>` block",
+              "or only the generated Lean. Same base model, same recipe, same pinned",
+              f"{N}-row out-of-domain slice, scored with `score_standalone`.\n"]
+    elif ablation:
         A = evs["distilled"]; B = evs["beqok"]     # "all targets" / "valid only"
         aB, bB = final(A), final(B)
         md = ["# Does filtering the distilled targets to BEq+-valid help? (miniF2F, OOD)\n",
@@ -692,6 +728,40 @@ def main():
                "",
                "For this transfer target, **data volume beats target-statement purity**.",
                ""]
+    elif corpusab:
+        def bqt(k):
+            r = evs[k][final(evs[k])]
+            return r["beq_plus_rate"] * 100, r["typecheck_rate"] * 100
+        have = {k: bqt(k) for k in ("ours", "nocot", "mizar", "mizar_nocot") if evs.get(k)}
+        md += ["", "## Read", ""]
+        if "ours" in have and "nocot" in have:
+            md.append(f"**The reasoning trace on LoCoLib:** with `<think>` "
+                      f"{have['ours'][0]:.1f}% BEq+ / {have['ours'][1]:.1f}% elaborates, "
+                      f"without it {have['nocot'][0]:.1f}% / {have['nocot'][1]:.1f}%.")
+        if "mizar" in have and "mizar_nocot" in have:
+            md.append(f"**The reasoning trace on Mizar:** with `<think>` "
+                      f"{have['mizar'][0]:.1f}% / {have['mizar'][1]:.1f}%, without it "
+                      f"{have['mizar_nocot'][0]:.1f}% / {have['mizar_nocot'][1]:.1f}%.")
+        if "ours" in have and "mizar" in have:
+            md.append(f"**The corpus:** LoCoLib-distilled {have['ours'][0]:.1f}% BEq+ vs "
+                      f"Mizar-distilled {have['mizar'][0]:.1f}% on the same competition "
+                      "slice. Mizar is a different mathematical register (formalised",
+                      )
+            md.append("mathematics library prose, not contest problems), so this is a "
+                      "transfer question, not a data-quality one.")
+        md += ["",
+               "Read the trajectories, not the final numbers: these runs cross over between",
+               "checkpoints and the paired differences below are the honest measure.", ""]
+        for a_, b_ in (("ours", "nocot"), ("mizar", "mizar_nocot"), ("ours", "mizar")):
+            if evs.get(a_) and evs.get(b_):
+                A, B = evs[a_][final(evs[a_])], evs[b_][final(evs[b_])]
+                q = paired(A, B)
+                ta = next(c["tex"] for c in SERIES if c["key"] == a_)
+                tb = next(c["tex"] for c in SERIES if c["key"] == b_)
+                md.append(f"- {ta} vs {tb}: "
+                          f"{(A['beq_plus_rate']-B['beq_plus_rate'])*100:+.1f} pp BEq+, "
+                          f"McNemar p={q['p']:.2g}")
+        md += [""]
     elif roster:
         fam = {"capped": "gold", "uncapped": "gold", "matchedgold": "gold",
                "cotgold": "gold", "distilled": "distilled", "distilled_constlr": "distilled",

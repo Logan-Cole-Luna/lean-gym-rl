@@ -54,3 +54,6 @@ data_minif2f
 results/distilled_vs_baseline_locolib
 results/distilled_vs_baseline_v3
 results/distilled_vs_baseline
+data_mizar_distilled
+data_locolib_distilled_nocot
+data_mizar_distilled_nocot

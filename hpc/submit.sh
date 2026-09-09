@@ -44,8 +44,11 @@ case "${TASK}" in
   # run vs a SERIES_TAG=proof variant); fold it in or they name-collide.
   grpo)       ARM="$(get ARM)"; SERIES="$(get SERIES_TAG)"
               ARM="${SERIES:+${SERIES}_}${ARM}" ;;
-  grpo_eval)  ARM="$(get RUN)"; ARM="${ARM#${RUN_PREFIX}_}"; TASK=eval ;;
-  eval_sft)   ARM="$(get TAG)"; TASK=evalsft ;;
+  # OUT_LABEL first: a cross-corpus eval differs from the in-domain one ONLY in
+  # that knob, so naming from RUN alone gave two different jobs the same squeue
+  # name and made them indistinguishable while pending.
+  grpo_eval)  ARM="$(get OUT_LABEL "$(get RUN)")"; ARM="${ARM#${RUN_PREFIX}_}"; TASK=eval ;;
+  eval_sft)   ARM="$(get OUT_LABEL "$(get TAG)")"; TASK=evalsft ;;
   sft|midtrain) ARM="$(get TAG)" ;;
   score_pool) ARM="s$(get SLICE)"; TASK=pool ;;
   build_edge_pool) ARM=""; TASK=edge ;;

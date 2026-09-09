@@ -189,8 +189,36 @@ def summarise(recs: list[dict]) -> dict:
             "auc_ci95": [boots[50], boots[1949]], "n_matched": len(a), "n_mismatched": len(b)}
     p = out.get("padded")
     if m and p and p["mean"] is not None and m["mean"] is not None:
-        out["padding"] = {"delta_mean": p["mean"] - m["mean"],
-                          "raises_score": p["mean"] > m["mean"]}
+        # PAIRED, AND WITH AN INTERVAL. Comparing two arm MEANS and calling any
+        # positive difference a failure turns a coin-flip into a verdict: across
+        # four judges, two came out at -0.021 and +0.017 with CIs straddling
+        # zero, and the old rule called one PASS and the other FAIL on that
+        # noise. Pair on the row -- both arms score the same problems -- and
+        # report the interval, so "demonstrably rewards padding" is separated
+        # from "no detectable effect at this n".
+        mm = {r["i"]: r["score"] for r in recs
+              if r["arm"] == "matched" and r["score"] is not None}
+        pp = {r["i"]: r["score"] for r in recs
+              if r["arm"] == "padded" and r["score"] is not None}
+        both = sorted(set(mm) & set(pp))
+        rec = {"delta_mean_unpaired": p["mean"] - m["mean"], "n_pairs": len(both)}
+        if len(both) >= 10:
+            diffs = [pp[i] - mm[i] for i in both]
+            obs = sum(diffs) / len(diffs)
+            rng = random.Random(0)
+            boots = sorted(sum(rng.choice(diffs) for _ in diffs) / len(diffs)
+                           for _ in range(4000))
+            lo, hi = boots[100], boots[3899]
+            rec.update(delta_paired=obs, ci95=[lo, hi],
+                       # Only a CI strictly above zero is a real failure.
+                       raises_score=lo > 0,
+                       resists_padding=hi < 0,
+                       verdict=("raises" if lo > 0 else
+                                "safe" if hi < 0 else "indistinguishable"))
+        else:
+            rec.update(delta_paired=None, raises_score=p["mean"] > m["mean"],
+                       verdict="too_few_pairs")
+        out["padding"] = rec
     return out
 
 
@@ -220,9 +248,18 @@ def render(s: dict) -> None:
               + ("  (scored rows were pre-filtered to tactic-mode)" if pl["tactic_only"] else ""))
     if "padding" in s:
         pd = s["padding"]
-        verdict = "FAIL" if pd["raises_score"] else "PASS"
-        print(f"PADDING           delta_mean={pd['delta_mean']:+.3f} "
-              f"(must not be positive: {verdict})")
+        if pd.get("delta_paired") is None:
+            print(f"PADDING           delta={pd['delta_mean_unpaired']:+.3f} "
+                  f"(only {pd['n_pairs']} pairs; no interval)")
+        else:
+            lo, hi = pd["ci95"]
+            label = {"raises": "FAIL (demonstrably rewards padding)",
+                     "safe": "PASS (demonstrably resists padding)",
+                     "indistinguishable":
+                         "INDISTINGUISHABLE from zero at this n -- not immunity"}
+            print(f"PADDING           delta={pd['delta_paired']:+.3f} paired over "
+                  f"{pd['n_pairs']} rows, 95% CI [{lo:+.3f}, {hi:+.3f}]")
+            print(f"                  {label[pd['verdict']]}")
 
 
 def merge(out: Path) -> dict:

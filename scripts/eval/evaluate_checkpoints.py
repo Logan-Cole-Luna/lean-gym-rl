@@ -28,6 +28,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 from pathlib import Path
 
@@ -66,6 +67,16 @@ def resolve_model_path(spec: str) -> tuple[str, str]:
         f"{path} has neither HF weights nor actor/huggingface/ -- "
         f"run `make merge-checkpoints` first."
     )
+
+
+def _toolchain() -> str | None:
+    """The Lean version the scoring Mathlib pins, or None if it cannot be read."""
+    root = os.environ.get("MATHLIB_ROOT")
+    f = Path(root, "lean-toolchain") if root else None
+    try:
+        return f.read_text().strip() if f and f.is_file() else None
+    except Exception:
+        return None
 
 
 def has_full_weights(hf_dir: Path) -> bool:
@@ -322,6 +333,17 @@ def main() -> None:
             # a capped run indistinguishable from an uncapped one after the fact.
             "max_new_tokens": args.max_new_tokens,
             "truncated_rate": n_truncated / n if n else 0.0,
+            # WHICH LEAN SCORED THIS. Not decoration: `hpc/eval_sft.slurm` ran
+            # LoCoLib against Mathlib v4.8.0-rc1 while `hpc/grpo_eval.slurm` ran
+            # it against v4.23, and because neither number recorded a toolchain
+            # the two were compared as though they were commensurable --
+            # manufacturing a 15pp "RL gain" that re-scoring the identical
+            # completions under one toolchain reduced to +0.5pp (n.s.). Any
+            # record missing this key was written before the fix and must have
+            # its toolchain established some other way before it is paired
+            # against anything.
+            "toolchain": _toolchain(),
+            "mathlib_root": os.environ.get("MATHLIB_ROOT"),
             "per_example": per_example,
         }
         print(f"[eval] {label}: typecheck {n_tc}/{n} ({100*n_tc/n:.1f}%)  "

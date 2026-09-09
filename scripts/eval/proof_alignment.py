@@ -40,6 +40,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import random
 import re
 import sys
 import time
@@ -202,33 +203,48 @@ def score_pair(scorer: BEqPlusScorer, pred_full: str, gold_full: str,
     return out
 
 
-def main() -> None:
-    ap = argparse.ArgumentParser()
-    ap.add_argument("--pairs", type=Path, required=True,
-                    help="jsonl with {pred, gold} full Lean snippets per line")
-    ap.add_argument("--out", type=Path, default=Path("results/alignment"))
-    ap.add_argument("--limit", type=int, default=0)
-    ap.add_argument("--max-cells", type=int, default=64)
-    args = ap.parse_args()
+# A gold that stops at `:= by` with nothing after it has no proof to align
+# against. miniF2F is entirely like this -- it ships STATEMENTS, `formal_proof`
+# is literally "sorry" -- so FL <-> FL is undefined there and the pair must be
+# dropped rather than scored 0.0, which would read as a policy failure.
+_PROOFLESS = re.compile(r":=\s*(by)?\s*$")
 
-    pairs = [json.loads(l) for l in args.pairs.open() if l.strip()]
-    if args.limit:
-        pairs = pairs[: args.limit]
-    scorer = BEqPlusScorer()
-    args.out.mkdir(parents=True, exist_ok=True)
-    fh = (args.out / "records.jsonl").open("w")
-    recs = []
-    for i, p in enumerate(pairs, 1):
-        r = score_pair(scorer, p["pred"], p["gold"], args.max_cells)
-        r["index"] = i
-        recs.append(r)
-        fh.write(json.dumps({k: v for k, v in r.items() if k != "table"}) + "\n")
-        fh.flush()
-        print(f"[align] {i}/{len(pairs)} f1={r.get('f1', 0):.2f} "
-              f"({r.get('n_pred', 0)}x{r.get('n_gold', 0)}) {r['seconds']:.1f}s "
-              f"{r.get('error') or ''}", flush=True)
+
+def has_gold_proof(gold: str) -> bool:
+    return not _PROOFLESS.search(gold.rstrip())
+
+
+def load_pairs(args) -> list[dict]:
+    """{pred, gold} pairs from either a hand-built --pairs file or a gen_*.jsonl.
+
+    The gen file already carries both snippets under exactly these two keys, so
+    reading it directly removes a conversion step that could silently pair the
+    wrong rows.
+    """
+    src = args.pairs or args.gen
+    rows = [json.loads(l) for l in src.open() if l.strip()]
+    if args.gen:
+        kept = [r for r in rows if has_gold_proof(r.get("gold", ""))]
+        print(f"[align] {len(kept)}/{len(rows)} rows have a gold PROOF to align "
+              f"against ({len(rows) - len(kept)} statement-only golds dropped)")
+        rows = kept
+        if not rows:
+            print("[align] FATAL: no gold proofs in this corpus. FL <-> FL "
+                  "alignment is undefined on a statement-only benchmark such as "
+                  "miniF2F; run it on a corpus whose golds carry proofs.")
+            sys.exit(2)
+    for i, r in enumerate(rows):
+        r.setdefault("i", i)
+    if args.n and args.n < len(rows):
+        random.Random(args.seed).shuffle(rows)
+        rows = rows[: args.n]
+        rows.sort(key=lambda r: r["i"])
+    return rows
+
+
+def summarize(recs: list[dict]) -> dict:
     ok = [r for r in recs if not r.get("error")]
-    summary = {
+    return {
         "n": len(recs), "n_scored": len(ok),
         "errors": {k: sum(r.get("error") == k for r in recs)
                    for k in ("no_env", "no_checkpoints", "too_large")},
@@ -238,8 +254,64 @@ def main() -> None:
         "mean_seconds": sum(r["seconds"] for r in recs) / max(len(recs), 1),
         "total_seconds": sum(r["seconds"] for r in recs),
     }
-    (args.out / "summary.json").write_text(json.dumps(summary, indent=2))
-    print(json.dumps(summary, indent=2))
+
+
+def main() -> None:
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--pairs", type=Path,
+                    help="jsonl with {pred, gold} full Lean snippets per line")
+    ap.add_argument("--gen", type=Path,
+                    help="a gen_*.jsonl from evaluate_checkpoints.py; its `pred` "
+                         "and `gold` are the pair, and statement-only golds are "
+                         "dropped with a count")
+    ap.add_argument("--out", type=Path, default=Path("results/alignment"))
+    ap.add_argument("--limit", type=int, default=0)
+    ap.add_argument("--n", type=int, default=0,
+                    help="score a random subsample of this size, seeded, so two "
+                         "checkpoints are compared on the SAME rows")
+    ap.add_argument("--seed", type=int, default=0)
+    ap.add_argument("--max-cells", type=int, default=64)
+    # One pair is an n_pred x n_gold matrix of full BEq+ cascades, i.e. seconds
+    # to minutes each, and this loop is single-process by construction (one Lean
+    # REPL, BEQ_MAX_CONCURRENT=1). Shards are separate PROCESSES with their own
+    # REPL, which is the only parallelism available here.
+    ap.add_argument("--shard", type=int, default=0)
+    ap.add_argument("--num-shards", type=int, default=1)
+    ap.add_argument("--merge", action="store_true",
+                    help="combine records.shard*.jsonl in --out into summary.json")
+    args = ap.parse_args()
+
+    args.out.mkdir(parents=True, exist_ok=True)
+    if args.merge:
+        recs = [json.loads(l) for f in sorted(args.out.glob("records.shard*.jsonl"))
+                for l in f.open() if l.strip()]
+        summary = summarize(recs)
+        (args.out / "summary.json").write_text(json.dumps(summary, indent=2))
+        print(json.dumps(summary, indent=2))
+        return
+
+    if not (args.pairs or args.gen):
+        ap.error("pass --pairs or --gen")
+    pairs = load_pairs(args)
+    if args.limit:
+        pairs = pairs[: args.limit]
+    mine = [p for k, p in enumerate(pairs) if k % args.num_shards == args.shard]
+    print(f"[align] shard {args.shard}/{args.num_shards}: {len(mine)} of "
+          f"{len(pairs)} pairs", flush=True)
+
+    scorer = BEqPlusScorer()
+    fh = (args.out / f"records.shard{args.shard}.jsonl").open("w")
+    recs = []
+    for i, p in enumerate(mine, 1):
+        r = score_pair(scorer, p["pred"], p["gold"], args.max_cells)
+        r["index"] = p["i"]
+        recs.append(r)
+        fh.write(json.dumps({k: v for k, v in r.items() if k != "table"}) + "\n")
+        fh.flush()
+        print(f"[align] {i}/{len(mine)} f1={r.get('f1', 0):.2f} "
+              f"({r.get('n_pred', 0)}x{r.get('n_gold', 0)}) {r['seconds']:.1f}s "
+              f"{r.get('error') or ''}", flush=True)
+    print(json.dumps(summarize(recs), indent=2))
 
 
 if __name__ == "__main__":

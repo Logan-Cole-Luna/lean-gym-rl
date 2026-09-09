@@ -54,21 +54,32 @@ rename_job() {
   fi
 }
 
-MATHLIB_TAR="${MATHLIB_TAR:-/scratch/logan03/mathlib4_v4.8.0-rc1.tar}"
+# DEFAULTS TO v4.23, MATCHING DATA_DIR's LoCoLib default above. It used to
+# default to the v4.8.0-rc1 tar, left over from the deleted Lean-Workbook line,
+# and every job that forgot to override it scored LoCoLib against a Mathlib
+# missing the modules LoCoLib's own golds import. That is not a hypothetical:
+# `hpc/eval_sft.slurm` was run that way and `hpc/grpo_eval.slurm` was not, which
+# manufactured an entire 15pp "RL gain" out of a toolchain mismatch -- see
+# CLAUDE.md's trap list. The three settings move TOGETHER; overriding one alone
+# is what the FLAT note below is about.
+MATHLIB_TAR="${MATHLIB_TAR:-/scratch/logan03/mathlib4_v4.23_lake.tar}"
+MATHLIB_TAR_FLAT="${MATHLIB_TAR_FLAT:-1}"
+export LEAN_INTERACT_CACHE_DIR="${LEAN_INTERACT_CACHE_DIR:-/scratch/logan03/ai4math_training_lean_interact_cache_v423}"
 
 # Copy Mathlib to node-local NVMe: 41s against 1984s off shared storage, without
 # which `import Mathlib` exceeds BEQ_ENV_TIMEOUT on compute nodes as well.
 #
-# MATHLIB_TAR_FLAT: tars are not all laid out the same. The default
-# mathlib4_v4.8.0-rc1.tar wraps everything in a `mathlib4/` prefix (built via
-# `tar -cf ... mathlib4/` from its parent), so extracting into SLURM_TMPDIR
-# directly lands MATHLIB_ROOT correctly. mathlib4_v4.23_lake.tar (a second
-# toolchain, staged for the LoCoLib theorem+proof-pair task) was built FROM
-# INSIDE its directory and has no such prefix -- extracting it the same way
-# leaves MATHLIB_ROOT pointing at an empty dir, which lean_interact reports as
-# "Unable to determine Lean version" (no lean-toolchain found), not as a
-# missing-directory error. Set MATHLIB_TAR_FLAT=1 for a tar shaped that way;
-# default 0 preserves the original, extensively-relied-upon behaviour exactly.
+# MATHLIB_TAR_FLAT: tars are not all laid out the same, and the flag must be set
+# to match the tar or the failure is silent-ish and misleading.
+# mathlib4_v4.23_lake.tar (the default, for LoCoLib) was built FROM INSIDE its
+# directory and carries no `mathlib4/` prefix, so it needs FLAT=1 -- extracting
+# it without leaves MATHLIB_ROOT pointing at an empty dir, which lean_interact
+# reports as "Unable to determine Lean version" (no lean-toolchain found) rather
+# than as a missing directory. mathlib4_v4.8.0-rc1.tar (the old Lean-Workbook
+# toolchain) DOES wrap everything in `mathlib4/` and needs FLAT=0. So the two
+# always move together, which is why they are defaulted together above:
+#   v4.23  -> MATHLIB_TAR_FLAT=1, LEAN_INTERACT_CACHE_DIR=..._v423
+#   v4.8   -> MATHLIB_TAR_FLAT=0, LEAN_INTERACT_CACHE_DIR=...cache
 stage_mathlib() {
   local tag="${1:-stage}"
   if [ -z "${SLURM_TMPDIR:-}" ] || [ ! -f "${MATHLIB_TAR}" ]; then
@@ -83,10 +94,39 @@ stage_mathlib() {
   else
     tar -xf "${MATHLIB_TAR}" -C "${SLURM_TMPDIR}" || return 1
   fi
-  cp -a "${LEAN_INTERACT_CACHE_DIR}" "${SLURM_TMPDIR}/lean_interact_cache" || return 1
+  # STAGE THE REPL CACHE WITH tar, NOT `cp -a`. `cp -a` implies --preserve=all,
+  # which copies extended attributes; from Lustre to node-local disk that
+  # intermittently fails with "preserving permissions ... Numerical result out
+  # of range" (ERANGE on the xattr copy) even though every byte landed, and cp
+  # still exits 1. Two rescore chunks died that way on 2026-09-09: stage_mathlib
+  # returned before exporting MATHLIB_ROOT, and 14 of 46 files went unscored.
+  # GNU tar does not store xattrs unless asked, and it preserves the modes the
+  # REPL build actually needs.
+  local cache_dst="${SLURM_TMPDIR}/lean_interact_cache"
+  rm -rf "${cache_dst}"; mkdir -p "${cache_dst}"
+  if ! tar -cf - -C "${LEAN_INTERACT_CACHE_DIR}" . \
+       | tar -xf - -C "${cache_dst}"; then
+    echo "${tag} FATAL: could not stage ${LEAN_INTERACT_CACHE_DIR}"
+    return 1
+  fi
+  # Verify the copy rather than trusting an exit status, since the failure this
+  # replaces was a nonzero status over a complete tree. A short copy would hand
+  # Lean a half-built REPL, which fails much later and much less legibly.
+  local n_src n_dst
+  n_src=$(find "${LEAN_INTERACT_CACHE_DIR}" -type f | wc -l)
+  n_dst=$(find "${cache_dst}" -type f | wc -l)
+  if [ "${n_src}" -ne "${n_dst}" ]; then
+    echo "${tag} FATAL: staged REPL cache is short: ${n_dst}/${n_src} files"
+    return 1
+  fi
   export MATHLIB_ROOT="${SLURM_TMPDIR}/mathlib4"
   export LEAN_INTERACT_CACHE_DIR="${SLURM_TMPDIR}/lean_interact_cache"
-  echo "${tag} staging took $(( $(date +%s) - t0 ))s"
+  # PRINT THE TOOLCHAIN, not just the seconds. Two jobs scoring the same corpus
+  # against different Mathlib versions is invisible in every other line of every
+  # log, and it silently produced a 15pp phantom result once already. The only
+  # tell in the old logs was the staging duration tracking the tar's size.
+  echo "${tag} staged $(basename "${MATHLIB_TAR}") in $(( $(date +%s) - t0 ))s" \
+       "-- toolchain $(cat "${MATHLIB_ROOT}/lean-toolchain" 2>/dev/null || echo UNKNOWN)"
 }
 
 export BEQ_ENV_TIMEOUT="${BEQ_ENV_TIMEOUT:-2400}"
