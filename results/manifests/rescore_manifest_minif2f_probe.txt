@@ -1,0 +1,8 @@
+results/eval/minif2f_base/gen_minif2f_base-step0_n244.jsonl
+results/eval/minif2f_beqok/gen_minif2f_beqok-step100_n244.jsonl
+results/eval/minif2f_beqok/gen_minif2f_beqok-step125_n244.jsonl
+results/eval/minif2f_beqok/gen_minif2f_beqok-step150_n244.jsonl
+results/eval/minif2f_beqok/gen_minif2f_beqok-step175_n244.jsonl
+results/eval/minif2f_beqok/gen_minif2f_beqok-step25_n244.jsonl
+results/eval/minif2f_beqok/gen_minif2f_beqok-step50_n244.jsonl
+results/eval/minif2f_beqok/gen_minif2f_beqok-step75_n244.jsonl

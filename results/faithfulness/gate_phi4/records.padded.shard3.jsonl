@@ -1,0 +1,30 @@
+{"i": 11, "arm": "padded", "score": 0.75, "error": null, "n_nl": 3, "n_fl": 5, "seconds": 126.36, "strategy_match": true, "beq_plus": false}
+{"i": 21, "arm": "padded", "score": 0.75, "error": null, "n_nl": 6, "n_fl": 5, "seconds": 103.98, "strategy_match": true, "beq_plus": true}
+{"i": 30, "arm": "padded", "score": 0.75, "error": null, "n_nl": 3, "n_fl": 5, "seconds": 109.98, "strategy_match": true, "beq_plus": false}
+{"i": 39, "arm": "padded", "score": null, "error": "bad_json", "n_nl": 0, "n_fl": 5, "seconds": 116.44, "strategy_match": null, "beq_plus": false}
+{"i": 44, "arm": "padded", "score": 0.75, "error": null, "n_nl": 6, "n_fl": 5, "seconds": 167.19, "strategy_match": true, "beq_plus": false}
+{"i": 51, "arm": "padded", "score": 0.75, "error": null, "n_nl": 5, "n_fl": 5, "seconds": 89.51, "strategy_match": false, "beq_plus": false}
+{"i": 58, "arm": "padded", "score": null, "error": "not_applicable", "seconds": 0.0}
+{"i": 63, "arm": "padded", "score": 0.75, "error": null, "n_nl": 5, "n_fl": 5, "seconds": 191.05, "strategy_match": true, "beq_plus": true}
+{"i": 75, "arm": "padded", "score": 0.75, "error": null, "n_nl": 4, "n_fl": 5, "seconds": 101.69, "strategy_match": true, "beq_plus": true}
+{"i": 81, "arm": "padded", "score": 0.75, "error": null, "n_nl": 6, "n_fl": 6, "seconds": 103.79, "strategy_match": true, "beq_plus": true}
+{"i": 88, "arm": "padded", "score": 0.9, "error": null, "n_nl": 6, "n_fl": 6, "seconds": 131.42, "strategy_match": true, "beq_plus": true}
+{"i": 95, "arm": "padded", "score": null, "error": "not_applicable", "seconds": 0.0}
+{"i": 102, "arm": "padded", "score": null, "error": "not_applicable", "seconds": 0.0}
+{"i": 109, "arm": "padded", "score": 0.75, "error": null, "n_nl": 3, "n_fl": 5, "seconds": 139.93, "strategy_match": true, "beq_plus": false}
+{"i": 117, "arm": "padded", "score": 0.75, "error": null, "n_nl": 5, "n_fl": 5, "seconds": 176.19, "strategy_match": true, "beq_plus": false}
+{"i": 121, "arm": "padded", "score": 0.75, "error": null, "n_nl": 6, "n_fl": 7, "seconds": 90.32, "strategy_match": true, "beq_plus": true}
+{"i": 127, "arm": "padded", "score": 0.75, "error": null, "n_nl": 5, "n_fl": 5, "seconds": 94.72, "strategy_match": true, "beq_plus": true}
+{"i": 135, "arm": "padded", "score": 0.75, "error": null, "n_nl": 3, "n_fl": 5, "seconds": 73.11, "strategy_match": true, "beq_plus": true}
+{"i": 143, "arm": "padded", "score": 0.75, "error": null, "n_nl": 1, "n_fl": 5, "seconds": 103.6, "strategy_match": true, "beq_plus": true}
+{"i": 149, "arm": "padded", "score": 0.75, "error": null, "n_nl": 8, "n_fl": 5, "seconds": 173.91, "strategy_match": false, "beq_plus": true}
+{"i": 154, "arm": "padded", "score": null, "error": "bad_json", "n_nl": 0, "n_fl": 5, "seconds": 170.7, "strategy_match": null, "beq_plus": false}
+{"i": 162, "arm": "padded", "score": null, "error": "bad_json", "n_nl": 0, "n_fl": 5, "seconds": 147.96, "strategy_match": null, "beq_plus": true}
+{"i": 166, "arm": "padded", "score": 0.75, "error": null, "n_nl": 7, "n_fl": 5, "seconds": 176.34, "strategy_match": true, "beq_plus": false}
+{"i": 172, "arm": "padded", "score": null, "error": "bad_json", "n_nl": 0, "n_fl": 5, "seconds": 112.83, "strategy_match": null, "beq_plus": true}
+{"i": 184, "arm": "padded", "score": 0.75, "error": null, "n_nl": 4, "n_fl": 5, "seconds": 228.1, "strategy_match": true, "beq_plus": true}
+{"i": 189, "arm": "padded", "score": 0.75, "error": null, "n_nl": 5, "n_fl": 5, "seconds": 95.56, "strategy_match": true, "beq_plus": true}
+{"i": 198, "arm": "padded", "score": 0.75, "error": null, "n_nl": 5, "n_fl": 5, "seconds": 155.43, "strategy_match": true, "beq_plus": true}
+{"i": 203, "arm": "padded", "score": 0.85, "error": null, "n_nl": 6, "n_fl": 9, "seconds": 81.77, "strategy_match": true, "beq_plus": true}
+{"i": 213, "arm": "padded", "score": null, "error": "not_applicable", "seconds": 0.0}
+{"i": 223, "arm": "padded", "score": 0.75, "error": null, "n_nl": 3, "n_fl": 6, "seconds": 121.97, "strategy_match": true, "beq_plus": true}

@@ -1,0 +1,30 @@
+{"i": 5, "arm": "padded", "score": 0.9, "error": null, "n_nl": 3, "n_fl": 5, "seconds": 40.42, "strategy_match": true, "beq_plus": false}
+{"i": 14, "arm": "padded", "score": 0.75, "error": null, "n_nl": 5, "n_fl": 5, "seconds": 40.19, "strategy_match": true, "beq_plus": true}
+{"i": 23, "arm": "padded", "score": 0.75, "error": null, "n_nl": 2, "n_fl": 5, "seconds": 28.83, "strategy_match": false, "beq_plus": true}
+{"i": 33, "arm": "padded", "score": 0.9, "error": null, "n_nl": 10, "n_fl": 7, "seconds": 63.03, "strategy_match": true, "beq_plus": false}
+{"i": 40, "arm": "padded", "score": 0.75, "error": null, "n_nl": 5, "n_fl": 6, "seconds": 56.6, "strategy_match": true, "beq_plus": false}
+{"i": 46, "arm": "padded", "score": 0.9, "error": null, "n_nl": 2, "n_fl": 5, "seconds": 32.18, "strategy_match": true, "beq_plus": false}
+{"i": 52, "arm": "padded", "score": null, "error": "not_applicable", "seconds": 0.0}
+{"i": 59, "arm": "padded", "score": 0.75, "error": null, "n_nl": 9, "n_fl": 5, "seconds": 64.39, "strategy_match": true, "beq_plus": true}
+{"i": 65, "arm": "padded", "score": 0.9, "error": null, "n_nl": 5, "n_fl": 6, "seconds": 51.46, "strategy_match": true, "beq_plus": true}
+{"i": 76, "arm": "padded", "score": 0.9, "error": null, "n_nl": 3, "n_fl": 5, "seconds": 43.8, "strategy_match": true, "beq_plus": true}
+{"i": 82, "arm": "padded", "score": 0.95, "error": null, "n_nl": 5, "n_fl": 5, "seconds": 56.25, "strategy_match": true, "beq_plus": true}
+{"i": 89, "arm": "padded", "score": 0.0, "error": null, "n_nl": 6, "n_fl": 5, "seconds": 63.69, "strategy_match": false, "beq_plus": false}
+{"i": 98, "arm": "padded", "score": 0.9, "error": null, "n_nl": 3, "n_fl": 5, "seconds": 64.91, "strategy_match": true, "beq_plus": true}
+{"i": 103, "arm": "padded", "score": null, "error": "fl_blocks_empty", "n_nl": 0, "n_fl": 0, "seconds": 0.17, "strategy_match": null, "beq_plus": false}
+{"i": 111, "arm": "padded", "score": 0.9, "error": null, "n_nl": 3, "n_fl": 5, "seconds": 35.03, "strategy_match": true, "beq_plus": true}
+{"i": 118, "arm": "padded", "score": 0.9, "error": null, "n_nl": 2, "n_fl": 6, "seconds": 31.55, "strategy_match": true, "beq_plus": true}
+{"i": 122, "arm": "padded", "score": 0.95, "error": null, "n_nl": 9, "n_fl": 8, "seconds": 34.78, "strategy_match": true, "beq_plus": true}
+{"i": 129, "arm": "padded", "score": 0.9, "error": null, "n_nl": 3, "n_fl": 5, "seconds": 37.42, "strategy_match": true, "beq_plus": true}
+{"i": 136, "arm": "padded", "score": 0.95, "error": null, "n_nl": 11, "n_fl": 7, "seconds": 95.12, "strategy_match": true, "beq_plus": true}
+{"i": 145, "arm": "padded", "score": 0.25, "error": null, "n_nl": 3, "n_fl": 5, "seconds": 42.97, "strategy_match": false, "beq_plus": true}
+{"i": 150, "arm": "padded", "score": 0.9, "error": null, "n_nl": 8, "n_fl": 5, "seconds": 56.5, "strategy_match": true, "beq_plus": false}
+{"i": 156, "arm": "padded", "score": 0.75, "error": null, "n_nl": 5, "n_fl": 5, "seconds": 62.24, "strategy_match": true, "beq_plus": true}
+{"i": 163, "arm": "padded", "score": 0.0, "error": null, "n_nl": 6, "n_fl": 5, "seconds": 70.34, "strategy_match": false, "beq_plus": false}
+{"i": 167, "arm": "padded", "score": 0.95, "error": null, "n_nl": 5, "n_fl": 7, "seconds": 59.9, "strategy_match": true, "beq_plus": true}
+{"i": 177, "arm": "padded", "score": 0.9, "error": null, "n_nl": 4, "n_fl": 6, "seconds": 52.71, "strategy_match": true, "beq_plus": true}
+{"i": 185, "arm": "padded", "score": 0.9, "error": null, "n_nl": 3, "n_fl": 6, "seconds": 53.59, "strategy_match": true, "beq_plus": true}
+{"i": 192, "arm": "padded", "score": 0.9, "error": null, "n_nl": 7, "n_fl": 7, "seconds": 60.53, "strategy_match": true, "beq_plus": true}
+{"i": 200, "arm": "padded", "score": 0.9, "error": null, "n_nl": 2, "n_fl": 5, "seconds": 22.86, "strategy_match": true, "beq_plus": false}
+{"i": 208, "arm": "padded", "score": 0.95, "error": null, "n_nl": 6, "n_fl": 6, "seconds": 32.74, "strategy_match": true, "beq_plus": false}
+{"i": 218, "arm": "padded", "score": null, "error": "not_applicable", "seconds": 0.0}

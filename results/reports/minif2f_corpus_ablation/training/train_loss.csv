@@ -1,0 +1,886 @@
+series,label,step,train_loss
+ours,LoCoLib distilled (ours),1,1.581200
+ours,LoCoLib distilled (ours),2,1.601664
+ours,LoCoLib distilled (ours),3,1.397707
+ours,LoCoLib distilled (ours),4,1.268180
+ours,LoCoLib distilled (ours),5,1.146037
+ours,LoCoLib distilled (ours),6,1.177780
+ours,LoCoLib distilled (ours),7,1.017074
+ours,LoCoLib distilled (ours),8,0.944001
+ours,LoCoLib distilled (ours),9,0.912953
+ours,LoCoLib distilled (ours),10,0.916649
+ours,LoCoLib distilled (ours),11,0.873767
+ours,LoCoLib distilled (ours),12,0.828691
+ours,LoCoLib distilled (ours),13,0.820926
+ours,LoCoLib distilled (ours),14,0.774902
+ours,LoCoLib distilled (ours),15,0.774372
+ours,LoCoLib distilled (ours),16,0.719163
+ours,LoCoLib distilled (ours),17,0.665105
+ours,LoCoLib distilled (ours),18,0.726091
+ours,LoCoLib distilled (ours),19,0.746031
+ours,LoCoLib distilled (ours),20,0.676825
+ours,LoCoLib distilled (ours),21,0.770962
+ours,LoCoLib distilled (ours),22,0.678539
+ours,LoCoLib distilled (ours),23,0.692368
+ours,LoCoLib distilled (ours),24,0.684136
+ours,LoCoLib distilled (ours),25,0.673180
+ours,LoCoLib distilled (ours),26,0.683540
+ours,LoCoLib distilled (ours),27,0.731563
+ours,LoCoLib distilled (ours),28,0.684688
+ours,LoCoLib distilled (ours),29,0.667034
+ours,LoCoLib distilled (ours),30,0.626015
+ours,LoCoLib distilled (ours),31,0.656193
+ours,LoCoLib distilled (ours),32,0.655092
+ours,LoCoLib distilled (ours),33,0.491485
+ours,LoCoLib distilled (ours),34,0.542195
+ours,LoCoLib distilled (ours),35,0.520902
+ours,LoCoLib distilled (ours),36,0.540048
+ours,LoCoLib distilled (ours),37,0.507872
+ours,LoCoLib distilled (ours),38,0.532482
+ours,LoCoLib distilled (ours),39,0.491526
+ours,LoCoLib distilled (ours),40,0.483341
+ours,LoCoLib distilled (ours),41,0.497358
+ours,LoCoLib distilled (ours),42,0.546030
+ours,LoCoLib distilled (ours),43,0.487186
+ours,LoCoLib distilled (ours),44,0.502935
+ours,LoCoLib distilled (ours),45,0.501207
+ours,LoCoLib distilled (ours),46,0.483063
+ours,LoCoLib distilled (ours),47,0.494021
+ours,LoCoLib distilled (ours),48,0.496796
+ours,LoCoLib distilled (ours),49,0.488950
+ours,LoCoLib distilled (ours),50,0.457422
+ours,LoCoLib distilled (ours),51,0.476486
+ours,LoCoLib distilled (ours),52,0.488831
+ours,LoCoLib distilled (ours),53,0.551983
+ours,LoCoLib distilled (ours),54,0.477318
+ours,LoCoLib distilled (ours),55,0.466527
+ours,LoCoLib distilled (ours),56,0.514169
+ours,LoCoLib distilled (ours),57,0.459587
+ours,LoCoLib distilled (ours),58,0.470655
+ours,LoCoLib distilled (ours),59,0.472183
+ours,LoCoLib distilled (ours),60,0.491847
+ours,LoCoLib distilled (ours),61,0.459893
+ours,LoCoLib distilled (ours),62,0.454282
+ours,LoCoLib distilled (ours),63,0.465913
+ours,LoCoLib distilled (ours),64,0.476685
+ours,LoCoLib distilled (ours),65,0.323582
+ours,LoCoLib distilled (ours),66,0.329029
+ours,LoCoLib distilled (ours),67,0.338686
+ours,LoCoLib distilled (ours),68,0.315345
+ours,LoCoLib distilled (ours),69,0.348522
+ours,LoCoLib distilled (ours),70,0.323808
+ours,LoCoLib distilled (ours),71,0.303346
+ours,LoCoLib distilled (ours),72,0.311537
+ours,LoCoLib distilled (ours),73,0.313604
+ours,LoCoLib distilled (ours),74,0.302793
+ours,LoCoLib distilled (ours),75,0.319965
+ours,LoCoLib distilled (ours),76,0.307342
+ours,LoCoLib distilled (ours),77,0.294949
+ours,LoCoLib distilled (ours),78,0.307811
+ours,LoCoLib distilled (ours),79,0.337468
+ours,LoCoLib distilled (ours),80,0.298695
+ours,LoCoLib distilled (ours),81,0.301867
+ours,LoCoLib distilled (ours),82,0.310036
+ours,LoCoLib distilled (ours),83,0.295590
+ours,LoCoLib distilled (ours),84,0.297664
+ours,LoCoLib distilled (ours),85,0.307959
+ours,LoCoLib distilled (ours),86,0.298000
+ours,LoCoLib distilled (ours),87,0.290601
+ours,LoCoLib distilled (ours),88,0.300066
+ours,LoCoLib distilled (ours),89,0.309995
+ours,LoCoLib distilled (ours),90,0.290963
+ours,LoCoLib distilled (ours),91,0.292762
+ours,LoCoLib distilled (ours),92,0.319874
+ours,LoCoLib distilled (ours),93,0.308421
+ours,LoCoLib distilled (ours),94,0.312586
+ours,LoCoLib distilled (ours),95,0.323070
+ours,LoCoLib distilled (ours),96,0.293017
+ours,LoCoLib distilled (ours),97,0.191635
+ours,LoCoLib distilled (ours),98,0.197291
+ours,LoCoLib distilled (ours),99,0.187560
+ours,LoCoLib distilled (ours),100,0.182904
+ours,LoCoLib distilled (ours),101,0.183295
+ours,LoCoLib distilled (ours),102,0.190490
+ours,LoCoLib distilled (ours),103,0.170219
+ours,LoCoLib distilled (ours),104,0.179678
+ours,LoCoLib distilled (ours),105,0.173322
+ours,LoCoLib distilled (ours),106,0.171284
+ours,LoCoLib distilled (ours),107,0.162442
+ours,LoCoLib distilled (ours),108,0.183448
+ours,LoCoLib distilled (ours),109,0.158304
+ours,LoCoLib distilled (ours),110,0.184345
+ours,LoCoLib distilled (ours),111,0.168725
+ours,LoCoLib distilled (ours),112,0.173362
+ours,LoCoLib distilled (ours),113,0.152016
+ours,LoCoLib distilled (ours),114,0.168604
+ours,LoCoLib distilled (ours),115,0.154815
+ours,LoCoLib distilled (ours),116,0.157873
+ours,LoCoLib distilled (ours),117,0.173478
+ours,LoCoLib distilled (ours),118,0.174124
+ours,LoCoLib distilled (ours),119,0.155922
+ours,LoCoLib distilled (ours),120,0.161522
+ours,LoCoLib distilled (ours),121,0.185240
+ours,LoCoLib distilled (ours),122,0.155120
+ours,LoCoLib distilled (ours),123,0.170318
+ours,LoCoLib distilled (ours),124,0.160527
+ours,LoCoLib distilled (ours),125,0.162045
+ours,LoCoLib distilled (ours),126,0.166620
+ours,LoCoLib distilled (ours),127,0.170292
+ours,LoCoLib distilled (ours),128,0.167303
+ours,LoCoLib distilled (ours),129,0.109174
+ours,LoCoLib distilled (ours),130,0.100594
+ours,LoCoLib distilled (ours),131,0.105109
+ours,LoCoLib distilled (ours),132,0.096130
+ours,LoCoLib distilled (ours),133,0.099942
+ours,LoCoLib distilled (ours),134,0.106415
+ours,LoCoLib distilled (ours),135,0.103729
+ours,LoCoLib distilled (ours),136,0.097602
+ours,LoCoLib distilled (ours),137,0.097450
+ours,LoCoLib distilled (ours),138,0.090408
+ours,LoCoLib distilled (ours),139,0.101415
+ours,LoCoLib distilled (ours),140,0.092993
+ours,LoCoLib distilled (ours),141,0.107856
+ours,LoCoLib distilled (ours),142,0.094210
+ours,LoCoLib distilled (ours),143,0.103474
+ours,LoCoLib distilled (ours),144,0.095703
+ours,LoCoLib distilled (ours),145,0.102264
+ours,LoCoLib distilled (ours),146,0.094035
+ours,LoCoLib distilled (ours),147,0.088193
+ours,LoCoLib distilled (ours),148,0.091254
+ours,LoCoLib distilled (ours),149,0.083979
+ours,LoCoLib distilled (ours),150,0.089622
+ours,LoCoLib distilled (ours),151,0.094966
+ours,LoCoLib distilled (ours),152,0.094299
+ours,LoCoLib distilled (ours),153,0.100709
+ours,LoCoLib distilled (ours),154,0.095275
+ours,LoCoLib distilled (ours),155,0.096729
+ours,LoCoLib distilled (ours),156,0.103280
+ours,LoCoLib distilled (ours),157,0.093395
+ours,LoCoLib distilled (ours),158,0.100455
+ours,LoCoLib distilled (ours),159,0.093487
+ours,LoCoLib distilled (ours),160,0.100860
+nocot,"LoCoLib distilled, no CoT",1,1.181611
+nocot,"LoCoLib distilled, no CoT",2,1.116223
+nocot,"LoCoLib distilled, no CoT",3,1.095208
+nocot,"LoCoLib distilled, no CoT",4,0.821776
+nocot,"LoCoLib distilled, no CoT",5,0.782349
+nocot,"LoCoLib distilled, no CoT",6,0.724033
+nocot,"LoCoLib distilled, no CoT",7,0.716040
+nocot,"LoCoLib distilled, no CoT",8,0.656143
+nocot,"LoCoLib distilled, no CoT",9,0.664506
+nocot,"LoCoLib distilled, no CoT",10,0.618416
+nocot,"LoCoLib distilled, no CoT",11,0.542686
+nocot,"LoCoLib distilled, no CoT",12,0.556161
+nocot,"LoCoLib distilled, no CoT",13,0.541285
+nocot,"LoCoLib distilled, no CoT",14,0.522990
+nocot,"LoCoLib distilled, no CoT",15,0.508828
+nocot,"LoCoLib distilled, no CoT",16,0.467862
+nocot,"LoCoLib distilled, no CoT",17,0.494902
+nocot,"LoCoLib distilled, no CoT",18,0.471797
+nocot,"LoCoLib distilled, no CoT",19,0.460248
+nocot,"LoCoLib distilled, no CoT",20,0.459312
+nocot,"LoCoLib distilled, no CoT",21,0.454557
+nocot,"LoCoLib distilled, no CoT",22,0.436999
+nocot,"LoCoLib distilled, no CoT",23,0.466429
+nocot,"LoCoLib distilled, no CoT",24,0.430435
+nocot,"LoCoLib distilled, no CoT",25,0.416921
+nocot,"LoCoLib distilled, no CoT",26,0.412324
+nocot,"LoCoLib distilled, no CoT",27,0.457819
+nocot,"LoCoLib distilled, no CoT",28,0.396722
+nocot,"LoCoLib distilled, no CoT",29,0.406681
+nocot,"LoCoLib distilled, no CoT",30,0.377809
+nocot,"LoCoLib distilled, no CoT",31,0.399094
+nocot,"LoCoLib distilled, no CoT",32,0.414915
+nocot,"LoCoLib distilled, no CoT",33,0.393747
+nocot,"LoCoLib distilled, no CoT",34,0.425040
+nocot,"LoCoLib distilled, no CoT",35,0.369813
+nocot,"LoCoLib distilled, no CoT",36,0.311584
+nocot,"LoCoLib distilled, no CoT",37,0.270930
+nocot,"LoCoLib distilled, no CoT",38,0.296440
+nocot,"LoCoLib distilled, no CoT",39,0.306891
+nocot,"LoCoLib distilled, no CoT",40,0.304559
+nocot,"LoCoLib distilled, no CoT",41,0.283324
+nocot,"LoCoLib distilled, no CoT",42,0.296833
+nocot,"LoCoLib distilled, no CoT",43,0.274206
+nocot,"LoCoLib distilled, no CoT",44,0.293523
+nocot,"LoCoLib distilled, no CoT",45,0.277522
+nocot,"LoCoLib distilled, no CoT",46,0.282521
+nocot,"LoCoLib distilled, no CoT",47,0.266744
+nocot,"LoCoLib distilled, no CoT",48,0.271086
+nocot,"LoCoLib distilled, no CoT",49,0.285780
+nocot,"LoCoLib distilled, no CoT",50,0.251325
+nocot,"LoCoLib distilled, no CoT",51,0.265215
+nocot,"LoCoLib distilled, no CoT",52,0.284858
+nocot,"LoCoLib distilled, no CoT",53,0.270846
+nocot,"LoCoLib distilled, no CoT",54,0.259813
+nocot,"LoCoLib distilled, no CoT",55,0.277416
+nocot,"LoCoLib distilled, no CoT",56,0.263833
+nocot,"LoCoLib distilled, no CoT",57,0.264192
+nocot,"LoCoLib distilled, no CoT",58,0.259074
+nocot,"LoCoLib distilled, no CoT",59,0.263159
+nocot,"LoCoLib distilled, no CoT",60,0.268544
+nocot,"LoCoLib distilled, no CoT",61,0.257189
+nocot,"LoCoLib distilled, no CoT",62,0.266889
+nocot,"LoCoLib distilled, no CoT",63,0.275616
+nocot,"LoCoLib distilled, no CoT",64,0.253553
+nocot,"LoCoLib distilled, no CoT",65,0.254164
+nocot,"LoCoLib distilled, no CoT",66,0.244986
+nocot,"LoCoLib distilled, no CoT",67,0.260394
+nocot,"LoCoLib distilled, no CoT",68,0.248733
+nocot,"LoCoLib distilled, no CoT",69,0.242412
+nocot,"LoCoLib distilled, no CoT",70,0.229932
+nocot,"LoCoLib distilled, no CoT",71,0.174557
+nocot,"LoCoLib distilled, no CoT",72,0.150389
+nocot,"LoCoLib distilled, no CoT",73,0.142591
+nocot,"LoCoLib distilled, no CoT",74,0.149098
+nocot,"LoCoLib distilled, no CoT",75,0.164410
+nocot,"LoCoLib distilled, no CoT",76,0.138595
+nocot,"LoCoLib distilled, no CoT",77,0.146902
+nocot,"LoCoLib distilled, no CoT",78,0.139926
+nocot,"LoCoLib distilled, no CoT",79,0.147520
+nocot,"LoCoLib distilled, no CoT",80,0.138589
+nocot,"LoCoLib distilled, no CoT",81,0.142664
+nocot,"LoCoLib distilled, no CoT",82,0.133371
+nocot,"LoCoLib distilled, no CoT",83,0.144771
+nocot,"LoCoLib distilled, no CoT",84,0.142531
+nocot,"LoCoLib distilled, no CoT",85,0.146867
+nocot,"LoCoLib distilled, no CoT",86,0.141499
+nocot,"LoCoLib distilled, no CoT",87,0.132881
+nocot,"LoCoLib distilled, no CoT",88,0.139883
+nocot,"LoCoLib distilled, no CoT",89,0.130033
+nocot,"LoCoLib distilled, no CoT",90,0.148678
+nocot,"LoCoLib distilled, no CoT",91,0.138725
+nocot,"LoCoLib distilled, no CoT",92,0.136846
+nocot,"LoCoLib distilled, no CoT",93,0.147620
+nocot,"LoCoLib distilled, no CoT",94,0.141497
+nocot,"LoCoLib distilled, no CoT",95,0.139673
+nocot,"LoCoLib distilled, no CoT",96,0.125183
+nocot,"LoCoLib distilled, no CoT",97,0.142224
+nocot,"LoCoLib distilled, no CoT",98,0.141048
+nocot,"LoCoLib distilled, no CoT",99,0.136931
+nocot,"LoCoLib distilled, no CoT",100,0.130586
+nocot,"LoCoLib distilled, no CoT",101,0.144730
+nocot,"LoCoLib distilled, no CoT",102,0.130936
+nocot,"LoCoLib distilled, no CoT",103,0.147303
+nocot,"LoCoLib distilled, no CoT",104,0.143740
+nocot,"LoCoLib distilled, no CoT",105,0.144851
+nocot,"LoCoLib distilled, no CoT",106,0.077800
+nocot,"LoCoLib distilled, no CoT",107,0.081465
+nocot,"LoCoLib distilled, no CoT",108,0.065953
+nocot,"LoCoLib distilled, no CoT",109,0.066659
+nocot,"LoCoLib distilled, no CoT",110,0.060709
+nocot,"LoCoLib distilled, no CoT",111,0.059880
+nocot,"LoCoLib distilled, no CoT",112,0.069450
+nocot,"LoCoLib distilled, no CoT",113,0.067695
+nocot,"LoCoLib distilled, no CoT",114,0.067212
+nocot,"LoCoLib distilled, no CoT",115,0.064600
+nocot,"LoCoLib distilled, no CoT",116,0.064825
+nocot,"LoCoLib distilled, no CoT",117,0.069323
+nocot,"LoCoLib distilled, no CoT",118,0.068444
+nocot,"LoCoLib distilled, no CoT",119,0.058229
+nocot,"LoCoLib distilled, no CoT",120,0.070130
+nocot,"LoCoLib distilled, no CoT",121,0.064258
+nocot,"LoCoLib distilled, no CoT",122,0.067167
+nocot,"LoCoLib distilled, no CoT",123,0.072505
+nocot,"LoCoLib distilled, no CoT",124,0.068661
+nocot,"LoCoLib distilled, no CoT",125,0.062165
+nocot,"LoCoLib distilled, no CoT",126,0.065679
+nocot,"LoCoLib distilled, no CoT",127,0.055016
+nocot,"LoCoLib distilled, no CoT",128,0.056084
+nocot,"LoCoLib distilled, no CoT",129,0.061770
+nocot,"LoCoLib distilled, no CoT",130,0.064883
+nocot,"LoCoLib distilled, no CoT",131,0.056413
+nocot,"LoCoLib distilled, no CoT",132,0.067852
+nocot,"LoCoLib distilled, no CoT",133,0.067512
+nocot,"LoCoLib distilled, no CoT",134,0.066259
+nocot,"LoCoLib distilled, no CoT",135,0.064735
+nocot,"LoCoLib distilled, no CoT",136,0.067428
+nocot,"LoCoLib distilled, no CoT",137,0.067299
+nocot,"LoCoLib distilled, no CoT",138,0.063661
+nocot,"LoCoLib distilled, no CoT",139,0.064214
+nocot,"LoCoLib distilled, no CoT",140,0.062479
+nocot,"LoCoLib distilled, no CoT",141,0.030325
+nocot,"LoCoLib distilled, no CoT",142,0.028868
+nocot,"LoCoLib distilled, no CoT",143,0.027962
+nocot,"LoCoLib distilled, no CoT",144,0.029430
+nocot,"LoCoLib distilled, no CoT",145,0.028205
+nocot,"LoCoLib distilled, no CoT",146,0.023366
+nocot,"LoCoLib distilled, no CoT",147,0.029048
+nocot,"LoCoLib distilled, no CoT",148,0.024856
+nocot,"LoCoLib distilled, no CoT",149,0.023796
+nocot,"LoCoLib distilled, no CoT",150,0.023949
+nocot,"LoCoLib distilled, no CoT",151,0.028389
+nocot,"LoCoLib distilled, no CoT",152,0.024210
+nocot,"LoCoLib distilled, no CoT",153,0.024007
+nocot,"LoCoLib distilled, no CoT",154,0.022379
+nocot,"LoCoLib distilled, no CoT",155,0.022853
+nocot,"LoCoLib distilled, no CoT",156,0.024566
+nocot,"LoCoLib distilled, no CoT",157,0.024675
+nocot,"LoCoLib distilled, no CoT",158,0.023725
+nocot,"LoCoLib distilled, no CoT",159,0.025781
+nocot,"LoCoLib distilled, no CoT",160,0.023795
+nocot,"LoCoLib distilled, no CoT",161,0.022227
+nocot,"LoCoLib distilled, no CoT",162,0.019671
+nocot,"LoCoLib distilled, no CoT",163,0.019439
+nocot,"LoCoLib distilled, no CoT",164,0.022984
+nocot,"LoCoLib distilled, no CoT",165,0.019655
+nocot,"LoCoLib distilled, no CoT",166,0.019168
+nocot,"LoCoLib distilled, no CoT",167,0.027089
+nocot,"LoCoLib distilled, no CoT",168,0.018025
+nocot,"LoCoLib distilled, no CoT",169,0.021975
+nocot,"LoCoLib distilled, no CoT",170,0.023643
+nocot,"LoCoLib distilled, no CoT",171,0.026074
+nocot,"LoCoLib distilled, no CoT",172,0.025431
+nocot,"LoCoLib distilled, no CoT",173,0.020494
+nocot,"LoCoLib distilled, no CoT",174,0.023346
+nocot,"LoCoLib distilled, no CoT",175,0.019673
+nocot,"LoCoLib distilled, no CoT",176,0.009443
+nocot,"LoCoLib distilled, no CoT",177,0.009315
+nocot,"LoCoLib distilled, no CoT",178,0.009336
+nocot,"LoCoLib distilled, no CoT",179,0.009168
+nocot,"LoCoLib distilled, no CoT",180,0.009277
+nocot,"LoCoLib distilled, no CoT",181,0.009764
+nocot,"LoCoLib distilled, no CoT",182,0.009092
+nocot,"LoCoLib distilled, no CoT",183,0.008699
+nocot,"LoCoLib distilled, no CoT",184,0.008323
+nocot,"LoCoLib distilled, no CoT",185,0.009571
+nocot,"LoCoLib distilled, no CoT",186,0.008532
+nocot,"LoCoLib distilled, no CoT",187,0.008296
+nocot,"LoCoLib distilled, no CoT",188,0.008330
+nocot,"LoCoLib distilled, no CoT",189,0.007577
+nocot,"LoCoLib distilled, no CoT",190,0.007618
+nocot,"LoCoLib distilled, no CoT",191,0.006586
+nocot,"LoCoLib distilled, no CoT",192,0.008224
+nocot,"LoCoLib distilled, no CoT",193,0.007487
+nocot,"LoCoLib distilled, no CoT",194,0.007312
+nocot,"LoCoLib distilled, no CoT",195,0.007342
+nocot,"LoCoLib distilled, no CoT",196,0.009134
+nocot,"LoCoLib distilled, no CoT",197,0.006752
+nocot,"LoCoLib distilled, no CoT",198,0.007491
+nocot,"LoCoLib distilled, no CoT",199,0.007467
+nocot,"LoCoLib distilled, no CoT",200,0.007196
+nocot,"LoCoLib distilled, no CoT",201,0.006662
+nocot,"LoCoLib distilled, no CoT",202,0.008174
+nocot,"LoCoLib distilled, no CoT",203,0.007289
+nocot,"LoCoLib distilled, no CoT",204,0.007223
+nocot,"LoCoLib distilled, no CoT",205,0.008130
+nocot,"LoCoLib distilled, no CoT",206,0.008613
+nocot,"LoCoLib distilled, no CoT",207,0.007258
+nocot,"LoCoLib distilled, no CoT",208,0.008963
+nocot,"LoCoLib distilled, no CoT",209,0.006614
+nocot,"LoCoLib distilled, no CoT",210,0.006795
+nocot,"LoCoLib distilled, no CoT",211,0.005282
+nocot,"LoCoLib distilled, no CoT",212,0.004148
+nocot,"LoCoLib distilled, no CoT",213,0.004623
+nocot,"LoCoLib distilled, no CoT",214,0.004613
+nocot,"LoCoLib distilled, no CoT",215,0.003956
+nocot,"LoCoLib distilled, no CoT",216,0.003645
+nocot,"LoCoLib distilled, no CoT",217,0.003552
+nocot,"LoCoLib distilled, no CoT",218,0.003907
+nocot,"LoCoLib distilled, no CoT",219,0.004378
+nocot,"LoCoLib distilled, no CoT",220,0.003894
+nocot,"LoCoLib distilled, no CoT",221,0.004152
+nocot,"LoCoLib distilled, no CoT",222,0.003749
+nocot,"LoCoLib distilled, no CoT",223,0.003256
+nocot,"LoCoLib distilled, no CoT",224,0.003907
+nocot,"LoCoLib distilled, no CoT",225,0.003180
+nocot,"LoCoLib distilled, no CoT",226,0.003625
+nocot,"LoCoLib distilled, no CoT",227,0.004862
+nocot,"LoCoLib distilled, no CoT",228,0.004270
+nocot,"LoCoLib distilled, no CoT",229,0.004087
+nocot,"LoCoLib distilled, no CoT",230,0.004626
+nocot,"LoCoLib distilled, no CoT",231,0.003595
+nocot,"LoCoLib distilled, no CoT",232,0.003587
+nocot,"LoCoLib distilled, no CoT",233,0.003512
+nocot,"LoCoLib distilled, no CoT",234,0.004124
+nocot,"LoCoLib distilled, no CoT",235,0.003681
+nocot,"LoCoLib distilled, no CoT",236,0.002948
+nocot,"LoCoLib distilled, no CoT",237,0.003817
+nocot,"LoCoLib distilled, no CoT",238,0.004969
+nocot,"LoCoLib distilled, no CoT",239,0.003971
+nocot,"LoCoLib distilled, no CoT",240,0.003449
+nocot,"LoCoLib distilled, no CoT",241,0.004209
+nocot,"LoCoLib distilled, no CoT",242,0.003594
+nocot,"LoCoLib distilled, no CoT",243,0.002977
+nocot,"LoCoLib distilled, no CoT",244,0.003399
+nocot,"LoCoLib distilled, no CoT",245,0.004014
+mizar,Mizar distilled,1,1.234226
+mizar,Mizar distilled,2,1.237782
+mizar,Mizar distilled,3,1.216011
+mizar,Mizar distilled,4,1.123122
+mizar,Mizar distilled,5,1.051079
+mizar,Mizar distilled,6,0.960515
+mizar,Mizar distilled,7,0.905779
+mizar,Mizar distilled,8,0.850690
+mizar,Mizar distilled,9,0.797837
+mizar,Mizar distilled,10,0.753139
+mizar,Mizar distilled,11,0.767387
+mizar,Mizar distilled,12,0.725689
+mizar,Mizar distilled,13,0.718536
+mizar,Mizar distilled,14,0.688721
+mizar,Mizar distilled,15,0.693241
+mizar,Mizar distilled,16,0.667836
+mizar,Mizar distilled,17,0.650366
+mizar,Mizar distilled,18,0.657984
+mizar,Mizar distilled,19,0.636112
+mizar,Mizar distilled,20,0.628486
+mizar,Mizar distilled,21,0.632199
+mizar,Mizar distilled,22,0.636481
+mizar,Mizar distilled,23,0.615528
+mizar,Mizar distilled,24,0.642960
+mizar,Mizar distilled,25,0.543355
+mizar,Mizar distilled,26,0.517036
+mizar,Mizar distilled,27,0.530799
+mizar,Mizar distilled,28,0.505298
+mizar,Mizar distilled,29,0.514538
+mizar,Mizar distilled,30,0.517841
+mizar,Mizar distilled,31,0.519832
+mizar,Mizar distilled,32,0.503785
+mizar,Mizar distilled,33,0.505639
+mizar,Mizar distilled,34,0.502257
+mizar,Mizar distilled,35,0.487156
+mizar,Mizar distilled,36,0.478754
+mizar,Mizar distilled,37,0.486849
+mizar,Mizar distilled,38,0.482002
+mizar,Mizar distilled,39,0.493554
+mizar,Mizar distilled,40,0.482210
+mizar,Mizar distilled,41,0.465524
+mizar,Mizar distilled,42,0.477463
+mizar,Mizar distilled,43,0.508519
+mizar,Mizar distilled,44,0.486509
+mizar,Mizar distilled,45,0.468514
+mizar,Mizar distilled,46,0.470602
+mizar,Mizar distilled,47,0.466761
+mizar,Mizar distilled,48,0.484424
+mizar,Mizar distilled,49,0.373583
+mizar,Mizar distilled,50,0.382377
+mizar,Mizar distilled,51,0.359409
+mizar,Mizar distilled,52,0.369503
+mizar,Mizar distilled,53,0.356839
+mizar,Mizar distilled,54,0.359076
+mizar,Mizar distilled,55,0.350541
+mizar,Mizar distilled,56,0.349419
+mizar,Mizar distilled,57,0.344561
+mizar,Mizar distilled,58,0.337727
+mizar,Mizar distilled,59,0.356847
+mizar,Mizar distilled,60,0.342095
+mizar,Mizar distilled,61,0.340670
+mizar,Mizar distilled,62,0.345482
+mizar,Mizar distilled,63,0.339665
+mizar,Mizar distilled,64,0.345247
+mizar,Mizar distilled,65,0.343886
+mizar,Mizar distilled,66,0.338363
+mizar,Mizar distilled,67,0.345767
+mizar,Mizar distilled,68,0.347639
+mizar,Mizar distilled,69,0.336626
+mizar,Mizar distilled,70,0.333219
+mizar,Mizar distilled,71,0.354751
+mizar,Mizar distilled,72,0.349787
+mizar,Mizar distilled,73,0.250866
+mizar,Mizar distilled,74,0.240395
+mizar,Mizar distilled,75,0.233091
+mizar,Mizar distilled,76,0.228878
+mizar,Mizar distilled,77,0.237587
+mizar,Mizar distilled,78,0.226511
+mizar,Mizar distilled,79,0.225984
+mizar,Mizar distilled,80,0.224561
+mizar,Mizar distilled,81,0.231081
+mizar,Mizar distilled,82,0.217422
+mizar,Mizar distilled,83,0.227792
+mizar,Mizar distilled,84,0.217261
+mizar,Mizar distilled,85,0.218996
+mizar,Mizar distilled,86,0.229936
+mizar,Mizar distilled,87,0.221530
+mizar,Mizar distilled,88,0.219196
+mizar,Mizar distilled,89,0.219972
+mizar,Mizar distilled,90,0.222636
+mizar,Mizar distilled,91,0.223378
+mizar,Mizar distilled,92,0.226192
+mizar,Mizar distilled,93,0.221802
+mizar,Mizar distilled,94,0.228549
+mizar,Mizar distilled,95,0.220341
+mizar,Mizar distilled,96,0.219928
+mizar,Mizar distilled,97,0.150409
+mizar,Mizar distilled,98,0.143177
+mizar,Mizar distilled,99,0.137470
+mizar,Mizar distilled,100,0.142059
+mizar,Mizar distilled,101,0.127693
+mizar,Mizar distilled,102,0.133548
+mizar,Mizar distilled,103,0.131291
+mizar,Mizar distilled,104,0.129313
+mizar,Mizar distilled,105,0.126619
+mizar,Mizar distilled,106,0.130457
+mizar,Mizar distilled,107,0.131529
+mizar,Mizar distilled,108,0.128732
+mizar,Mizar distilled,109,0.127028
+mizar,Mizar distilled,110,0.126132
+mizar,Mizar distilled,111,0.131969
+mizar,Mizar distilled,112,0.124753
+mizar,Mizar distilled,113,0.125486
+mizar,Mizar distilled,114,0.128419
+mizar,Mizar distilled,115,0.126788
+mizar,Mizar distilled,116,0.131486
+mizar,Mizar distilled,117,0.134130
+mizar,Mizar distilled,118,0.125044
+mizar,Mizar distilled,119,0.126367
+mizar,Mizar distilled,120,0.126148
+mizar,Mizar distilled,121,0.080409
+mizar,Mizar distilled,122,0.072611
+mizar,Mizar distilled,123,0.076149
+mizar,Mizar distilled,124,0.071130
+mizar,Mizar distilled,125,0.072585
+mizar,Mizar distilled,126,0.072942
+mizar,Mizar distilled,127,0.068355
+mizar,Mizar distilled,128,0.070941
+mizar,Mizar distilled,129,0.071841
+mizar,Mizar distilled,130,0.071973
+mizar,Mizar distilled,131,0.071145
+mizar,Mizar distilled,132,0.065354
+mizar,Mizar distilled,133,0.068584
+mizar,Mizar distilled,134,0.067283
+mizar,Mizar distilled,135,0.070265
+mizar,Mizar distilled,136,0.066218
+mizar,Mizar distilled,137,0.069348
+mizar,Mizar distilled,138,0.071850
+mizar,Mizar distilled,139,0.070913
+mizar,Mizar distilled,140,0.066299
+mizar,Mizar distilled,141,0.069199
+mizar,Mizar distilled,142,0.069392
+mizar,Mizar distilled,143,0.064220
+mizar,Mizar distilled,144,0.065361
+mizar,Mizar distilled,145,0.038565
+mizar,Mizar distilled,146,0.039996
+mizar,Mizar distilled,147,0.040820
+mizar,Mizar distilled,148,0.038942
+mizar,Mizar distilled,149,0.038300
+mizar,Mizar distilled,150,0.035682
+mizar,Mizar distilled,151,0.039663
+mizar,Mizar distilled,152,0.035529
+mizar,Mizar distilled,153,0.037240
+mizar,Mizar distilled,154,0.035758
+mizar,Mizar distilled,155,0.034502
+mizar,Mizar distilled,156,0.036172
+mizar,Mizar distilled,157,0.034803
+mizar,Mizar distilled,158,0.033788
+mizar,Mizar distilled,159,0.034016
+mizar,Mizar distilled,160,0.034874
+mizar,Mizar distilled,161,0.034981
+mizar,Mizar distilled,162,0.036448
+mizar,Mizar distilled,163,0.034432
+mizar,Mizar distilled,164,0.031950
+mizar,Mizar distilled,165,0.032736
+mizar,Mizar distilled,166,0.033049
+mizar,Mizar distilled,167,0.033791
+mizar,Mizar distilled,168,0.034393
+mizar,Mizar distilled,169,0.020377
+mizar,Mizar distilled,170,0.020751
+mizar,Mizar distilled,171,0.020075
+mizar,Mizar distilled,172,0.020363
+mizar,Mizar distilled,173,0.019402
+mizar,Mizar distilled,174,0.020068
+mizar,Mizar distilled,175,0.018548
+mizar,Mizar distilled,176,0.020128
+mizar,Mizar distilled,177,0.018658
+mizar,Mizar distilled,178,0.018980
+mizar,Mizar distilled,179,0.019207
+mizar,Mizar distilled,180,0.020076
+mizar,Mizar distilled,181,0.017834
+mizar,Mizar distilled,182,0.019108
+mizar,Mizar distilled,183,0.019619
+mizar,Mizar distilled,184,0.018462
+mizar,Mizar distilled,185,0.018600
+mizar,Mizar distilled,186,0.017110
+mizar,Mizar distilled,187,0.017587
+mizar,Mizar distilled,188,0.019317
+mizar,Mizar distilled,189,0.017623
+mizar,Mizar distilled,190,0.019812
+mizar,Mizar distilled,191,0.018125
+mizar,Mizar distilled,192,0.017301
+mizar,Mizar distilled,193,0.013381
+mizar,Mizar distilled,194,0.013491
+mizar,Mizar distilled,195,0.012636
+mizar,Mizar distilled,196,0.012742
+mizar,Mizar distilled,197,0.013546
+mizar,Mizar distilled,198,0.013418
+mizar,Mizar distilled,199,0.012970
+mizar,Mizar distilled,200,0.012476
+mizar,Mizar distilled,201,0.013233
+mizar,Mizar distilled,202,0.012981
+mizar,Mizar distilled,203,0.011753
+mizar,Mizar distilled,204,0.011759
+mizar,Mizar distilled,205,0.012625
+mizar,Mizar distilled,206,0.011659
+mizar,Mizar distilled,207,0.012394
+mizar,Mizar distilled,208,0.012988
+mizar,Mizar distilled,209,0.011838
+mizar,Mizar distilled,210,0.012364
+mizar,Mizar distilled,211,0.012434
+mizar,Mizar distilled,212,0.011701
+mizar,Mizar distilled,213,0.012862
+mizar,Mizar distilled,214,0.011601
+mizar,Mizar distilled,215,0.012908
+mizar,Mizar distilled,216,0.011643
+mizar,Mizar distilled,217,0.011375
+mizar,Mizar distilled,218,0.010735
+mizar,Mizar distilled,219,0.011466
+mizar,Mizar distilled,220,0.010176
+mizar,Mizar distilled,221,0.010638
+mizar,Mizar distilled,222,0.010856
+mizar,Mizar distilled,223,0.010501
+mizar,Mizar distilled,224,0.011096
+mizar,Mizar distilled,225,0.009991
+mizar,Mizar distilled,226,0.011071
+mizar,Mizar distilled,227,0.010781
+mizar,Mizar distilled,228,0.010712
+mizar,Mizar distilled,229,0.011424
+mizar,Mizar distilled,230,0.010825
+mizar,Mizar distilled,231,0.010977
+mizar,Mizar distilled,232,0.010382
+mizar,Mizar distilled,233,0.010410
+mizar,Mizar distilled,234,0.011030
+mizar,Mizar distilled,235,0.010099
+mizar,Mizar distilled,236,0.010927
+mizar,Mizar distilled,237,0.009981
+mizar,Mizar distilled,238,0.009963
+mizar,Mizar distilled,239,0.010348
+mizar,Mizar distilled,240,0.010516
+mizar_nocot,"Mizar distilled, no CoT",1,0.832759
+mizar_nocot,"Mizar distilled, no CoT",2,0.827346
+mizar_nocot,"Mizar distilled, no CoT",3,0.798708
+mizar_nocot,"Mizar distilled, no CoT",4,0.670682
+mizar_nocot,"Mizar distilled, no CoT",5,0.643147
+mizar_nocot,"Mizar distilled, no CoT",6,0.560052
+mizar_nocot,"Mizar distilled, no CoT",7,0.527762
+mizar_nocot,"Mizar distilled, no CoT",8,0.512927
+mizar_nocot,"Mizar distilled, no CoT",9,0.450204
+mizar_nocot,"Mizar distilled, no CoT",10,0.437074
+mizar_nocot,"Mizar distilled, no CoT",11,0.435271
+mizar_nocot,"Mizar distilled, no CoT",12,0.406827
+mizar_nocot,"Mizar distilled, no CoT",13,0.430092
+mizar_nocot,"Mizar distilled, no CoT",14,0.365169
+mizar_nocot,"Mizar distilled, no CoT",15,0.387729
+mizar_nocot,"Mizar distilled, no CoT",16,0.352064
+mizar_nocot,"Mizar distilled, no CoT",17,0.375913
+mizar_nocot,"Mizar distilled, no CoT",18,0.368121
+mizar_nocot,"Mizar distilled, no CoT",19,0.344839
+mizar_nocot,"Mizar distilled, no CoT",20,0.342322
+mizar_nocot,"Mizar distilled, no CoT",21,0.362515
+mizar_nocot,"Mizar distilled, no CoT",22,0.355063
+mizar_nocot,"Mizar distilled, no CoT",23,0.352207
+mizar_nocot,"Mizar distilled, no CoT",24,0.372479
+mizar_nocot,"Mizar distilled, no CoT",25,0.257983
+mizar_nocot,"Mizar distilled, no CoT",26,0.245575
+mizar_nocot,"Mizar distilled, no CoT",27,0.243093
+mizar_nocot,"Mizar distilled, no CoT",28,0.234202
+mizar_nocot,"Mizar distilled, no CoT",29,0.242423
+mizar_nocot,"Mizar distilled, no CoT",30,0.241653
+mizar_nocot,"Mizar distilled, no CoT",31,0.239425
+mizar_nocot,"Mizar distilled, no CoT",32,0.239406
+mizar_nocot,"Mizar distilled, no CoT",33,0.247827
+mizar_nocot,"Mizar distilled, no CoT",34,0.220583
+mizar_nocot,"Mizar distilled, no CoT",35,0.236071
+mizar_nocot,"Mizar distilled, no CoT",36,0.220671
+mizar_nocot,"Mizar distilled, no CoT",37,0.216999
+mizar_nocot,"Mizar distilled, no CoT",38,0.235415
+mizar_nocot,"Mizar distilled, no CoT",39,0.218391
+mizar_nocot,"Mizar distilled, no CoT",40,0.230795
+mizar_nocot,"Mizar distilled, no CoT",41,0.219630
+mizar_nocot,"Mizar distilled, no CoT",42,0.220944
+mizar_nocot,"Mizar distilled, no CoT",43,0.235436
+mizar_nocot,"Mizar distilled, no CoT",44,0.226850
+mizar_nocot,"Mizar distilled, no CoT",45,0.231804
+mizar_nocot,"Mizar distilled, no CoT",46,0.224584
+mizar_nocot,"Mizar distilled, no CoT",47,0.210041
+mizar_nocot,"Mizar distilled, no CoT",48,0.213529
+mizar_nocot,"Mizar distilled, no CoT",49,0.136541
+mizar_nocot,"Mizar distilled, no CoT",50,0.162506
+mizar_nocot,"Mizar distilled, no CoT",51,0.129725
+mizar_nocot,"Mizar distilled, no CoT",52,0.133999
+mizar_nocot,"Mizar distilled, no CoT",53,0.133460
+mizar_nocot,"Mizar distilled, no CoT",54,0.136604
+mizar_nocot,"Mizar distilled, no CoT",55,0.124945
+mizar_nocot,"Mizar distilled, no CoT",56,0.127905
+mizar_nocot,"Mizar distilled, no CoT",57,0.119042
+mizar_nocot,"Mizar distilled, no CoT",58,0.121661
+mizar_nocot,"Mizar distilled, no CoT",59,0.127674
+mizar_nocot,"Mizar distilled, no CoT",60,0.121205
+mizar_nocot,"Mizar distilled, no CoT",61,0.120461
+mizar_nocot,"Mizar distilled, no CoT",62,0.124300
+mizar_nocot,"Mizar distilled, no CoT",63,0.120803
+mizar_nocot,"Mizar distilled, no CoT",64,0.124223
+mizar_nocot,"Mizar distilled, no CoT",65,0.124825
+mizar_nocot,"Mizar distilled, no CoT",66,0.121006
+mizar_nocot,"Mizar distilled, no CoT",67,0.123312
+mizar_nocot,"Mizar distilled, no CoT",68,0.129766
+mizar_nocot,"Mizar distilled, no CoT",69,0.125412
+mizar_nocot,"Mizar distilled, no CoT",70,0.126854
+mizar_nocot,"Mizar distilled, no CoT",71,0.129893
+mizar_nocot,"Mizar distilled, no CoT",72,0.125788
+mizar_nocot,"Mizar distilled, no CoT",73,0.074200
+mizar_nocot,"Mizar distilled, no CoT",74,0.072176
+mizar_nocot,"Mizar distilled, no CoT",75,0.070944
+mizar_nocot,"Mizar distilled, no CoT",76,0.068508
+mizar_nocot,"Mizar distilled, no CoT",77,0.073844
+mizar_nocot,"Mizar distilled, no CoT",78,0.067278
+mizar_nocot,"Mizar distilled, no CoT",79,0.068767
+mizar_nocot,"Mizar distilled, no CoT",80,0.073661
+mizar_nocot,"Mizar distilled, no CoT",81,0.068113
+mizar_nocot,"Mizar distilled, no CoT",82,0.064605
+mizar_nocot,"Mizar distilled, no CoT",83,0.068650
+mizar_nocot,"Mizar distilled, no CoT",84,0.069981
+mizar_nocot,"Mizar distilled, no CoT",85,0.069078
+mizar_nocot,"Mizar distilled, no CoT",86,0.071239
+mizar_nocot,"Mizar distilled, no CoT",87,0.072589
+mizar_nocot,"Mizar distilled, no CoT",88,0.073184
+mizar_nocot,"Mizar distilled, no CoT",89,0.068226
+mizar_nocot,"Mizar distilled, no CoT",90,0.067446
+mizar_nocot,"Mizar distilled, no CoT",91,0.070514
+mizar_nocot,"Mizar distilled, no CoT",92,0.071672
+mizar_nocot,"Mizar distilled, no CoT",93,0.069635
+mizar_nocot,"Mizar distilled, no CoT",94,0.072629
+mizar_nocot,"Mizar distilled, no CoT",95,0.072970
+mizar_nocot,"Mizar distilled, no CoT",96,0.067312
+mizar_nocot,"Mizar distilled, no CoT",97,0.042021
+mizar_nocot,"Mizar distilled, no CoT",98,0.043601
+mizar_nocot,"Mizar distilled, no CoT",99,0.039899
+mizar_nocot,"Mizar distilled, no CoT",100,0.042913
+mizar_nocot,"Mizar distilled, no CoT",101,0.039300
+mizar_nocot,"Mizar distilled, no CoT",102,0.042123
+mizar_nocot,"Mizar distilled, no CoT",103,0.041692
+mizar_nocot,"Mizar distilled, no CoT",104,0.039289
+mizar_nocot,"Mizar distilled, no CoT",105,0.041586
+mizar_nocot,"Mizar distilled, no CoT",106,0.037603
+mizar_nocot,"Mizar distilled, no CoT",107,0.040905
+mizar_nocot,"Mizar distilled, no CoT",108,0.040290
+mizar_nocot,"Mizar distilled, no CoT",109,0.045465
+mizar_nocot,"Mizar distilled, no CoT",110,0.041986
+mizar_nocot,"Mizar distilled, no CoT",111,0.041052
+mizar_nocot,"Mizar distilled, no CoT",112,0.048469
+mizar_nocot,"Mizar distilled, no CoT",113,0.041108
+mizar_nocot,"Mizar distilled, no CoT",114,0.042884
+mizar_nocot,"Mizar distilled, no CoT",115,0.040472
+mizar_nocot,"Mizar distilled, no CoT",116,0.042779
+mizar_nocot,"Mizar distilled, no CoT",117,0.042864
+mizar_nocot,"Mizar distilled, no CoT",118,0.041797
+mizar_nocot,"Mizar distilled, no CoT",119,0.041811
+mizar_nocot,"Mizar distilled, no CoT",120,0.041801
+mizar_nocot,"Mizar distilled, no CoT",121,0.024588
+mizar_nocot,"Mizar distilled, no CoT",122,0.024605
+mizar_nocot,"Mizar distilled, no CoT",123,0.023404
+mizar_nocot,"Mizar distilled, no CoT",124,0.024936
+mizar_nocot,"Mizar distilled, no CoT",125,0.025875
+mizar_nocot,"Mizar distilled, no CoT",126,0.023721
+mizar_nocot,"Mizar distilled, no CoT",127,0.024112
+mizar_nocot,"Mizar distilled, no CoT",128,0.026005
+mizar_nocot,"Mizar distilled, no CoT",129,0.022756
+mizar_nocot,"Mizar distilled, no CoT",130,0.026268
+mizar_nocot,"Mizar distilled, no CoT",131,0.023902
+mizar_nocot,"Mizar distilled, no CoT",132,0.022478
+mizar_nocot,"Mizar distilled, no CoT",133,0.024070
+mizar_nocot,"Mizar distilled, no CoT",134,0.021619
+mizar_nocot,"Mizar distilled, no CoT",135,0.023625
+mizar_nocot,"Mizar distilled, no CoT",136,0.022393
+mizar_nocot,"Mizar distilled, no CoT",137,0.021778
+mizar_nocot,"Mizar distilled, no CoT",138,0.023102
+mizar_nocot,"Mizar distilled, no CoT",139,0.026382
+mizar_nocot,"Mizar distilled, no CoT",140,0.022745
+mizar_nocot,"Mizar distilled, no CoT",141,0.022094
+mizar_nocot,"Mizar distilled, no CoT",142,0.023606
+mizar_nocot,"Mizar distilled, no CoT",143,0.020386
+mizar_nocot,"Mizar distilled, no CoT",144,0.025543
+mizar_nocot,"Mizar distilled, no CoT",145,0.013888
+mizar_nocot,"Mizar distilled, no CoT",146,0.013270
+mizar_nocot,"Mizar distilled, no CoT",147,0.012996
+mizar_nocot,"Mizar distilled, no CoT",148,0.013789
+mizar_nocot,"Mizar distilled, no CoT",149,0.014554
+mizar_nocot,"Mizar distilled, no CoT",150,0.012523
+mizar_nocot,"Mizar distilled, no CoT",151,0.014592
+mizar_nocot,"Mizar distilled, no CoT",152,0.012922
+mizar_nocot,"Mizar distilled, no CoT",153,0.015279
+mizar_nocot,"Mizar distilled, no CoT",154,0.012176
+mizar_nocot,"Mizar distilled, no CoT",155,0.012509
+mizar_nocot,"Mizar distilled, no CoT",156,0.014361
+mizar_nocot,"Mizar distilled, no CoT",157,0.012757
+mizar_nocot,"Mizar distilled, no CoT",158,0.012296
+mizar_nocot,"Mizar distilled, no CoT",159,0.012074
+mizar_nocot,"Mizar distilled, no CoT",160,0.013213
+mizar_nocot,"Mizar distilled, no CoT",161,0.012089
+mizar_nocot,"Mizar distilled, no CoT",162,0.014045
+mizar_nocot,"Mizar distilled, no CoT",163,0.011934
+mizar_nocot,"Mizar distilled, no CoT",164,0.012374
+mizar_nocot,"Mizar distilled, no CoT",165,0.011840
+mizar_nocot,"Mizar distilled, no CoT",166,0.013557
+mizar_nocot,"Mizar distilled, no CoT",167,0.013045
+mizar_nocot,"Mizar distilled, no CoT",168,0.012529
+mizar_nocot,"Mizar distilled, no CoT",169,0.007058
+mizar_nocot,"Mizar distilled, no CoT",170,0.008467
+mizar_nocot,"Mizar distilled, no CoT",171,0.007106
+mizar_nocot,"Mizar distilled, no CoT",172,0.007096
+mizar_nocot,"Mizar distilled, no CoT",173,0.007708
+mizar_nocot,"Mizar distilled, no CoT",174,0.007969
+mizar_nocot,"Mizar distilled, no CoT",175,0.006726
+mizar_nocot,"Mizar distilled, no CoT",176,0.007711
+mizar_nocot,"Mizar distilled, no CoT",177,0.007278
+mizar_nocot,"Mizar distilled, no CoT",178,0.007786
+mizar_nocot,"Mizar distilled, no CoT",179,0.007266
+mizar_nocot,"Mizar distilled, no CoT",180,0.006763
+mizar_nocot,"Mizar distilled, no CoT",181,0.006661
+mizar_nocot,"Mizar distilled, no CoT",182,0.007455
+mizar_nocot,"Mizar distilled, no CoT",183,0.007011
+mizar_nocot,"Mizar distilled, no CoT",184,0.007116
+mizar_nocot,"Mizar distilled, no CoT",185,0.006870
+mizar_nocot,"Mizar distilled, no CoT",186,0.006596
+mizar_nocot,"Mizar distilled, no CoT",187,0.006907
+mizar_nocot,"Mizar distilled, no CoT",188,0.006605
+mizar_nocot,"Mizar distilled, no CoT",189,0.006770
+mizar_nocot,"Mizar distilled, no CoT",190,0.007328
+mizar_nocot,"Mizar distilled, no CoT",191,0.006820
+mizar_nocot,"Mizar distilled, no CoT",192,0.007041
+mizar_nocot,"Mizar distilled, no CoT",193,0.004855
+mizar_nocot,"Mizar distilled, no CoT",194,0.004751
+mizar_nocot,"Mizar distilled, no CoT",195,0.004227
+mizar_nocot,"Mizar distilled, no CoT",196,0.004639
+mizar_nocot,"Mizar distilled, no CoT",197,0.004583
+mizar_nocot,"Mizar distilled, no CoT",198,0.005315
+mizar_nocot,"Mizar distilled, no CoT",199,0.004547
+mizar_nocot,"Mizar distilled, no CoT",200,0.004227
+mizar_nocot,"Mizar distilled, no CoT",201,0.004494
+mizar_nocot,"Mizar distilled, no CoT",202,0.004599
+mizar_nocot,"Mizar distilled, no CoT",203,0.004415
+mizar_nocot,"Mizar distilled, no CoT",204,0.004343
+mizar_nocot,"Mizar distilled, no CoT",205,0.005005
+mizar_nocot,"Mizar distilled, no CoT",206,0.004334
+mizar_nocot,"Mizar distilled, no CoT",207,0.003970
+mizar_nocot,"Mizar distilled, no CoT",208,0.004090
+mizar_nocot,"Mizar distilled, no CoT",209,0.003961
+mizar_nocot,"Mizar distilled, no CoT",210,0.004200
+mizar_nocot,"Mizar distilled, no CoT",211,0.004390
+mizar_nocot,"Mizar distilled, no CoT",212,0.004354
+mizar_nocot,"Mizar distilled, no CoT",213,0.004742
+mizar_nocot,"Mizar distilled, no CoT",214,0.004042
+mizar_nocot,"Mizar distilled, no CoT",215,0.004061
+mizar_nocot,"Mizar distilled, no CoT",216,0.004017
+mizar_nocot,"Mizar distilled, no CoT",217,0.004467
+mizar_nocot,"Mizar distilled, no CoT",218,0.003655
+mizar_nocot,"Mizar distilled, no CoT",219,0.003407
+mizar_nocot,"Mizar distilled, no CoT",220,0.003632
+mizar_nocot,"Mizar distilled, no CoT",221,0.003277
+mizar_nocot,"Mizar distilled, no CoT",222,0.003621
+mizar_nocot,"Mizar distilled, no CoT",223,0.003500
+mizar_nocot,"Mizar distilled, no CoT",224,0.003754
+mizar_nocot,"Mizar distilled, no CoT",225,0.003269
+mizar_nocot,"Mizar distilled, no CoT",226,0.003496
+mizar_nocot,"Mizar distilled, no CoT",227,0.003762
+mizar_nocot,"Mizar distilled, no CoT",228,0.003838
+mizar_nocot,"Mizar distilled, no CoT",229,0.003915
+mizar_nocot,"Mizar distilled, no CoT",230,0.003870
+mizar_nocot,"Mizar distilled, no CoT",231,0.004115
+mizar_nocot,"Mizar distilled, no CoT",232,0.003448
+mizar_nocot,"Mizar distilled, no CoT",233,0.003618
+mizar_nocot,"Mizar distilled, no CoT",234,0.003959
+mizar_nocot,"Mizar distilled, no CoT",235,0.004089
+mizar_nocot,"Mizar distilled, no CoT",236,0.003502
+mizar_nocot,"Mizar distilled, no CoT",237,0.003024
+mizar_nocot,"Mizar distilled, no CoT",238,0.003348
+mizar_nocot,"Mizar distilled, no CoT",239,0.003424
+mizar_nocot,"Mizar distilled, no CoT",240,0.003027

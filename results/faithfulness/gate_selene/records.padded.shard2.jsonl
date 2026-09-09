@@ -1,0 +1,30 @@
+{"i": 9, "arm": "padded", "score": 0.75, "error": null, "n_nl": 6, "n_fl": 7, "seconds": 36.55, "strategy_match": true, "beq_plus": true}
+{"i": 20, "arm": "padded", "score": 0.75, "error": null, "n_nl": 5, "n_fl": 5, "seconds": 42.03, "strategy_match": true, "beq_plus": false}
+{"i": 28, "arm": "padded", "score": 0.75, "error": null, "n_nl": 6, "n_fl": 6, "seconds": 29.87, "strategy_match": true, "beq_plus": true}
+{"i": 38, "arm": "padded", "score": 0.8, "error": null, "n_nl": 9, "n_fl": 7, "seconds": 81.46, "strategy_match": true, "beq_plus": false}
+{"i": 42, "arm": "padded", "score": null, "error": "bad_json", "n_nl": 0, "n_fl": 5, "seconds": 74.56, "strategy_match": null, "beq_plus": false}
+{"i": 48, "arm": "padded", "score": 0.75, "error": null, "n_nl": 4, "n_fl": 6, "seconds": 49.29, "strategy_match": true, "beq_plus": false}
+{"i": 56, "arm": "padded", "score": null, "error": "fl_blocks_empty", "n_nl": 0, "n_fl": 0, "seconds": 0.15, "strategy_match": null, "beq_plus": false}
+{"i": 61, "arm": "padded", "score": null, "error": "not_applicable", "seconds": 0.0}
+{"i": 70, "arm": "padded", "score": 0.8, "error": null, "n_nl": 4, "n_fl": 5, "seconds": 48.81, "strategy_match": true, "beq_plus": true}
+{"i": 80, "arm": "padded", "score": null, "error": "not_applicable", "seconds": 0.0}
+{"i": 86, "arm": "padded", "score": 0.25, "error": null, "n_nl": 7, "n_fl": 5, "seconds": 47.54, "strategy_match": false, "beq_plus": false}
+{"i": 94, "arm": "padded", "score": 0.75, "error": null, "n_nl": 5, "n_fl": 4, "seconds": 49.9, "strategy_match": true, "beq_plus": true}
+{"i": 101, "arm": "padded", "score": 0.25, "error": null, "n_nl": 8, "n_fl": 5, "seconds": 52.4, "strategy_match": false, "beq_plus": false}
+{"i": 107, "arm": "padded", "score": 0.8, "error": null, "n_nl": 5, "n_fl": 5, "seconds": 49.3, "strategy_match": true, "beq_plus": false}
+{"i": 116, "arm": "padded", "score": 0.25, "error": null, "n_nl": 9, "n_fl": 6, "seconds": 51.36, "strategy_match": false, "beq_plus": true}
+{"i": 120, "arm": "padded", "score": 0.75, "error": null, "n_nl": 7, "n_fl": 5, "seconds": 40.81, "strategy_match": true, "beq_plus": false}
+{"i": 126, "arm": "padded", "score": 0.8, "error": null, "n_nl": 4, "n_fl": 5, "seconds": 39.6, "strategy_match": true, "beq_plus": true}
+{"i": 133, "arm": "padded", "score": 0.9, "error": null, "n_nl": 2, "n_fl": 5, "seconds": 38.1, "strategy_match": true, "beq_plus": true}
+{"i": 142, "arm": "padded", "score": 0.8, "error": null, "n_nl": 6, "n_fl": 6, "seconds": 49.7, "strategy_match": true, "beq_plus": true}
+{"i": 148, "arm": "padded", "score": 0.8, "error": null, "n_nl": 6, "n_fl": 5, "seconds": 112.01, "strategy_match": true, "beq_plus": false}
+{"i": 153, "arm": "padded", "score": 0.75, "error": null, "n_nl": 8, "n_fl": 5, "seconds": 56.15, "strategy_match": true, "beq_plus": true}
+{"i": 159, "arm": "padded", "score": 0.8, "error": null, "n_nl": 6, "n_fl": 5, "seconds": 85.75, "strategy_match": true, "beq_plus": false}
+{"i": 165, "arm": "padded", "score": 0.8, "error": null, "n_nl": 4, "n_fl": 5, "seconds": 105.15, "strategy_match": true, "beq_plus": true}
+{"i": 170, "arm": "padded", "score": null, "error": "fl_blocks_empty", "n_nl": 0, "n_fl": 0, "seconds": 0.16, "strategy_match": null, "beq_plus": false}
+{"i": 182, "arm": "padded", "score": 0.25, "error": null, "n_nl": 5, "n_fl": 5, "seconds": 71.82, "strategy_match": false, "beq_plus": true}
+{"i": 187, "arm": "padded", "score": 0.8, "error": null, "n_nl": 6, "n_fl": 5, "seconds": 52.91, "strategy_match": true, "beq_plus": true}
+{"i": 197, "arm": "padded", "score": 0.75, "error": null, "n_nl": 7, "n_fl": 6, "seconds": 84.45, "strategy_match": true, "beq_plus": true}
+{"i": 202, "arm": "padded", "score": 0.25, "error": null, "n_nl": 4, "n_fl": 5, "seconds": 40.67, "strategy_match": false, "beq_plus": false}
+{"i": 212, "arm": "padded", "score": null, "error": "not_applicable", "seconds": 0.0}
+{"i": 222, "arm": "padded", "score": null, "error": "bad_json", "n_nl": 0, "n_fl": 5, "seconds": 86.34, "strategy_match": null, "beq_plus": true}

@@ -1,0 +1,7 @@
+/home/logan03/lean-gym-rl/results/eval/rl3b_locolib_proof_c512_outcome/gen_rl3b_locolib_proof_c512_outcome-step90_n760.jsonl
+/home/logan03/lean-gym-rl/results/eval/rl3b_locolib_proof_c512_outcome_brevity/gen_rl3b_locolib_proof_c512_outcome_brevity-step90_n760.jsonl
+/home/logan03/lean-gym-rl/results/eval/rl3b_locolib_proof_c512cos_typecheck/gen_rl3b_locolib_proof_c512cos_typecheck-step90_n760.jsonl
+/home/logan03/lean-gym-rl/results/eval/rl3b_locolib_proof_c512cos_gated/gen_rl3b_locolib_proof_c512cos_gated-step90_n760.jsonl
+/home/logan03/lean-gym-rl/results/eval/rl3b_locolib_proof_c512cos_outcome/gen_rl3b_locolib_proof_c512cos_outcome-step90_n760.jsonl
+/home/logan03/lean-gym-rl/results/eval/rl3b_locolib_proof_c512_outcome_faith/gen_rl3b_locolib_proof_c512_outcome_faith-step90_n760.jsonl
+/home/logan03/lean-gym-rl/results/eval/rl3b_locolib_proof_c512_outcome_v2/gen_rl3b_locolib_proof_c512_outcome_v2-step90_n760.jsonl

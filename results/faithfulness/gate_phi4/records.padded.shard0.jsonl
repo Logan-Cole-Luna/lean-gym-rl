@@ -1,0 +1,30 @@
+{"i": 5, "arm": "padded", "score": 0.75, "error": null, "n_nl": 3, "n_fl": 5, "seconds": 126.38, "strategy_match": true, "beq_plus": false}
+{"i": 14, "arm": "padded", "score": 0.75, "error": null, "n_nl": 6, "n_fl": 5, "seconds": 103.98, "strategy_match": true, "beq_plus": true}
+{"i": 23, "arm": "padded", "score": 0.75, "error": null, "n_nl": 4, "n_fl": 5, "seconds": 109.98, "strategy_match": false, "beq_plus": true}
+{"i": 33, "arm": "padded", "score": 0.75, "error": null, "n_nl": 9, "n_fl": 7, "seconds": 128.61, "strategy_match": true, "beq_plus": false}
+{"i": 40, "arm": "padded", "score": 0.75, "error": null, "n_nl": 5, "n_fl": 6, "seconds": 168.59, "strategy_match": true, "beq_plus": false}
+{"i": 46, "arm": "padded", "score": 0.75, "error": null, "n_nl": 4, "n_fl": 5, "seconds": 87.36, "strategy_match": true, "beq_plus": false}
+{"i": 52, "arm": "padded", "score": null, "error": "not_applicable", "seconds": 0.0}
+{"i": 59, "arm": "padded", "score": 0.75, "error": null, "n_nl": 10, "n_fl": 5, "seconds": 191.29, "strategy_match": true, "beq_plus": true}
+{"i": 65, "arm": "padded", "score": 0.75, "error": null, "n_nl": 7, "n_fl": 6, "seconds": 104.35, "strategy_match": true, "beq_plus": true}
+{"i": 76, "arm": "padded", "score": 0.75, "error": null, "n_nl": 3, "n_fl": 5, "seconds": 99.04, "strategy_match": true, "beq_plus": true}
+{"i": 82, "arm": "padded", "score": 0.75, "error": null, "n_nl": 5, "n_fl": 5, "seconds": 133.86, "strategy_match": true, "beq_plus": true}
+{"i": 89, "arm": "padded", "score": 0.75, "error": null, "n_nl": 6, "n_fl": 5, "seconds": 139.88, "strategy_match": true, "beq_plus": false}
+{"i": 98, "arm": "padded", "score": 0.85, "error": null, "n_nl": 6, "n_fl": 5, "seconds": 176.01, "strategy_match": true, "beq_plus": true}
+{"i": 103, "arm": "padded", "score": null, "error": "fl_blocks_empty", "n_nl": 0, "n_fl": 0, "seconds": 0.17, "strategy_match": null, "beq_plus": false}
+{"i": 111, "arm": "padded", "score": 0.75, "error": null, "n_nl": 5, "n_fl": 5, "seconds": 90.58, "strategy_match": true, "beq_plus": true}
+{"i": 118, "arm": "padded", "score": 0.75, "error": null, "n_nl": 5, "n_fl": 6, "seconds": 94.89, "strategy_match": true, "beq_plus": true}
+{"i": 122, "arm": "padded", "score": 0.85, "error": null, "n_nl": 10, "n_fl": 8, "seconds": 70.9, "strategy_match": true, "beq_plus": true}
+{"i": 129, "arm": "padded", "score": 0.75, "error": null, "n_nl": 4, "n_fl": 5, "seconds": 104.49, "strategy_match": true, "beq_plus": true}
+{"i": 136, "arm": "padded", "score": 0.75, "error": null, "n_nl": 6, "n_fl": 7, "seconds": 236.04, "strategy_match": true, "beq_plus": true}
+{"i": 145, "arm": "padded", "score": 0.75, "error": null, "n_nl": 5, "n_fl": 5, "seconds": 245.45, "strategy_match": true, "beq_plus": true}
+{"i": 150, "arm": "padded", "score": 0.75, "error": null, "n_nl": 8, "n_fl": 5, "seconds": 176.34, "strategy_match": true, "beq_plus": false}
+{"i": 156, "arm": "padded", "score": 0.75, "error": null, "n_nl": 8, "n_fl": 5, "seconds": 201.16, "strategy_match": true, "beq_plus": true}
+{"i": 163, "arm": "padded", "score": null, "error": "bad_json", "n_nl": 0, "n_fl": 5, "seconds": 139.78, "strategy_match": null, "beq_plus": false}
+{"i": 167, "arm": "padded", "score": 0.75, "error": null, "n_nl": 5, "n_fl": 7, "seconds": 95.56, "strategy_match": true, "beq_plus": true}
+{"i": 177, "arm": "padded", "score": 0.75, "error": null, "n_nl": 4, "n_fl": 6, "seconds": 155.43, "strategy_match": true, "beq_plus": true}
+{"i": 185, "arm": "padded", "score": 0.75, "error": null, "n_nl": 5, "n_fl": 6, "seconds": 81.77, "strategy_match": true, "beq_plus": true}
+{"i": 192, "arm": "padded", "score": 0.85, "error": null, "n_nl": 9, "n_fl": 7, "seconds": 121.97, "strategy_match": true, "beq_plus": true}
+{"i": 200, "arm": "padded", "score": 0.75, "error": null, "n_nl": 4, "n_fl": 5, "seconds": 59.0, "strategy_match": true, "beq_plus": false}
+{"i": 208, "arm": "padded", "score": 0.75, "error": null, "n_nl": 5, "n_fl": 6, "seconds": 54.69, "strategy_match": true, "beq_plus": false}
+{"i": 218, "arm": "padded", "score": null, "error": "not_applicable", "seconds": 0.0}

@@ -1,0 +1,30 @@
+{"i": 8, "arm": "padded", "score": null, "error": "not_applicable", "seconds": 0.0}
+{"i": 17, "arm": "padded", "score": 0.75, "error": null, "n_nl": 7, "n_fl": 5, "seconds": 115.4, "strategy_match": true, "beq_plus": true}
+{"i": 27, "arm": "padded", "score": 0.75, "error": null, "n_nl": 2, "n_fl": 5, "seconds": 101.27, "strategy_match": true, "beq_plus": true}
+{"i": 36, "arm": "padded", "score": null, "error": "fl_blocks_empty", "n_nl": 0, "n_fl": 0, "seconds": 0.24, "strategy_match": null, "beq_plus": false}
+{"i": 41, "arm": "padded", "score": 0.75, "error": null, "n_nl": 4, "n_fl": 5, "seconds": 111.32, "strategy_match": true, "beq_plus": true}
+{"i": 47, "arm": "padded", "score": 0.75, "error": null, "n_nl": 3, "n_fl": 6, "seconds": 128.61, "strategy_match": true, "beq_plus": false}
+{"i": 54, "arm": "padded", "score": 0.75, "error": null, "n_nl": 4, "n_fl": 5, "seconds": 167.2, "strategy_match": true, "beq_plus": true}
+{"i": 60, "arm": "padded", "score": 0.0, "error": null, "n_nl": 6, "n_fl": 5, "seconds": 89.51, "strategy_match": false, "beq_plus": false}
+{"i": 69, "arm": "padded", "score": 0.75, "error": null, "n_nl": 3, "n_fl": 5, "seconds": 191.05, "strategy_match": true, "beq_plus": true}
+{"i": 78, "arm": "padded", "score": 0.75, "error": null, "n_nl": 2, "n_fl": 5, "seconds": 101.69, "strategy_match": true, "beq_plus": true}
+{"i": 83, "arm": "padded", "score": 0.75, "error": null, "n_nl": 9, "n_fl": 6, "seconds": 103.79, "strategy_match": true, "beq_plus": true}
+{"i": 90, "arm": "padded", "score": 0.75, "error": null, "n_nl": 4, "n_fl": 5, "seconds": 131.42, "strategy_match": true, "beq_plus": true}
+{"i": 99, "arm": "padded", "score": 0.75, "error": null, "n_nl": 7, "n_fl": 5, "seconds": 139.93, "strategy_match": true, "beq_plus": true}
+{"i": 105, "arm": "padded", "score": 0.75, "error": null, "n_nl": 4, "n_fl": 5, "seconds": 176.19, "strategy_match": true, "beq_plus": false}
+{"i": 114, "arm": "padded", "score": 0.75, "error": null, "n_nl": 3, "n_fl": 5, "seconds": 90.31, "strategy_match": true, "beq_plus": true}
+{"i": 119, "arm": "padded", "score": 0.75, "error": null, "n_nl": 5, "n_fl": 5, "seconds": 94.72, "strategy_match": true, "beq_plus": true}
+{"i": 123, "arm": "padded", "score": 0.75, "error": null, "n_nl": 3, "n_fl": 5, "seconds": 73.11, "strategy_match": false, "beq_plus": true}
+{"i": 130, "arm": "padded", "score": null, "error": "not_applicable", "seconds": 0.0}
+{"i": 139, "arm": "padded", "score": null, "error": "fl_blocks_empty", "n_nl": 0, "n_fl": 0, "seconds": 0.41, "strategy_match": null, "beq_plus": false}
+{"i": 147, "arm": "padded", "score": 0.0, "error": null, "n_nl": 5, "n_fl": 5, "seconds": 103.19, "strategy_match": false, "beq_plus": false}
+{"i": 152, "arm": "padded", "score": null, "error": "bad_json", "n_nl": 0, "n_fl": 5, "seconds": 108.36, "strategy_match": null, "beq_plus": true}
+{"i": 158, "arm": "padded", "score": 0.85, "error": null, "n_nl": 8, "n_fl": 7, "seconds": 236.25, "strategy_match": true, "beq_plus": true}
+{"i": 164, "arm": "padded", "score": 0.25, "error": null, "n_nl": 5, "n_fl": 5, "seconds": 157.41, "strategy_match": false, "beq_plus": false}
+{"i": 168, "arm": "padded", "score": 0.9, "error": null, "n_nl": 9, "n_fl": 10, "seconds": 180.05, "strategy_match": true, "beq_plus": true}
+{"i": 179, "arm": "padded", "score": null, "error": "no_judge", "n_nl": 0, "n_fl": 7, "seconds": 180.34, "strategy_match": null, "beq_plus": false}
+{"i": 186, "arm": "padded", "score": 0.75, "error": null, "n_nl": 3, "n_fl": 5, "seconds": 147.44, "strategy_match": true, "beq_plus": false}
+{"i": 193, "arm": "padded", "score": 0.25, "error": null, "n_nl": 6, "n_fl": 6, "seconds": 95.56, "strategy_match": false, "beq_plus": false}
+{"i": 201, "arm": "padded", "score": null, "error": "bad_json", "n_nl": 0, "n_fl": 5, "seconds": 105.42, "strategy_match": null, "beq_plus": false}
+{"i": 209, "arm": "padded", "score": null, "error": "fl_blocks_empty", "n_nl": 0, "n_fl": 0, "seconds": 0.31, "strategy_match": null, "beq_plus": false}
+{"i": 219, "arm": "padded", "score": 0.75, "error": null, "n_nl": 4, "n_fl": 5, "seconds": 109.71, "strategy_match": true, "beq_plus": true}
