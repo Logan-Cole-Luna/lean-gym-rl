@@ -1,0 +1,8 @@
+{"i": 9, "arm": "matched", "score": 0.85, "error": null, "n_nl": 10, "n_fl": 3, "seconds": 128.82, "strategy_match": true, "beq_plus": true}
+{"i": 17, "arm": "matched", "score": 0.25, "error": null, "n_nl": 7, "n_fl": 1, "seconds": 140.34, "strategy_match": false, "beq_plus": true}
+{"i": 21, "arm": "matched", "score": 0.75, "error": null, "n_nl": 6, "n_fl": 1, "seconds": 167.67, "strategy_match": true, "beq_plus": true}
+{"i": 28, "arm": "matched", "score": 0.0, "error": null, "n_nl": 6, "n_fl": 1, "seconds": 77.87, "strategy_match": false, "beq_plus": false}
+{"i": 38, "arm": "matched", "score": 0.85, "error": null, "n_nl": 5, "n_fl": 1, "seconds": 85.98, "strategy_match": true, "beq_plus": false}
+{"i": 42, "arm": "matched", "score": null, "error": "no_judge", "n_nl": 0, "n_fl": 3, "seconds": 180.35, "strategy_match": null, "beq_plus": false}
+{"i": 47, "arm": "matched", "score": 0.95, "error": null, "n_nl": 3, "n_fl": 2, "seconds": 110.39, "strategy_match": true, "beq_plus": false}
+{"i": 52, "arm": "matched", "score": null, "error": "fl_blocks_empty", "n_nl": 0, "n_fl": 0, "seconds": 0.33, "strategy_match": null, "beq_plus": false}

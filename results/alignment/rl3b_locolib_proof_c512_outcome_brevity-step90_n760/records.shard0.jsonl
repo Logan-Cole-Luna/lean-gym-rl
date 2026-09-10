@@ -1,0 +1,17 @@
+{"error": "no_checkpoints", "n_pred": 0, "n_gold": 0, "seconds": 0.12464754597749561, "index": 2}
+{"error": "no_checkpoints", "n_pred": 0, "n_gold": 1, "seconds": 0.24399302201345563, "index": 56}
+{"matched": 0, "precision": 0.0, "recall": 0.0, "f1": 0.0, "n_pred": 1, "n_gold": 1, "cells": 1, "seconds": 6.717726571019739, "error": null, "index": 89}
+{"error": "no_checkpoints", "n_pred": 0, "n_gold": 0, "seconds": 0.10672768298536539, "index": 141}
+{"error": "no_checkpoints", "n_pred": 0, "n_gold": 0, "seconds": 0.126737809041515, "index": 180}
+{"matched": 0, "precision": 0.0, "recall": 0.0, "f1": 0.0, "n_pred": 3, "n_gold": 10, "cells": 30, "seconds": 1.5839095800183713, "error": null, "index": 233}
+{"error": "no_checkpoints", "n_pred": 1, "n_gold": 0, "seconds": 0.12455487891566008, "index": 292}
+{"error": "no_checkpoints", "n_pred": 0, "n_gold": 0, "seconds": 0.33777764590922743, "index": 353}
+{"error": "no_checkpoints", "n_pred": 0, "n_gold": 4, "seconds": 0.24993825901765376, "index": 377}
+{"matched": 1, "precision": 1.0, "recall": 1.0, "f1": 1.0, "n_pred": 1, "n_gold": 1, "cells": 1, "seconds": 15.627844800939783, "error": null, "index": 398}
+{"error": "no_checkpoints", "n_pred": 0, "n_gold": 0, "seconds": 0.14381476398557425, "index": 423}
+{"error": "no_checkpoints", "n_pred": 0, "n_gold": 0, "seconds": 0.2077078449074179, "index": 466}
+{"error": "no_checkpoints", "n_pred": 0, "n_gold": 0, "seconds": 0.6832184770610183, "index": 535}
+{"error": "no_checkpoints", "n_pred": 0, "n_gold": 0, "seconds": 0.13004521501716226, "index": 562}
+{"error": "no_checkpoints", "n_pred": 0, "n_gold": 0, "seconds": 0.19439624797087163, "index": 585}
+{"error": "no_checkpoints", "n_pred": 0, "n_gold": 6, "seconds": 0.2993788339663297, "index": 646}
+{"matched": 0, "precision": 0.0, "recall": 0.0, "f1": 0.0, "n_pred": 5, "n_gold": 5, "cells": 25, "seconds": 1.1244165489915758, "error": null, "index": 713}

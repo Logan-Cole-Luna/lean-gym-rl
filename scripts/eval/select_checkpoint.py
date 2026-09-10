@@ -45,9 +45,16 @@ def load_records(results_dir: Path) -> dict[str, dict]:
     merged: dict[str, dict] = {}
     # rglob, not glob: eval JSONs now live under results/eval/<model_label>/,
     # and this function's whole point is to merge labels ACROSS models.
+    #
+    # Directories whose name is `archive` or begins with `_` are held out.
+    # They carry records that are superseded, partial, or belong to a completed
+    # study, and since duplicate labels resolve by mtime, a superseded copy
+    # rewritten after its replacement would otherwise win.
     paths = [
         p for p in results_dir.rglob("eval_*.json")
         if p.name not in STALE and p.name not in NOT_A_COMPARISON
+        and not any(part == "archive" or part.startswith("_")
+                    for part in p.relative_to(results_dir).parts[:-1])
     ]
     for p in sorted(paths, key=lambda x: x.stat().st_mtime):
         try:

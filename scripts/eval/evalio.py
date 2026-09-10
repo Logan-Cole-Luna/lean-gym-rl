@@ -74,18 +74,54 @@ def discover_arms(run_prefix: str = RUN_PREFIX, results: Path = RESULTS) -> list
     return out
 
 
+def baseline_label_from_pointer(pointer: Path | None = None,
+                                label_prefix: str | None = None) -> str | None:
+    """The baseline label implied by the pinned best-SFT pointer file.
+
+    `BEST_SFT` names the checkpoint directory every arm resumes from, e.g.
+    `.../sft_3b_locolib_proof/global_step_76/huggingface`, and `SFT_LABEL` names
+    the eval series built from it. Together they give `<label>-step<N>` without
+    consulting the filesystem's write times, so the baseline plotted is the
+    checkpoint the arms actually started from rather than whichever SFT series
+    was evaluated most recently. Returns None when the pointer is absent or
+    unreadable, leaving the caller's fallback in place.
+    """
+    pointer = pointer or Path(os.environ.get(
+        "BEST_SFT", PROJECT_ROOT / "data_locolib" / "best_sft_proof.txt"))
+    label_prefix = label_prefix or os.environ.get("SFT_LABEL", "sft3blocolib_proof")
+    try:
+        text = Path(pointer).read_text().strip()
+    except OSError:
+        return None
+    m = re.search(r"global_step_(\d+)", text)
+    return f"{label_prefix}-step{m.group(1)}" if m else None
+
+
 def discover_baseline_label(prefix: str = BASELINE_PREFIX,
                             run_prefix: str = RUN_PREFIX,
                             results: Path = RESULTS) -> str | None:
     """The SFT checkpoint the arms resume from, as `<dir>-step<N>`.
 
-    `BASELINE_LABEL` in the environment wins outright. Otherwise: the most
-    recently written `<prefix>*` directory that is NOT itself an arm, taken at
-    its latest step. Returns None when nothing matches, so callers can fall back.
+    Resolution order: `BASELINE_LABEL` in the environment, then the pinned
+    best-SFT pointer, then the most recently written `<prefix>*` directory that
+    is not itself an arm, taken at its latest step. Returns None when nothing
+    matches, so callers can fall back.
+
+    The pointer is consulted before the mtime scan because the two can disagree:
+    the mtime scan returns whichever SFT series was evaluated last, which is not
+    necessarily the series the arms resume from, and a comparison against the
+    wrong baseline is not visibly wrong in a plot.
     """
     env = os.environ.get("BASELINE_LABEL")
     if env:
         return env
+    # Returned whether or not its records are on disk. A pinned baseline whose
+    # record is momentarily absent must surface as a missing-record error from
+    # the caller, not as a silent fall-through to whichever other SFT series the
+    # mtime scan happens to reach.
+    pinned = baseline_label_from_pointer()
+    if pinned:
+        return pinned
     root = results / "eval"
     if not root.is_dir():
         return None

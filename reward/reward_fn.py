@@ -170,7 +170,8 @@ def _never_raises(zero: dict):
     return decorator
 
 
-def _diagnostics(r: dict, proof_check: dict | None = None) -> dict[str, float]:
+def _diagnostics(r: dict, proof_check: dict | None = None,
+                 wrote_something: bool = True) -> dict[str, float]:
     """Per-sample fields forwarded into `reward_extra_info`. All numeric.
     Used only by `compute_score_outcome` -- see the module note above `_SCHEMA`.
 
@@ -204,7 +205,11 @@ def _diagnostics(r: dict, proof_check: dict | None = None) -> dict[str, float]:
         # Why direction 0 stopped, which n_directions=0 conflates.
         # 0 = ran to completion, 1 = unparseable, 2 = sorry gate, 3 = no rung.
         "stop_reason": float(_STOP_REASON_CODE.get(r.get("stop_reason"), 0)),
-        "outcome_code": float(OUTCOMES.index(outcome_for(signals_from_score(r, proof_check)))),
+        # Same wiring as the score above, or the per-example histogram would
+        # disagree with the reward it is meant to explain.
+        "outcome_code": float(OUTCOMES.index(outcome_for(signals_from_score(
+            r, proof_check, typecheck_from_own_proof=TYPECHECK_FROM_OWN_PROOF,
+            wrote_something=wrote_something)))),
         "proved": float(proof_check.get("proved", False)) if proof_check else 0.0,
         "sorry_used": float(proof_check.get("sorry_used", False)) if proof_check else 0.0,
     }
@@ -248,6 +253,13 @@ def compute_score_typecheck(data_source, solution_str, ground_truth, extra_info=
 
 W_GATED_ONE_DIR = float(os.environ.get("BEQ_W_GATED_ONE_DIR", "0.25"))
 
+# Column 2 of reward.py's table ("Lean compiles it") now reads the SUBMISSION AS
+# WRITTEN via check_own_proof, not BEq+'s statement-only check which sorries the
+# proof away. Set to 0 to restore the old wiring when comparing against numbers
+# recorded before the fix -- it changes what a run scores, so the two are not
+# directly comparable. See `signals_from_score`.
+TYPECHECK_FROM_OWN_PROOF = os.environ.get("BEQ_TYPECHECK_FROM_OWN_PROOF", "1") == "1"
+
 
 @_never_raises(_GATED_ZERO)
 def compute_score_gated(data_source, solution_str, ground_truth, extra_info=None) -> dict:
@@ -284,8 +296,9 @@ def compute_score_outcome(data_source, solution_str, ground_truth, extra_info=No
         0.15  elaborates, does not match the gold, proof unfinished/absent
         0.30  a real finished proof, but of a theorem BEq+ could not match
         0.50  BEq+ matches the gold, proof still unfinished
-        0.85-1.00  BEq+ matches AND the candidate's own proof is sorry-free
-                   and axiom-clean (`solved`)
+        0.85  BEq+ matches AND the candidate's own proof is sorry-free and
+              axiom-clean (`solved`). Flat at 0.85, not 0.85-1.00: this arm
+              measures no faithfulness, and an unmeasured f is not paid.
 
     `_score_pair` runs BEq+'s statement cascade (ignores proof bodies on both
     sides, unchanged); `check_own_proof` separately elaborates the candidate's
@@ -300,8 +313,13 @@ def compute_score_outcome(data_source, solution_str, ground_truth, extra_info=No
     context, _gold_theorem = split_header_and_theorem(ground_truth)
     with _lean_slot:
         proof_check = scorer.check_own_proof(pred, context)
-    s = signals_from_score(r, proof_check)
-    return {"score": reward_for(s), **_diagnostics(r, proof_check=proof_check)}
+    wrote_something = bool(pred.strip())
+    s = signals_from_score(r, proof_check,
+                           typecheck_from_own_proof=TYPECHECK_FROM_OWN_PROOF,
+                           wrote_something=wrote_something)
+    return {"score": reward_for(s),
+            **_diagnostics(r, proof_check=proof_check,
+                           wrote_something=wrote_something)}
 
 
 # Used when custom_reward_function.name is left unset. Every job here sets the

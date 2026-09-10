@@ -55,7 +55,21 @@ NGPUS_PER_NODE=${NGPUS_PER_NODE:-1}
 train_batch_size=${TRAIN_BATCH_SIZE:-16}
 ppo_mini_batch_size=${PPO_MINI_BATCH_SIZE:-${train_batch_size}}
 max_prompt_length=${MAX_PROMPT_LENGTH:-768}
-max_response_length=${MAX_RESPONSE_LENGTH:-128}
+# 512, not the old 128. The 128 was a 16GB-card artifact that outlived its
+# hardware and became a standing gradient against long -- i.e. semantically
+# richer -- answers: a truncated rollout scores 0 under every reward, and
+# `response_length/clip_ratio` ran 2.3-13.3% per step across the whole
+# locolib_proof_lr6 series. MEASURED on the 760-row proof val slice, the gold
+# ANSWER (theorem + proof; the context is in the prompt, not emitted) is p50 54
+# / p90 115 / p99 192 / max 275 Qwen tokens, so 128 truncates 6.1% of
+# reference-length answers and 384 covers all of them. 512 matches
+# `evaluate_checkpoints.py --max-new-tokens` so the policy is trained and
+# scored against the same budget, with headroom above the longest gold.
+#
+# Raising this is what makes reward/reward.py's BREVITY term non-degenerate:
+# at 128 nothing in the reachable population is long enough to penalise, and
+# the term fired on 0 of 182 SOLVED rollouts.
+max_response_length=${MAX_RESPONSE_LENGTH:-512}
 # Tokens per training micro-batch under use_dynamic_bsz, for BOTH the actor's
 # backward pass (train_batch) and compute_log_prob (actor + ref, forward-only).
 ppo_max_token_len_per_gpu=${PPO_MAX_TOKEN_LEN_PER_GPU:-4096}
@@ -83,6 +97,18 @@ gradient_checkpointing=${GRADIENT_CHECKPOINTING:-True}
 # TODO hyperparam search
 actor_lr=${ACTOR_LR:-1e-6}
 lr_warmup_ratio=${LR_WARMUP_RATIO:-0.0}
+
+# LR schedule after warmup. verl's default is "constant", which holds the peak
+# LR for every step of the run; "cosine" decays it to min_lr_ratio * lr by
+# total_training_steps, so late steps take small, refining updates instead of
+# full-size ones. That matters here specifically because train_batch_size=16 is
+# ~32x smaller than GRPO is usually run at, so a late full-size step is driven
+# by a handful of prompts. The schedule reads trainer.total_training_steps, and
+# its position lives in the checkpoint's `extra` shard, so chained afterany
+# chunks resume mid-curve rather than restarting the warmup.
+lr_scheduler_type=${LR_SCHEDULER_TYPE:-constant}
+min_lr_ratio=${MIN_LR_RATIO:-0.0}
+lr_num_cycles=${LR_NUM_CYCLES:-0.5}
 
 # ---- the anti-drift settings ----
 kl_loss_coef=${KL_LOSS_COEF:-0.01}
@@ -168,6 +194,9 @@ MODEL=(
 ACTOR=(
     actor_rollout_ref.actor.optim.lr=${actor_lr}
     actor_rollout_ref.actor.optim.lr_warmup_steps_ratio=${lr_warmup_ratio}
+    actor_rollout_ref.actor.optim.lr_scheduler_type=${lr_scheduler_type}
+    actor_rollout_ref.actor.optim.min_lr_ratio=${min_lr_ratio}
+    actor_rollout_ref.actor.optim.num_cycles=${lr_num_cycles}
     actor_rollout_ref.actor.ppo_mini_batch_size=${ppo_mini_batch_size}
     actor_rollout_ref.actor.use_dynamic_bsz=True
     actor_rollout_ref.actor.ppo_max_token_len_per_gpu=${ppo_max_token_len_per_gpu}

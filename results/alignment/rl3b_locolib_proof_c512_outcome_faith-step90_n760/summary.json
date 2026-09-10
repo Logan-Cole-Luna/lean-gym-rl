@@ -1,0 +1,14 @@
+{
+  "n": 100,
+  "n_scored": 37,
+  "errors": {
+    "no_env": 0,
+    "no_checkpoints": 62,
+    "too_large": 1
+  },
+  "mean_f1": 0.23648648648648643,
+  "mean_precision": 0.2747747747747748,
+  "mean_recall": 0.2245817245817246,
+  "mean_seconds": 23.934672389066545,
+  "total_seconds": 2393.4672389066545
+}

@@ -1,0 +1,94 @@
+% Reward specification (outcome_v2). Requires: amsmath, natbib.
+\subsection{Reward function}
+\label{sec:reward}
+
+A rollout $x$ is a candidate Lean~4 theorem together with its own proof. Five
+components are measured on it, each defined below, and a single expression
+combines them.
+
+\textbf{Structural components.} Let $w,t,q\in\{0,1\}$ indicate that the rollout
+wrote a non-empty, problem-specific answer; that Lean accepted it
+(\emph{type-correct}, which admits a \texttt{sorry} body); and that it is
+\emph{proved}, meaning type-correct, sorry-free, declaring a non-trivial theorem
+and introducing no axiom beyond Lean's standard three. By construction
+$q \le t \le w$.
+
+\textbf{Semantic equivalence.} Both statements are reduced to signatures by
+replacing their proof bodies with \texttt{sorry}, and each is attacked from the
+other by a fixed cascade of proof attempts of increasing cost, from syntactic
+identity through \texttt{apply} to \texttt{convert \ldots using 0..4}
+\citep{poiroux2025reliable}. With $\sigma(x)\in\{0,1,2\}$ the number of
+directions established,
+%
+\begin{equation}
+\label{eq:beq}
+m(x) \;=\; \mathbf{1}\!\left[\sigma(x) = 2\right] .
+\end{equation}
+%
+Each established direction yields a Lean proof term of type
+\verb|gold -> pred| or its converse: a certificate checkable independently of
+the process that produced it. Failure certifies nothing, an unclosed direction
+being weaker than a proof of non-equivalence. The directions are not
+interchangeable, since the cascade tries $\text{gold}\Rightarrow\text{pred}$
+first and skips the converse when it fails; $\sigma=0$ therefore conflates a
+strictly stronger candidate with an unrelated one, and partial credit at
+$\sigma=1$ would reward weakening exclusively, so Eq.~\ref{eq:beq} admits
+$\sigma=2$ alone.
+
+\textbf{Brevity.} For candidate and reference proof-body lengths $L,L^{*}$ in
+characters, taken from the first bracket-balanced \verb|:=| that is not a
+binder, and a softening constant $s=60$,
+%
+\begin{equation}
+\label{eq:brevity}
+b(x) \;=\; \exp\!\left(-\lambda\left|\ln\frac{L+s}{L^{*}+s}\right|\right)
+\;\overset{\lambda=1}{=}\; \min\!\left(r,\tfrac{1}{r}\right),
+\quad r=\frac{L+s}{L^{*}+s},
+\qquad b=1 \ \text{if $L$ or $L^{*}$ is unavailable} .
+\end{equation}
+%
+It is smooth, strictly positive, and symmetric in the log ratio, so it measures
+distance from reference length rather than bloat. Softening makes it usable
+here: reference bodies have median $40$ characters with $30\%$ under $20$, where
+an unsoftened $L/L^{*}$ reads a four-character difference as a fourfold overrun.
+Brevity admits no certificate, being a preference rather than a theorem; the
+pair $(L,L^{*})$ is recorded per rollout so divergence can be audited directly.
+
+\textbf{Faithfulness.} $f(x)\in[0,1]$ scores the Lean proof against the informal
+argument it was given, judged by a held-out model over tactic blocks extracted
+by the Lean REPL. A term-mode proof emits no tactics and is scored unmeasured
+rather than zero.
+
+\textbf{Outcome map.} The six rungs are the reachable combinations of the
+structural components with $m$:
+%
+\begin{equation}
+\label{eq:outcome}
+o(x) \;=\;
+\begin{cases}
+1 & w=0 \quad \text{(no answer)}\\
+2 & w=1,\ t=0 \quad \text{(Lean rejects it)}\\
+3 + q + 2m & t=1 \quad \text{(unfinished, proved, matched, or solved)} .
+\end{cases}
+\end{equation}
+%
+When $m=0$, $q$ additionally requires an extractable non-trivial theorem, so a
+finished proof of nothing is demoted from $o=4$ to $o=3$.
+
+\textbf{Reward.} With base payouts
+$\rho = (0.00,\, 0.05,\, 0.15,\, 0.30,\, 0.50,\, 0.85)$ indexed by $o$,
+%
+\begin{equation}
+\label{eq:reward}
+R(x) \;=\; \rho_{o(x)} \;+\; \mathbf{1}\!\left[o(x)=6\right]\Bigl(\beta_f\, f(x) \;-\; \beta_b\,\bigl(1-b(x)\bigr)\Bigr),
+\qquad \beta_f = 0.15,\ \ \beta_b = 0.10 ,
+\end{equation}
+%
+so $R\in[0,1]$, attaining $1$ only for a proved, matched, fully faithful proof
+of reference length, and $\rho_6 = 1 - \beta_f$. Both bands act on the top rung
+alone, so a degenerate non-proof lands on $o=3$ and is eligible for neither.
+Unmeasured values default in opposite directions: $f$ is a payment so it scores
+$0$, $b$ is a deduction so it scores $1$; in each case a failed measurement
+leaves the reward no better than it would otherwise have been. At step~90,
+$\bar{b}=0.834$ over certified rollouts for a mean charge of $0.017$, and $f$ is
+measurable on $0.121$ of rollouts with $\bar{f}=0.840$ where measured.

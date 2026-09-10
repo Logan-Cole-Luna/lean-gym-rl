@@ -1,0 +1,30 @@
+{"i": 9, "arm": "padded", "score": 0.95, "error": null, "n_nl": 10, "n_fl": 7, "seconds": 45.13, "strategy_match": true, "beq_plus": true}
+{"i": 20, "arm": "padded", "score": 0.25, "error": null, "n_nl": 4, "n_fl": 5, "seconds": 39.01, "strategy_match": false, "beq_plus": false}
+{"i": 28, "arm": "padded", "score": 0.9, "error": null, "n_nl": 5, "n_fl": 6, "seconds": 30.6, "strategy_match": true, "beq_plus": true}
+{"i": 38, "arm": "padded", "score": 0.75, "error": null, "n_nl": 5, "n_fl": 7, "seconds": 62.47, "strategy_match": false, "beq_plus": false}
+{"i": 42, "arm": "padded", "score": 0.25, "error": null, "n_nl": 6, "n_fl": 5, "seconds": 55.56, "strategy_match": false, "beq_plus": false}
+{"i": 48, "arm": "padded", "score": 0.9, "error": null, "n_nl": 4, "n_fl": 6, "seconds": 33.38, "strategy_match": true, "beq_plus": false}
+{"i": 56, "arm": "padded", "score": null, "error": "fl_blocks_empty", "n_nl": 0, "n_fl": 0, "seconds": 0.16, "strategy_match": null, "beq_plus": false}
+{"i": 61, "arm": "padded", "score": null, "error": "not_applicable", "seconds": 0.0}
+{"i": 70, "arm": "padded", "score": 0.9, "error": null, "n_nl": 3, "n_fl": 5, "seconds": 64.13, "strategy_match": true, "beq_plus": true}
+{"i": 80, "arm": "padded", "score": null, "error": "not_applicable", "seconds": 0.0}
+{"i": 86, "arm": "padded", "score": 0.25, "error": null, "n_nl": 7, "n_fl": 5, "seconds": 50.62, "strategy_match": false, "beq_plus": false}
+{"i": 94, "arm": "padded", "score": 0.9, "error": null, "n_nl": 1, "n_fl": 4, "seconds": 44.22, "strategy_match": true, "beq_plus": true}
+{"i": 101, "arm": "padded", "score": 0.25, "error": null, "n_nl": 3, "n_fl": 5, "seconds": 56.13, "strategy_match": false, "beq_plus": false}
+{"i": 107, "arm": "padded", "score": 0.75, "error": null, "n_nl": 5, "n_fl": 5, "seconds": 64.81, "strategy_match": true, "beq_plus": false}
+{"i": 116, "arm": "padded", "score": 0.9, "error": null, "n_nl": 4, "n_fl": 6, "seconds": 64.43, "strategy_match": true, "beq_plus": true}
+{"i": 120, "arm": "padded", "score": 0.0, "error": null, "n_nl": 3, "n_fl": 5, "seconds": 34.34, "strategy_match": false, "beq_plus": false}
+{"i": 126, "arm": "padded", "score": 0.75, "error": null, "n_nl": 4, "n_fl": 5, "seconds": 32.88, "strategy_match": true, "beq_plus": true}
+{"i": 133, "arm": "padded", "score": 0.9, "error": null, "n_nl": 2, "n_fl": 5, "seconds": 33.53, "strategy_match": true, "beq_plus": true}
+{"i": 142, "arm": "padded", "score": 0.95, "error": null, "n_nl": 6, "n_fl": 6, "seconds": 37.24, "strategy_match": true, "beq_plus": true}
+{"i": 148, "arm": "padded", "score": 0.95, "error": null, "n_nl": 5, "n_fl": 5, "seconds": 95.7, "strategy_match": true, "beq_plus": false}
+{"i": 153, "arm": "padded", "score": 0.75, "error": null, "n_nl": 5, "n_fl": 5, "seconds": 42.93, "strategy_match": true, "beq_plus": true}
+{"i": 159, "arm": "padded", "score": 0.9, "error": null, "n_nl": 6, "n_fl": 5, "seconds": 56.77, "strategy_match": true, "beq_plus": false}
+{"i": 165, "arm": "padded", "score": 0.9, "error": null, "n_nl": 4, "n_fl": 5, "seconds": 61.19, "strategy_match": true, "beq_plus": true}
+{"i": 170, "arm": "padded", "score": null, "error": "fl_blocks_empty", "n_nl": 0, "n_fl": 0, "seconds": 0.16, "strategy_match": null, "beq_plus": false}
+{"i": 182, "arm": "padded", "score": 0.25, "error": null, "n_nl": 1, "n_fl": 5, "seconds": 82.3, "strategy_match": false, "beq_plus": true}
+{"i": 187, "arm": "padded", "score": 0.9, "error": null, "n_nl": 6, "n_fl": 5, "seconds": 51.86, "strategy_match": true, "beq_plus": true}
+{"i": 197, "arm": "padded", "score": 0.9, "error": null, "n_nl": 7, "n_fl": 6, "seconds": 58.46, "strategy_match": true, "beq_plus": true}
+{"i": 202, "arm": "padded", "score": 0.0, "error": null, "n_nl": 3, "n_fl": 5, "seconds": 57.21, "strategy_match": false, "beq_plus": false}
+{"i": 212, "arm": "padded", "score": null, "error": "not_applicable", "seconds": 0.0}
+{"i": 222, "arm": "padded", "score": 0.9, "error": null, "n_nl": 1, "n_fl": 5, "seconds": 53.86, "strategy_match": true, "beq_plus": true}

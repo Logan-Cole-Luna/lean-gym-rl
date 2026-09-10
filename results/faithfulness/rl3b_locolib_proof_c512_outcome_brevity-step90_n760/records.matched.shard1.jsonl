@@ -1,0 +1,6 @@
+{"i": 6, "arm": "matched", "score": 0.85, "error": null, "n_nl": 5, "n_fl": 2, "seconds": 128.84, "strategy_match": true, "beq_plus": true}
+{"i": 13, "arm": "matched", "score": 0.75, "error": null, "n_nl": 3, "n_fl": 1, "seconds": 140.36, "strategy_match": true, "beq_plus": true}
+{"i": 19, "arm": "matched", "score": null, "error": "bad_json", "n_nl": 0, "n_fl": 3, "seconds": 162.07, "strategy_match": null, "beq_plus": true}
+{"i": 23, "arm": "matched", "score": 0.75, "error": null, "n_nl": 4, "n_fl": 1, "seconds": 78.72, "strategy_match": false, "beq_plus": true}
+{"i": 33, "arm": "matched", "score": 0.85, "error": null, "n_nl": 9, "n_fl": 3, "seconds": 82.64, "strategy_match": true, "beq_plus": false}
+{"i": 40, "arm": "matched", "score": 0.95, "error": null, "n_nl": 5, "n_fl": 3, "seconds": 290.97, "strategy_match": true, "beq_plus": false}

@@ -1,0 +1,5 @@
+1. Get new model outcomes (Brevity, Faithfulness)
+2. Train type-check, gated, & 6-outcome arms on 512 cap with coslr
+3. Eval on OOD data (MiniF2F)
+4. Run LLM judge for proof faithfulness 
+5. Continue training of SFT (will likely have to repeat all previous steps, doesn't reveal much about RL which is the main go)

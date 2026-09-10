@@ -10,10 +10,13 @@ batch/shard job (spins up one `AutoLeanServer` per shard run); this module wraps
 the same algorithm behind a class that holds the Lean REPL server open across
 many `score()` calls, which is what an online RL reward needs.
 
-The Lean environment points at a fresh Mathlib v4.8.0-rc1 checkout (built via
-`lake exe cache get`) under this project's own `repos/mathlib4`, pinned to match
-the `internlm/Lean-Workbook` dataset's target toolchain -- see ai4math_training's
-plan notes.
+The Lean environment points at a Mathlib checkout (built via `lake exe cache
+get`) under this project's own `repos/mathlib4`. The pin is `MATHLIB4_TAG` in the
+Makefile, currently v4.23.0; override the location with `MATHLIB_ROOT`. (This
+note used to say v4.8.0-rc1, the old `internlm/Lean-Workbook` toolchain -- stale
+since the move to LoCoLib, and worth getting right because dataset/Mathlib
+compatibility is exactly what `scripts/eval/beq_calibration.py`'s gold gate
+measures.)
 """
 from __future__ import annotations
 

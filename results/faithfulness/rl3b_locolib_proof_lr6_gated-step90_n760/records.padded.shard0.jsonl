@@ -1,0 +1,30 @@
+{"i": 5, "arm": "padded", "score": 1.0, "error": null, "n_nl": 1, "n_fl": 5, "seconds": 5.68, "strategy_match": true, "beq_plus": false}
+{"i": 14, "arm": "padded", "score": 1.0, "error": null, "n_nl": 1, "n_fl": 5, "seconds": 7.29, "strategy_match": true, "beq_plus": true}
+{"i": 23, "arm": "padded", "score": 1.0, "error": null, "n_nl": 1, "n_fl": 5, "seconds": 14.91, "strategy_match": true, "beq_plus": true}
+{"i": 33, "arm": "padded", "score": 0.9, "error": null, "n_nl": 3, "n_fl": 7, "seconds": 22.83, "strategy_match": true, "beq_plus": false}
+{"i": 40, "arm": "padded", "score": 0.0, "error": null, "n_nl": 1, "n_fl": 6, "seconds": 15.51, "strategy_match": true, "beq_plus": false}
+{"i": 46, "arm": "padded", "score": 1.0, "error": null, "n_nl": 2, "n_fl": 5, "seconds": 12.72, "strategy_match": true, "beq_plus": false}
+{"i": 52, "arm": "padded", "score": null, "error": "not_applicable", "seconds": 0.0}
+{"i": 59, "arm": "padded", "score": 0.0, "error": null, "n_nl": 14, "n_fl": 5, "seconds": 37.6, "strategy_match": true, "beq_plus": true}
+{"i": 65, "arm": "padded", "score": 1.0, "error": null, "n_nl": 1, "n_fl": 6, "seconds": 11.0, "strategy_match": true, "beq_plus": true}
+{"i": 76, "arm": "padded", "score": 1.0, "error": null, "n_nl": 1, "n_fl": 5, "seconds": 6.3, "strategy_match": true, "beq_plus": true}
+{"i": 82, "arm": "padded", "score": 1.0, "error": null, "n_nl": 1, "n_fl": 5, "seconds": 60.92, "strategy_match": true, "beq_plus": true}
+{"i": 89, "arm": "padded", "score": 0.0, "error": null, "n_nl": 2, "n_fl": 5, "seconds": 8.34, "strategy_match": true, "beq_plus": false}
+{"i": 98, "arm": "padded", "score": 1.0, "error": null, "n_nl": 1, "n_fl": 5, "seconds": 8.29, "strategy_match": true, "beq_plus": true}
+{"i": 103, "arm": "padded", "score": null, "error": "fl_blocks_empty", "n_nl": 0, "n_fl": 0, "seconds": 0.18, "strategy_match": null, "beq_plus": false}
+{"i": 111, "arm": "padded", "score": 1.0, "error": null, "n_nl": 1, "n_fl": 5, "seconds": 6.49, "strategy_match": true, "beq_plus": true}
+{"i": 118, "arm": "padded", "score": 1.0, "error": null, "n_nl": 1, "n_fl": 6, "seconds": 31.78, "strategy_match": true, "beq_plus": true}
+{"i": 122, "arm": "padded", "score": 0.0, "error": null, "n_nl": 1, "n_fl": 8, "seconds": 13.88, "strategy_match": true, "beq_plus": true}
+{"i": 129, "arm": "padded", "score": 0.0, "error": null, "n_nl": 1, "n_fl": 5, "seconds": 7.96, "strategy_match": true, "beq_plus": true}
+{"i": 136, "arm": "padded", "score": 1.0, "error": null, "n_nl": 1, "n_fl": 7, "seconds": 7.37, "strategy_match": true, "beq_plus": true}
+{"i": 145, "arm": "padded", "score": 1.0, "error": null, "n_nl": 1, "n_fl": 5, "seconds": 10.78, "strategy_match": true, "beq_plus": true}
+{"i": 150, "arm": "padded", "score": 0.0, "error": null, "n_nl": 14, "n_fl": 5, "seconds": 60.61, "strategy_match": true, "beq_plus": false}
+{"i": 156, "arm": "padded", "score": 1.0, "error": null, "n_nl": 2, "n_fl": 5, "seconds": 11.08, "strategy_match": true, "beq_plus": true}
+{"i": 163, "arm": "padded", "score": 0.0, "error": null, "n_nl": 1, "n_fl": 5, "seconds": 10.51, "strategy_match": true, "beq_plus": false}
+{"i": 167, "arm": "padded", "score": 1.0, "error": null, "n_nl": 1, "n_fl": 7, "seconds": 7.76, "strategy_match": true, "beq_plus": true}
+{"i": 177, "arm": "padded", "score": 0.0, "error": null, "n_nl": 1, "n_fl": 6, "seconds": 11.73, "strategy_match": true, "beq_plus": true}
+{"i": 185, "arm": "padded", "score": 1.0, "error": null, "n_nl": 1, "n_fl": 6, "seconds": 14.62, "strategy_match": true, "beq_plus": true}
+{"i": 192, "arm": "padded", "score": 0.0, "error": null, "n_nl": 1, "n_fl": 7, "seconds": 8.46, "strategy_match": true, "beq_plus": true}
+{"i": 200, "arm": "padded", "score": 1.0, "error": null, "n_nl": 1, "n_fl": 5, "seconds": 11.4, "strategy_match": true, "beq_plus": false}
+{"i": 208, "arm": "padded", "score": 1.0, "error": null, "n_nl": 1, "n_fl": 6, "seconds": 4.84, "strategy_match": true, "beq_plus": false}
+{"i": 218, "arm": "padded", "score": null, "error": "not_applicable", "seconds": 0.0}

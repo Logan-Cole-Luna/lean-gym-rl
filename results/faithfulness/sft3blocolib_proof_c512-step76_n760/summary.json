@@ -1,0 +1,22 @@
+{
+  "matched": {
+    "n": 240,
+    "scored": 175,
+    "coverage": 0.7291666666666666,
+    "errors": {
+      "fl_blocks_empty": 29,
+      "bad_json": 15,
+      "no_judge": 21
+    },
+    "mean": 0.7219999999999998,
+    "p10": 0.25,
+    "p50": 0.75,
+    "p90": 0.9,
+    "mean_seconds": 121.62395833333336
+  },
+  "pool": {
+    "n_pool": 760,
+    "term_mode_share": 0.4513157894736842,
+    "tactic_only": true
+  }
+}

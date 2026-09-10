@@ -1,0 +1,25 @@
+\begin{table}[t]
+\centering
+\small
+\begin{tabular}{llccrcc}
+\toprule
+run & corpus & CoT & rows & step & elaborates & BEq+ \\
+\midrule
+Untrained base & --- & --- & --- & 0 & 45.5\% & 5.3\% \\
+Gold, capped & LoCoLib & no & 9,734 & 114 & 46.7\% & 10.7\% \\
+Gold, full data & LoCoLib & no & 11,751 & 225 & 52.0\% & 13.9\% \\
+Gold, matched rows & LoCoLib & no & 8,389 & 96 & 52.5\% & 14.8\% \\
+Gold target $+$ CoT & LoCoLib & yes & 8,220 & 192 & 46.3\% & 10.7\% \\
+Distilled, const LR & LoCoLib & yes & 8,389 & 175 & 69.7\% & 16.4\% \\
+Distilled, cosine LR & LoCoLib & yes & 8,389 & 160 & 67.2\% & 15.2\% \\
+Distilled, BEq$+$-clean & LoCoLib & yes & 6,421 & 175 & 58.2\% & 18.0\% \\
+Distilled, cosine LR, val folded & LoCoLib & yes & 9,149 & 200 & 59.8\% & 13.5\% \\
+BEq$+$-clean, cosine LR, val folded & LoCoLib & yes & 7,181 & 252 & 50.4\% & 13.1\% \\
+Distilled, no CoT & LoCoLib & no & 9,149 & 200 & 70.5\% & 16.0\% \\
+Mizar distilled & Mizar & yes & 6,316 & 240 & 54.9\% & 13.5\% \\
+Mizar distilled, no CoT & Mizar & no & 6,316 & 225 & 68.9\% & 18.9\% \\
+\bottomrule
+\end{tabular}
+\caption{Every completed run on the pinned 244-row miniF2F slice, at each run's final checkpoint. Both columns score the generated statement only; the model's proof is replaced with \texttt{sorry} before Lean is called, so proof validity is not measured.}
+\label{tab:all-runs}
+\end{table}

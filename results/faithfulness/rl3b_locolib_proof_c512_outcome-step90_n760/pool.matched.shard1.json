@@ -1,0 +1,7 @@
+{
+  "n_pool": 760,
+  "n_term_mode": 217,
+  "term_mode_share": 0.2855263157894737,
+  "tactic_only": true,
+  "beq_only": false
+}

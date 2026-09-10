@@ -1,0 +1,30 @@
+{"i": 5, "arm": "padded", "score": 0.25, "error": null, "n_nl": 4, "n_fl": 5, "seconds": 36.5, "strategy_match": false, "beq_plus": false}
+{"i": 14, "arm": "padded", "score": 0.75, "error": null, "n_nl": 4, "n_fl": 5, "seconds": 42.02, "strategy_match": true, "beq_plus": true}
+{"i": 23, "arm": "padded", "score": 0.9, "error": null, "n_nl": 2, "n_fl": 5, "seconds": 29.87, "strategy_match": true, "beq_plus": true}
+{"i": 33, "arm": "padded", "score": 0.75, "error": null, "n_nl": 7, "n_fl": 7, "seconds": 81.46, "strategy_match": true, "beq_plus": false}
+{"i": 40, "arm": "padded", "score": 0.25, "error": null, "n_nl": 5, "n_fl": 6, "seconds": 82.08, "strategy_match": false, "beq_plus": false}
+{"i": 46, "arm": "padded", "score": 0.75, "error": null, "n_nl": 3, "n_fl": 5, "seconds": 50.04, "strategy_match": true, "beq_plus": false}
+{"i": 52, "arm": "padded", "score": null, "error": "not_applicable", "seconds": 0.0}
+{"i": 59, "arm": "padded", "score": 0.8, "error": null, "n_nl": 7, "n_fl": 5, "seconds": 47.74, "strategy_match": true, "beq_plus": true}
+{"i": 65, "arm": "padded", "score": 0.8, "error": null, "n_nl": 4, "n_fl": 6, "seconds": 46.04, "strategy_match": true, "beq_plus": true}
+{"i": 76, "arm": "padded", "score": 0.8, "error": null, "n_nl": 3, "n_fl": 5, "seconds": 51.14, "strategy_match": true, "beq_plus": true}
+{"i": 82, "arm": "padded", "score": 0.9, "error": null, "n_nl": 5, "n_fl": 5, "seconds": 50.94, "strategy_match": true, "beq_plus": true}
+{"i": 89, "arm": "padded", "score": 0.8, "error": null, "n_nl": 7, "n_fl": 5, "seconds": 49.66, "strategy_match": true, "beq_plus": false}
+{"i": 98, "arm": "padded", "score": 0.8, "error": null, "n_nl": 5, "n_fl": 5, "seconds": 51.84, "strategy_match": true, "beq_plus": true}
+{"i": 103, "arm": "padded", "score": null, "error": "fl_blocks_empty", "n_nl": 0, "n_fl": 0, "seconds": 0.17, "strategy_match": null, "beq_plus": false}
+{"i": 111, "arm": "padded", "score": 0.9, "error": null, "n_nl": 4, "n_fl": 5, "seconds": 39.17, "strategy_match": true, "beq_plus": true}
+{"i": 118, "arm": "padded", "score": 0.8, "error": null, "n_nl": 5, "n_fl": 6, "seconds": 40.96, "strategy_match": true, "beq_plus": true}
+{"i": 122, "arm": "padded", "score": 0.75, "error": null, "n_nl": 10, "n_fl": 8, "seconds": 39.15, "strategy_match": true, "beq_plus": true}
+{"i": 129, "arm": "padded", "score": 0.8, "error": null, "n_nl": 3, "n_fl": 5, "seconds": 42.6, "strategy_match": true, "beq_plus": true}
+{"i": 136, "arm": "padded", "score": 0.75, "error": null, "n_nl": 16, "n_fl": 7, "seconds": 112.01, "strategy_match": true, "beq_plus": true}
+{"i": 145, "arm": "padded", "score": 0.75, "error": null, "n_nl": 5, "n_fl": 5, "seconds": 56.16, "strategy_match": true, "beq_plus": true}
+{"i": 150, "arm": "padded", "score": null, "error": "bad_json", "n_nl": 0, "n_fl": 5, "seconds": 79.72, "strategy_match": null, "beq_plus": false}
+{"i": 156, "arm": "padded", "score": 0.8, "error": null, "n_nl": 6, "n_fl": 5, "seconds": 87.59, "strategy_match": true, "beq_plus": true}
+{"i": 163, "arm": "padded", "score": 0.25, "error": null, "n_nl": 6, "n_fl": 5, "seconds": 85.61, "strategy_match": false, "beq_plus": false}
+{"i": 167, "arm": "padded", "score": 0.75, "error": null, "n_nl": 5, "n_fl": 7, "seconds": 44.92, "strategy_match": true, "beq_plus": true}
+{"i": 177, "arm": "padded", "score": 0.75, "error": null, "n_nl": 5, "n_fl": 6, "seconds": 58.72, "strategy_match": true, "beq_plus": true}
+{"i": 185, "arm": "padded", "score": 0.9, "error": null, "n_nl": 4, "n_fl": 6, "seconds": 72.06, "strategy_match": true, "beq_plus": true}
+{"i": 192, "arm": "padded", "score": 0.8, "error": null, "n_nl": 9, "n_fl": 7, "seconds": 98.62, "strategy_match": true, "beq_plus": true}
+{"i": 200, "arm": "padded", "score": 0.75, "error": null, "n_nl": 4, "n_fl": 5, "seconds": 25.58, "strategy_match": true, "beq_plus": false}
+{"i": 208, "arm": "padded", "score": 0.8, "error": null, "n_nl": 5, "n_fl": 6, "seconds": 32.15, "strategy_match": true, "beq_plus": false}
+{"i": 218, "arm": "padded", "score": null, "error": "not_applicable", "seconds": 0.0}

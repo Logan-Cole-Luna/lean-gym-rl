@@ -1,0 +1,7 @@
+/home/logan03/lean-gym-rl/results/eval/minif2f_c512_outcome/gen_minif2f_c512_outcome-step90_n244.jsonl
+/home/logan03/lean-gym-rl/results/eval/minif2f_c512_outcome_brevity/gen_minif2f_c512_outcome_brevity-step90_n244.jsonl
+/home/logan03/lean-gym-rl/results/eval/minif2f_c512cos_typecheck/gen_minif2f_c512cos_typecheck-step90_n244.jsonl
+/home/logan03/lean-gym-rl/results/eval/minif2f_c512cos_gated/gen_minif2f_c512cos_gated-step90_n244.jsonl
+/home/logan03/lean-gym-rl/results/eval/minif2f_c512cos_outcome/gen_minif2f_c512cos_outcome-step90_n244.jsonl
+/home/logan03/lean-gym-rl/results/eval/minif2f_c512_outcome_faith/gen_minif2f_c512_outcome_faith-step90_n244.jsonl
+/home/logan03/lean-gym-rl/results/eval/minif2f_c512_outcome_v2/gen_minif2f_c512_outcome_v2-step90_n244.jsonl

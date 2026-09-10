@@ -275,7 +275,9 @@ def proof_follows_argument(informal_proof: str | None, lean_proof: str | None) -
 # ---------------------------------------------------------------------------
 
 
-def signals_from_score(r: dict, proof_check: dict | None = None) -> Signals:
+def signals_from_score(r: dict, proof_check: dict | None = None,
+                       *, typecheck_from_own_proof: bool = True,
+                       wrote_something: bool = True) -> Signals:
     """Build `Signals` from a `BEqPlusScorer.score()` result.
 
     `proof_check`, when given, is a `BEqPlusScorer.check_own_proof()` result
@@ -283,15 +285,39 @@ def signals_from_score(r: dict, proof_check: dict | None = None) -> Signals:
     full proof, not just a signature. Omitted (or None), `proved` stays False
     and `statement_is_trivial` stays unknown, matching the old signature-only
     behaviour exactly.
+
+    WHICH ELABORATION FEEDS COLUMN 2. `r["typecheck"]` is BEq+'s own check, and
+    it SORRIES THE PROOF AWAY before elaborating -- it answers "does the
+    statement elaborate", not the table's "`lean file.lean` exited 0". On the
+    proof-pair task those differ, and the difference was a live mis-calibration:
+    a submission whose proof body Lean rejects outright
+    (`:= by exact?_no_such_tactic`) still passed column 2, and with a matching
+    statement scored `incomplete_faithful` (0.50) -- the same as an honest
+    `sorry`, and on the `gated` arm a full 1.0. Measured over 120 golds it hit
+    100% of that perturbation.
+
+    So when a `proof_check` exists it wins: it elaborates the submission AS
+    WRITTEN. `typecheck_from_own_proof=False` restores the old wiring for
+    comparison against numbers recorded before this was fixed -- it is a real
+    change to what a run scores, not a no-op refactor.
     """
     failed = bool(r.get("error_kind"))
     proved = bool(proof_check and proof_check.get("proved"))
+    if proof_check and typecheck_from_own_proof:
+        type_correct = bool(proof_check.get("type_correct"))
+    else:
+        type_correct = bool(r.get("typecheck"))
     return Signals(
         # A Lean or infrastructure failure is not a verdict about the model, so
         # it is ungraded rather than a zero earned by the rollout.
         graded=not failed,
-        wrote_something=True,
-        type_correct=bool(r.get("typecheck")),
+        # Was hardcoded True, which made ROW 1 unreachable: an empty completion
+        # scored `no_elaborate` (0.05) rather than `no_answer` (0.00), so "wrote
+        # nothing" and "wrote broken Lean" were the same reward. Small in
+        # magnitude and it creates no within-group variance on its own, but the
+        # table's floor is 0.00 and it should be reachable.
+        wrote_something=wrote_something,
+        type_correct=type_correct,
         proved=proved,
         # BEq+'s cascade already computes this as a side effect (rung 3's
         # `provable_without_have`): whether the SECOND theorem of the pair --

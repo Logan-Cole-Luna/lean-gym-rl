@@ -1,0 +1,30 @@
+{"i": 9, "arm": "padded", "score": 0.0, "error": null, "n_nl": 1, "n_fl": 7, "seconds": 7.53, "strategy_match": true, "beq_plus": true}
+{"i": 20, "arm": "padded", "score": 0.0, "error": null, "n_nl": 1, "n_fl": 5, "seconds": 7.47, "strategy_match": true, "beq_plus": false}
+{"i": 28, "arm": "padded", "score": 0.0, "error": null, "n_nl": 1, "n_fl": 6, "seconds": 14.76, "strategy_match": true, "beq_plus": true}
+{"i": 38, "arm": "padded", "score": 1.0, "error": null, "n_nl": 14, "n_fl": 7, "seconds": 22.9, "strategy_match": true, "beq_plus": false}
+{"i": 42, "arm": "padded", "score": 0.0, "error": null, "n_nl": 2, "n_fl": 5, "seconds": 15.28, "strategy_match": true, "beq_plus": false}
+{"i": 48, "arm": "padded", "score": 1.0, "error": null, "n_nl": 2, "n_fl": 6, "seconds": 13.14, "strategy_match": true, "beq_plus": false}
+{"i": 56, "arm": "padded", "score": null, "error": "fl_blocks_empty", "n_nl": 0, "n_fl": 0, "seconds": 0.15, "strategy_match": null, "beq_plus": false}
+{"i": 61, "arm": "padded", "score": null, "error": "not_applicable", "seconds": 0.0}
+{"i": 70, "arm": "padded", "score": 1.0, "error": null, "n_nl": 1, "n_fl": 5, "seconds": 41.77, "strategy_match": true, "beq_plus": true}
+{"i": 80, "arm": "padded", "score": null, "error": "not_applicable", "seconds": 0.0}
+{"i": 86, "arm": "padded", "score": 1.0, "error": null, "n_nl": 1, "n_fl": 5, "seconds": 6.31, "strategy_match": true, "beq_plus": false}
+{"i": 94, "arm": "padded", "score": 1.0, "error": null, "n_nl": 1, "n_fl": 4, "seconds": 6.64, "strategy_match": true, "beq_plus": true}
+{"i": 101, "arm": "padded", "score": 1.0, "error": null, "n_nl": 1, "n_fl": 5, "seconds": 60.49, "strategy_match": true, "beq_plus": false}
+{"i": 107, "arm": "padded", "score": 0.0, "error": null, "n_nl": 1, "n_fl": 5, "seconds": 8.32, "strategy_match": true, "beq_plus": false}
+{"i": 116, "arm": "padded", "score": 1.0, "error": null, "n_nl": 1, "n_fl": 6, "seconds": 8.32, "strategy_match": true, "beq_plus": true}
+{"i": 120, "arm": "padded", "score": 1.0, "error": null, "n_nl": 1, "n_fl": 5, "seconds": 6.62, "strategy_match": true, "beq_plus": false}
+{"i": 126, "arm": "padded", "score": 1.0, "error": null, "n_nl": 1, "n_fl": 5, "seconds": 31.78, "strategy_match": true, "beq_plus": true}
+{"i": 133, "arm": "padded", "score": 0.0, "error": null, "n_nl": 1, "n_fl": 5, "seconds": 13.89, "strategy_match": true, "beq_plus": true}
+{"i": 142, "arm": "padded", "score": 0.0, "error": null, "n_nl": 1, "n_fl": 6, "seconds": 8.01, "strategy_match": true, "beq_plus": true}
+{"i": 148, "arm": "padded", "score": 1.0, "error": null, "n_nl": 1, "n_fl": 5, "seconds": 7.38, "strategy_match": true, "beq_plus": false}
+{"i": 153, "arm": "padded", "score": 1.0, "error": null, "n_nl": 1, "n_fl": 5, "seconds": 10.7, "strategy_match": true, "beq_plus": true}
+{"i": 159, "arm": "padded", "score": 0.0, "error": null, "n_nl": 1, "n_fl": 5, "seconds": 60.74, "strategy_match": true, "beq_plus": false}
+{"i": 165, "arm": "padded", "score": 1.0, "error": null, "n_nl": 1, "n_fl": 5, "seconds": 12.19, "strategy_match": true, "beq_plus": true}
+{"i": 170, "arm": "padded", "score": null, "error": "fl_blocks_empty", "n_nl": 0, "n_fl": 0, "seconds": 0.15, "strategy_match": null, "beq_plus": false}
+{"i": 182, "arm": "padded", "score": 0.9, "error": null, "n_nl": 3, "n_fl": 5, "seconds": 9.7, "strategy_match": true, "beq_plus": true}
+{"i": 187, "arm": "padded", "score": 1.0, "error": null, "n_nl": 1, "n_fl": 5, "seconds": 12.43, "strategy_match": true, "beq_plus": true}
+{"i": 197, "arm": "padded", "score": 0.0, "error": null, "n_nl": 1, "n_fl": 6, "seconds": 12.23, "strategy_match": true, "beq_plus": true}
+{"i": 202, "arm": "padded", "score": 0.0, "error": null, "n_nl": 1, "n_fl": 5, "seconds": 10.35, "strategy_match": true, "beq_plus": false}
+{"i": 212, "arm": "padded", "score": null, "error": "not_applicable", "seconds": 0.0}
+{"i": 222, "arm": "padded", "score": 1.0, "error": null, "n_nl": 1, "n_fl": 5, "seconds": 7.01, "strategy_match": true, "beq_plus": true}

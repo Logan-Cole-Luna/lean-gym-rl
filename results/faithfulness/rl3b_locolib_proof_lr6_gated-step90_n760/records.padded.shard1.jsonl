@@ -1,0 +1,30 @@
+{"i": 8, "arm": "padded", "score": null, "error": "not_applicable", "seconds": 0.0}
+{"i": 17, "arm": "padded", "score": 1.0, "error": null, "n_nl": 1, "n_fl": 5, "seconds": 7.54, "strategy_match": true, "beq_plus": true}
+{"i": 27, "arm": "padded", "score": 0.0, "error": null, "n_nl": 1, "n_fl": 5, "seconds": 7.47, "strategy_match": true, "beq_plus": true}
+{"i": 36, "arm": "padded", "score": null, "error": "fl_blocks_empty", "n_nl": 0, "n_fl": 0, "seconds": 0.25, "strategy_match": null, "beq_plus": false}
+{"i": 41, "arm": "padded", "score": 0.0, "error": null, "n_nl": 1, "n_fl": 5, "seconds": 14.5, "strategy_match": true, "beq_plus": true}
+{"i": 47, "arm": "padded", "score": 1.0, "error": null, "n_nl": 1, "n_fl": 6, "seconds": 22.9, "strategy_match": true, "beq_plus": false}
+{"i": 54, "arm": "padded", "score": 1.0, "error": null, "n_nl": 1, "n_fl": 5, "seconds": 15.28, "strategy_match": true, "beq_plus": true}
+{"i": 60, "arm": "padded", "score": 1.0, "error": null, "n_nl": 1, "n_fl": 5, "seconds": 13.14, "strategy_match": true, "beq_plus": false}
+{"i": 69, "arm": "padded", "score": 0.0, "error": null, "n_nl": 1, "n_fl": 5, "seconds": 41.93, "strategy_match": true, "beq_plus": true}
+{"i": 78, "arm": "padded", "score": 1.0, "error": null, "n_nl": 1, "n_fl": 5, "seconds": 6.31, "strategy_match": true, "beq_plus": true}
+{"i": 83, "arm": "padded", "score": 0.0, "error": null, "n_nl": 1, "n_fl": 6, "seconds": 6.64, "strategy_match": true, "beq_plus": true}
+{"i": 90, "arm": "padded", "score": null, "error": "bad_json", "n_nl": 0, "n_fl": 5, "seconds": 58.76, "strategy_match": null, "beq_plus": true}
+{"i": 99, "arm": "padded", "score": 1.0, "error": null, "n_nl": 1, "n_fl": 5, "seconds": 8.34, "strategy_match": true, "beq_plus": true}
+{"i": 105, "arm": "padded", "score": 1.0, "error": null, "n_nl": 1, "n_fl": 5, "seconds": 8.3, "strategy_match": true, "beq_plus": false}
+{"i": 114, "arm": "padded", "score": 0.0, "error": null, "n_nl": 1, "n_fl": 5, "seconds": 6.67, "strategy_match": true, "beq_plus": true}
+{"i": 119, "arm": "padded", "score": 0.0, "error": null, "n_nl": 1, "n_fl": 5, "seconds": 31.78, "strategy_match": true, "beq_plus": true}
+{"i": 123, "arm": "padded", "score": 1.0, "error": null, "n_nl": 1, "n_fl": 5, "seconds": 13.88, "strategy_match": true, "beq_plus": true}
+{"i": 130, "arm": "padded", "score": null, "error": "not_applicable", "seconds": 0.0}
+{"i": 139, "arm": "padded", "score": null, "error": "fl_blocks_empty", "n_nl": 0, "n_fl": 0, "seconds": 0.41, "strategy_match": null, "beq_plus": false}
+{"i": 147, "arm": "padded", "score": 0.0, "error": null, "n_nl": 1, "n_fl": 5, "seconds": 7.55, "strategy_match": true, "beq_plus": false}
+{"i": 152, "arm": "padded", "score": 1.0, "error": null, "n_nl": 1, "n_fl": 5, "seconds": 7.37, "strategy_match": true, "beq_plus": true}
+{"i": 158, "arm": "padded", "score": 1.0, "error": null, "n_nl": 2, "n_fl": 7, "seconds": 10.78, "strategy_match": true, "beq_plus": true}
+{"i": 164, "arm": "padded", "score": null, "error": "bad_json", "n_nl": 0, "n_fl": 5, "seconds": 58.07, "strategy_match": null, "beq_plus": false}
+{"i": 168, "arm": "padded", "score": 1.0, "error": null, "n_nl": 1, "n_fl": 10, "seconds": 10.69, "strategy_match": true, "beq_plus": true}
+{"i": 179, "arm": "padded", "score": 0.0, "error": null, "n_nl": 1, "n_fl": 7, "seconds": 8.56, "strategy_match": true, "beq_plus": false}
+{"i": 186, "arm": "padded", "score": 0.0, "error": null, "n_nl": 1, "n_fl": 5, "seconds": 10.22, "strategy_match": true, "beq_plus": false}
+{"i": 193, "arm": "padded", "score": 0.0, "error": null, "n_nl": 1, "n_fl": 6, "seconds": 11.86, "strategy_match": true, "beq_plus": false}
+{"i": 201, "arm": "padded", "score": 0.0, "error": null, "n_nl": 3, "n_fl": 5, "seconds": 12.66, "strategy_match": true, "beq_plus": false}
+{"i": 209, "arm": "padded", "score": null, "error": "fl_blocks_empty", "n_nl": 0, "n_fl": 0, "seconds": 0.31, "strategy_match": null, "beq_plus": false}
+{"i": 219, "arm": "padded", "score": 1.0, "error": null, "n_nl": 1, "n_fl": 5, "seconds": 9.93, "strategy_match": true, "beq_plus": true}

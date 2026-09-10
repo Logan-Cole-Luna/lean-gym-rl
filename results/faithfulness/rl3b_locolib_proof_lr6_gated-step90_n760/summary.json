@@ -1,0 +1,64 @@
+{
+  "matched": {
+    "n": 120,
+    "scored": 102,
+    "coverage": 0.85,
+    "errors": {
+      "fl_blocks_empty": 13,
+      "bad_json": 5
+    },
+    "mean": 0.30980392156862746,
+    "p10": 0.0,
+    "p50": 0.0,
+    "p90": 1.0,
+    "mean_seconds": 17.674250000000004
+  },
+  "mismatched": {
+    "n": 120,
+    "scored": 103,
+    "coverage": 0.8583333333333333,
+    "errors": {
+      "fl_blocks_empty": 13,
+      "bad_json": 4
+    },
+    "mean": 0.3592233009708736,
+    "p10": 0.0,
+    "p50": 0.0,
+    "p90": 0.9,
+    "mean_seconds": 15.968000000000002
+  },
+  "padded": {
+    "n": 120,
+    "scored": 101,
+    "coverage": 0.8416666666666667,
+    "errors": {
+      "not_applicable": 11,
+      "fl_blocks_empty": 6,
+      "bad_json": 2
+    },
+    "mean": 0.6316831683168317,
+    "p10": 0.0,
+    "p50": 1.0,
+    "p90": 1.0,
+    "mean_seconds": 14.04316666666666
+  },
+  "negative_control": {
+    "auc": 0.4880544450790025,
+    "delta_mean": -0.049419379402246166,
+    "auc_ci95": [
+      0.4183323814962878,
+      0.5538739767751761
+    ],
+    "n_matched": 102,
+    "n_mismatched": 103
+  },
+  "padding": {
+    "delta_mean": 0.32187924674820423,
+    "raises_score": true
+  },
+  "pool": {
+    "n_pool": 760,
+    "term_mode_share": 0.4144736842105263,
+    "tactic_only": true
+  }
+}
