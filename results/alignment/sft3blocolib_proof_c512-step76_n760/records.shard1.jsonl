@@ -1,0 +1,17 @@
+{"matched": 0, "precision": 0.0, "recall": 0.0, "f1": 0.0, "n_pred": 2, "n_gold": 1, "cells": 2, "seconds": 0.296723417006433, "error": null, "index": 30}
+{"error": "no_checkpoints", "n_pred": 0, "n_gold": 0, "seconds": 0.10567912692204118, "index": 57}
+{"matched": 0, "precision": 0.0, "recall": 0.0, "f1": 0.0, "n_pred": 1, "n_gold": 1, "cells": 1, "seconds": 0.17836570704821497, "error": null, "index": 94}
+{"error": "no_checkpoints", "n_pred": 0, "n_gold": 0, "seconds": 0.1706052100053057, "index": 144}
+{"error": "no_checkpoints", "n_pred": 0, "n_gold": 1, "seconds": 0.1385436540003866, "index": 181}
+{"matched": 0, "precision": 0.0, "recall": 0.0, "f1": 0.0, "n_pred": 1, "n_gold": 5, "cells": 5, "seconds": 0.6266397399595007, "error": null, "index": 259}
+{"matched": 0, "precision": 0.0, "recall": 0.0, "f1": 0.0, "n_pred": 2, "n_gold": 5, "cells": 10, "seconds": 0.3205759230768308, "error": null, "index": 295}
+{"matched": 0, "precision": 0.0, "recall": 0.0, "f1": 0.0, "n_pred": 1, "n_gold": 5, "cells": 5, "seconds": 245.89478305797093, "error": null, "index": 363}
+{"matched": 1, "precision": 1.0, "recall": 1.0, "f1": 1.0, "n_pred": 1, "n_gold": 1, "cells": 1, "seconds": 18.241386145935394, "error": null, "index": 378}
+{"error": "no_checkpoints", "n_pred": 0, "n_gold": 0, "seconds": 0.1290080649778247, "index": 402}
+{"error": "no_checkpoints", "n_pred": 0, "n_gold": 0, "seconds": 0.13523169106338173, "index": 426}
+{"error": "no_checkpoints", "n_pred": 0, "n_gold": 0, "seconds": 0.08834154100622982, "index": 484}
+{"matched": 0, "precision": 0.0, "recall": 0.0, "f1": 0.0, "n_pred": 3, "n_gold": 1, "cells": 3, "seconds": 0.45511724904645234, "error": null, "index": 536}
+{"error": "no_checkpoints", "n_pred": 0, "n_gold": 4, "seconds": 0.11702144099399447, "index": 563}
+{"matched": 0, "precision": 0.0, "recall": 0.0, "f1": 0.0, "n_pred": 1, "n_gold": 1, "cells": 1, "seconds": 0.1402565899770707, "error": null, "index": 588}
+{"error": "no_checkpoints", "n_pred": 0, "n_gold": 0, "seconds": 0.08773546095471829, "index": 671}
+{"error": "no_checkpoints", "n_pred": 0, "n_gold": 0, "seconds": 0.11176995490677655, "index": 728}
