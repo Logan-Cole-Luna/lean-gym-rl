@@ -4,9 +4,17 @@
 Selected per run via `custom_reward_function.name`:
 
 - `compute_score_outcome` (default): the six-outcome ladder from reward/reward.py.
+- `compute_score_outcome_brevity`: the ladder, plus a proof-LENGTH deduction on
+  the top row.
 - `compute_score_gated`: pays only for BEq+ equivalence, flat floor below it.
 - `compute_score_typecheck`: pays for elaboration alone. Exploitable, and
   kept as the ablation baseline.
+
+Both `outcome*` arms share one body, `_outcome_core`, and differ only in a
+keyword flag, so `outcome` is a true control for the other. They are separate
+NAMES rather than one name plus env vars on purpose: verl writes
+`custom_reward_function.name` into its config dump, and that dump is how a run
+is identified after the fact.
 
 Each returns a dict, not a float. verl forwards every key other than `score`
 into `reward_extra_info` and aggregates it into a train/val metric. Emitting
@@ -23,9 +31,12 @@ import os
 import re
 import threading
 
+from lean_interact.utils import split_implementation
+
 from reward.beq_plus import BEqPlusScorer, split_header_and_theorem
-from reward.reward import (OUTCOMES, gated_reward, outcome_for, reward_for,
-                           signals_from_score, typecheck_reward)
+from reward.reward import (BREVITY_BAND, OUTCOMES, brevity_for, gated_reward,
+                           outcome_for, reward_for, signals_from_score,
+                           typecheck_reward)
 
 _scorer: BEqPlusScorer | None = None
 _scorer_failures = 0
@@ -76,6 +87,33 @@ def _clean_solution(solution_str: str) -> str:
     """
     m = _CODE_FENCE_RE.search(solution_str)
     return m.group(1).strip() if m else solution_str.strip()
+
+
+def _proof_body_len(text: str) -> int | None:
+    """Characters in the declaration's PROOF BODY, or None if it has none.
+
+    `split_implementation` finds the first BRACKET-BALANCED `:=` that is not a
+    `let`/`haveI` binder. Do not be tempted by `rfind(":=")` -- MEASURED over
+    the 18,757 LoCoLib golds, 22.4% carry a `:=` inside the proof (`have h : P
+    := ...`) and for 16.8% `rfind` undercounts the body by more than 40 chars,
+    worst case 5986 -> 259. That would invent a one-line phantom reference and
+    mark every honest proof as bloated. (`strip_proof` in
+    scripts/data/prepare_locolib.py still has this bug; it only reaches the
+    dedup key on the proof-pair arm, so it is not fixed here.)
+
+    `split_header_and_theorem` runs FIRST and is not optional: a self-contained
+    prediction brings its own `variable`/`def` preamble, and a `:=` in there
+    would otherwise be mistaken for the start of the proof.
+    """
+    try:
+        _ctx, decl = split_header_and_theorem(text)
+        i = split_implementation(decl)
+    except Exception:
+        return None
+    if i is None:
+        return None
+    body = decl[i + 2:].strip()
+    return len(body) or None
 
 
 _ERROR_LOG_EVERY = int(os.environ.get("BEQ_ERROR_LOG_EVERY", "200"))
@@ -133,6 +171,12 @@ _SCHEMA = {
     # Set for real from BEqPlusScorer.check_own_proof; "not applicable"
     # otherwise (no other current caller reaches this dict).
     "proved": 0.0, "sorry_used": 0.0,
+    # Length agreement with the gold proof. The "not applicable" value is 1.0,
+    # NOT 0.0 -- brevity is subtracted, so an unknown must leave the score
+    # alone. `brevity_known` separates "in tolerance" from "never measured",
+    # which a mean over `brevity` alone would conflate.
+    "brevity": 1.0, "brevity_known": 0.0,
+    "pred_proof_chars": 0.0, "gold_proof_chars": 0.0,
 }
 
 # `outcome`'s zero-fallback: the full schema above.
@@ -171,6 +215,9 @@ def _never_raises(zero: dict):
 
 
 def _diagnostics(r: dict, proof_check: dict | None = None,
+                 brevity: float | None = None,
+                 pred_chars: int | None = None,
+                 gold_chars: int | None = None,
                  wrote_something: bool = True) -> dict[str, float]:
     """Per-sample fields forwarded into `reward_extra_info`. All numeric.
     Used only by `compute_score_outcome` -- see the module note above `_SCHEMA`.
@@ -212,6 +259,15 @@ def _diagnostics(r: dict, proof_check: dict | None = None,
             wrote_something=wrote_something)))),
         "proved": float(proof_check.get("proved", False)) if proof_check else 0.0,
         "sorry_used": float(proof_check.get("sorry_used", False)) if proof_check else 0.0,
+        # 1.0 when unmeasurable, so mean(brevity) reads as "how much of the band
+        # is being paid" and never dips for a missing measurement.
+        "brevity": 1.0 if brevity is None else float(brevity),
+        "brevity_known": float(brevity is not None),
+        # Raw lengths, so proof INFLATION is visible directly. Watch
+        # mean(pred_proof_chars) against mean(gold_proof_chars): the failure
+        # this term exists to prevent is the first climbing away from the second.
+        "pred_proof_chars": float(pred_chars or 0),
+        "gold_proof_chars": float(gold_chars or 0),
     }
 
 
@@ -253,6 +309,21 @@ def compute_score_typecheck(data_source, solution_str, ground_truth, extra_info=
 
 W_GATED_ONE_DIR = float(os.environ.get("BEQ_W_GATED_ONE_DIR", "0.25"))
 
+# How much of a SOLVED rollout's reward the proof-length term can take, for the
+# arms that turn it on. `compute_score_outcome` passes 0.0 and is unaffected.
+#
+# THE TERM NEEDS A RESPONSE CAP THAT DOES NOT BOUND THE LENGTH DISTRIBUTION.
+# Under the old 128-token `max_response_length` it was unreachable: 0 of 182
+# SOLVED rollouts across gated/outcome/typecheck at step 90 were long enough to
+# charge, because the cap already truncated the top of the distribution. Gold
+# ANSWERS (theorem+proof; the context is in the prompt) are p50 54 / p90 115 /
+# max 275 Qwen tokens on the 760-row proof val slice, so 128 truncates 6.1% of
+# reference-length answers. `configs/run_grpo.sh` defaults to 512.
+#
+# MEASURED at 512 over the certified population: mean b 0.834, mean charge
+# 0.017 of the band, against 0.001 under the earlier dead-band formulation.
+W_BREVITY_BAND_ARM = float(os.environ.get("BEQ_BREVITY_BAND", str(BREVITY_BAND)))
+
 # Column 2 of reward.py's table ("Lean compiles it") now reads the SUBMISSION AS
 # WRITTEN via check_own_proof, not BEq+'s statement-only check which sorries the
 # proof away. Set to 0 to restore the old wiring when comparing against numbers
@@ -286,6 +357,40 @@ def compute_score_gated(data_source, solution_str, ground_truth, extra_info=None
             "scorer_error": float(bool(r.get("error_kind")))}
 
 
+def _outcome_core(solution_str: str, ground_truth: str, extra_info,
+                  *, brevity_band: float) -> dict:
+    """The shared body of both `outcome`-family arms.
+
+    ONE BODY, TWO ARMS, differing only in the keyword flag. They are separate
+    named entry points rather than one function reading env vars because verl
+    records `custom_reward_function.name` in its config dump, and that dump is
+    how a finished run is identified months later -- two arms that differ only
+    by an environment variable are indistinguishable there.
+    """
+    scorer = _get_scorer()
+    r, pred, _gold = _score_pair(solution_str, ground_truth)
+    context, _gold_theorem = split_header_and_theorem(ground_truth)
+    with _lean_slot:
+        proof_check = scorer.check_own_proof(pred, context)
+    # Both sides measured the same way, from the same splitter. No Lean call:
+    # this is pure string work and adds nothing to the reward's latency.
+    # Computed for EVERY arm even when the band is 0, because it is a
+    # diagnostic first: `pred_proof_chars` drifting away from
+    # `gold_proof_chars` is the failure the band exists to catch, and an arm
+    # that does not charge for it still needs to report it.
+    pred_chars = _proof_body_len(pred)
+    gold_chars = _proof_body_len(ground_truth)
+    brevity = brevity_for(pred_chars, gold_chars)
+    wrote_something = bool(pred.strip())
+    s = signals_from_score(r, proof_check, brevity=brevity,
+                           typecheck_from_own_proof=TYPECHECK_FROM_OWN_PROOF,
+                           wrote_something=wrote_something)
+    return {"score": reward_for(s, brevity_band=brevity_band),
+            **_diagnostics(r, proof_check=proof_check, brevity=brevity,
+                           pred_chars=pred_chars, gold_chars=gold_chars,
+                           wrote_something=wrote_something)}
+
+
 @_never_raises(_OUTCOME_ZERO)
 def compute_score_outcome(data_source, solution_str, ground_truth, extra_info=None) -> dict:
     """The six-outcome ladder from reward/reward.py, now fully reachable on the
@@ -307,19 +412,36 @@ def compute_score_outcome(data_source, solution_str, ground_truth, extra_info=No
     carry a within-group gradient. That is the property `gated` deliberately
     removes, so the two are an A/B and this is not yet the default. Emits
     `outcome_code` for the per-example histogram.
+
+    This is also the CONTROL for the arm below: that arm is this function plus
+    one term, so a difference between the two is attributable to that term and
+    to nothing else -- provided both run at the same `max_response_length`,
+    which is why the 128-token cap had to be lifted before either could be
+    interpreted.
     """
-    scorer = _get_scorer()
-    r, pred, _gold = _score_pair(solution_str, ground_truth)
-    context, _gold_theorem = split_header_and_theorem(ground_truth)
-    with _lean_slot:
-        proof_check = scorer.check_own_proof(pred, context)
-    wrote_something = bool(pred.strip())
-    s = signals_from_score(r, proof_check,
-                           typecheck_from_own_proof=TYPECHECK_FROM_OWN_PROOF,
-                           wrote_something=wrote_something)
-    return {"score": reward_for(s),
-            **_diagnostics(r, proof_check=proof_check,
-                           wrote_something=wrote_something)}
+    return _outcome_core(solution_str, ground_truth, extra_info,
+                         brevity_band=0.0)
+
+
+@_never_raises(_OUTCOME_ZERO)
+def compute_score_outcome_brevity(data_source, solution_str, ground_truth,
+                                  extra_info=None) -> dict:
+    """`compute_score_outcome` plus the proof-LENGTH deduction. Nothing else.
+
+    A SOLVED rollout is charged up to `W_BREVITY_BAND_ARM` for a proof body far
+    from the gold's length, as `exp(-|ln((L+s)/(L*+s))|)` with s=60, symmetric
+    in the softened log ratio -- see `reward.reward.brevity_for`. Rows 1-5 are
+    untouched, which is the anti-exploit: a degenerately short non-proof lands
+    on `incomplete` (0.15) and never reaches the term.
+
+    THIS ARM IS A NO-OP BELOW A ~384-TOKEN RESPONSE CAP. At the old
+    `max_response_length=128` the term fired on 0 of 182 SOLVED rollouts,
+    because the cap already bounded the length distribution below anything the
+    band charges for. Running it there produces a bit-identical copy of
+    `compute_score_outcome`, not a null result.
+    """
+    return _outcome_core(solution_str, ground_truth, extra_info,
+                         brevity_band=W_BREVITY_BAND_ARM)
 
 
 # Used when custom_reward_function.name is left unset. Every job here sets the
@@ -328,15 +450,39 @@ compute_score = compute_score_outcome
 
 
 if __name__ == "__main__":
-    gold = ("theorem lean_workbook_plus_2 (x : ℝ) : "
-            "x^2 - 2*x - 24 < 0 ↔ x ∈ Set.Ioo (-4) 6 := by sorry")
-    # compute_score_typecheck runs check_own_proof, which elaborates the
-    # candidate AS WRITTEN -- so every case needs a real `:=`, not a bare
-    # signature (a signature with no proof simply fails to parse, which is
-    # why this block used to print an all-zero typecheck column regardless of
-    # case). `:= by sorry` still counts as type-correct (a warning, not an
-    # error); "hack" gets a real closing tactic to show a genuine 1.0.
+    # A LoCoLib-shaped gold: full record text, real proof body, no `sorry`.
+    gold = ("theorem gold_add_comm (a b : Nat) : a + b = b + a := by\n"
+            "  induction a with\n"
+            "  | zero => simp\n"
+            "  | succ n ih => omega")
+    gold_body = _proof_body_len(gold)
+
+    # Each case is a full theorem AND proof, because compute_score_outcome runs
+    # check_own_proof, which elaborates the submission AS WRITTEN.
     cases = [
+        # Right answer, right size: brevity must cost nothing.
+        ("concise",   "theorem r (a b : Nat) : a + b = b + a := by omega"),
+        # Right answer, padded with vacuous `have`s. Same verdict from BEq+ and
+        # the same `proved`, so brevity is the ONLY term that separates it from
+        # `concise` -- which is exactly the tiebreak this term exists to make.
+        ("bloated",   "theorem r (a b : Nat) : a + b = b + a := by\n" +
+                      "".join(f"  have h{i} : {i} + 0 = {i} := by simp\n" for i in range(24)) +
+                      "  omega"),
+        # Degenerately short AND wrong: lands on a lower rung, never reaches the
+        # band. This is the case that shows the gate, not the ratio, is the guard.
+        ("tiny_wrong", "theorem r (a b : Nat) : a + b = b + a := by rfl"),
+        # Unfinished. MATCHED_NOT_PROVED at most; brevity must not touch it.
+        ("sorry",     "theorem r (a b : Nat) : a + b = b + a := by sorry"),
+    ]
+
+    # ---- the pre-existing arm probe, unchanged in substance -----------------
+    # `check_own_proof` elaborates the candidate AS WRITTEN, so every case needs
+    # a real `:=`, not a bare signature. `:= by sorry` still counts as
+    # type-correct (a warning, not an error); "hack" gets a real closing tactic
+    # to show a genuine 1.0 on the exploitable arm.
+    sig_gold = ("theorem lean_workbook_plus_2 (x : ℝ) : "
+                "x^2 - 2*x - 24 < 0 ↔ x ∈ Set.Ioo (-4) 6 := by sorry")
+    sig_cases = [
         ("good", "theorem restated (x : ℝ) : x^2 - 2*x - 24 < 0 ↔ x ∈ Set.Ioo (-4) 6 := by sorry"),
         ("wrong", "theorem restated (x : ℝ) : x^2 - 2*x - 24 > 0 ↔ x ∈ Set.Ioo (-4) 6 := by sorry"),
         ("fenced", "Here is the formalization:\n```lean\ntheorem restated (x : ℝ) : "
@@ -346,13 +492,22 @@ if __name__ == "__main__":
         ("one_way", "theorem restated (x : ℝ) : x^2 - 2*x - 24 < 0 ∧ x > -4 ↔ "
                     "x ∈ Set.Ioo (-4) 6 := by sorry"),
         ("near_miss", "theorem restated (x : ℝ) : x^2 - 2*x - 25 < 0 ↔ x ∈ Set.Ioo (-4) 6 := by sorry"),
-        # Trivially true AND sorry-free. Should score 1.0 on typecheck-only and 0 on gated.
+        # Trivially true AND sorry-free. 1.0 on typecheck-only, 0 on gated.
         ("hack", "theorem hack (x : ℝ) : x - 1 = -1 + x := by ring"),
     ]
-
     print(f"probe_stronger={os.environ.get('BEQ_PROBE_STRONGER', '0')}")
     print(f"{'case':12s} {'typecheck':>9} {'gated':>7}")
-    for name, pred in cases:
-        tc = compute_score_typecheck("lean_workbook", pred, gold)["score"]
-        gated = compute_score_gated("lean_workbook", pred, gold)["score"]
+    for name, pred in sig_cases:
+        tc = compute_score_typecheck("lean_workbook", pred, sig_gold)["score"]
+        gated = compute_score_gated("lean_workbook", pred, sig_gold)["score"]
         print(f"{name:12s} {tc:>9.2f} {gated:>7.2f}")
+
+    # ---- the brevity probe --------------------------------------------------
+    print(f"\ngold proof body = {gold_body} chars\n")
+    print(f"{'case':12s} {'score':>6} {'outcome':>22} {'proved':>7} "
+          f"{'pred_ch':>8} {'brevity':>8}")
+    for name, pred in cases:
+        r = compute_score_outcome("locolib", pred, gold)
+        outcome = OUTCOMES[int(r["outcome_code"])]
+        print(f"{name:12s} {r['score']:>6.3f} {outcome:>22} "
+              f"{r['proved']:>7.0f} {r['pred_proof_chars']:>8.0f} {r['brevity']:>8.2f}")

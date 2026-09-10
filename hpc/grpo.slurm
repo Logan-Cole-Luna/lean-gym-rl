@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # One GRPO arm per job.
 #   sbatch --export=ALL,ARM=gated hpc/grpo.slurm
-#   ARM=gated|typecheck|outcome|gated_edge
+#   ARM=gated|typecheck|outcome|outcome_brevity|gated_edge
 #
 # Runs in 11h chunks chained with --dependency=afterany: a walltime kill is the
 # expected end of a chunk, not a failure, and resume_mode=auto continues from the
@@ -22,7 +22,7 @@ source /home/logan03/lean-gym-rl/hpc/job_prelude.sh
 
 stage_mathlib "[grpo]"
 
-ARM="${ARM:?set ARM=gated|typecheck|outcome|gated_edge}"
+ARM="${ARM:?set ARM=gated|typecheck|outcome|outcome_brevity|gated_edge}"
 # Which SFT series the arms train from. Arms resumed from different baselines
 # are not comparable to each other.
 BEST_SFT="${BEST_SFT:-${DATA_DIR}/best_sft.txt}"
@@ -67,7 +67,15 @@ case "$ARM" in
     # Unlike gated it pays a graded reward below BEq+, so groups with no semantic
     # signal still carry a within-group gradient. Run it against gated rather
     # than in place of it.
+    #
+    # ALSO THE CONTROL for the arm below, which is this reward plus one term.
+    # A new-term arm must be paired against an `outcome` run at the SAME
+    # settings, not against the locolib_proof_lr6 one: that series ran at
+    # max_response_length=128 and this one does not.
     REWARD_FN_NAME=compute_score_outcome ;;
+  outcome_brevity)
+    # outcome + the proof-LENGTH deduction on the SOLVED row.
+    REWARD_FN_NAME=compute_score_outcome_brevity ;;
   *) echo "[grpo] bad ARM: ${ARM}"; exit 1 ;;
 esac
 
