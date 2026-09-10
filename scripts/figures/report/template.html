@@ -1,0 +1,1003 @@
+<title>BEq+ Reward Audit</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600&family=Source+Serif+4:opsz,wght@8..60,400;8..60,600;8..60,700&display=swap">
+
+<style>
+:root {
+  /* Palette inherited from scripts/figures/figstyle.py (Okabe-Ito), so the page
+     and the figures it embeds agree on what every colour means. */
+  --blue:   #0072B2;   /* primary; "BEq+ fires" in every figure */
+  --green:  #009E73;   /* verified / shipped */
+  --amber:  #E69F00;   /* cost, latency, caution */
+  --red:    #BE0000;   /* the paper's callout red; never a series */
+  --sky:    #56B4E9;
+
+  --ink:      #131920;
+  --ink-2:    #47535F;
+  --ink-3:    #6B7885;
+  --ground:   #FCFDFE;
+  --surface:  #F1F5F9;
+  --surface-2:#E7EEF4;
+  --rule:     #CFDAE5;
+  --rule-soft:#E2EAF1;
+  --code-bg:  #F4F7FA;
+
+  --measure: 68ch;
+  --s1: 0.35rem; --s2: 0.7rem; --s3: 1.1rem; --s4: 1.8rem;
+  --s5: 2.8rem; --s6: 4.2rem;
+
+  --sans: "IBM Plex Sans", ui-sans-serif, system-ui, sans-serif;
+  --serif: "Source Serif 4", Georgia, "Times New Roman", serif;
+  --mono: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, monospace;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --blue: #4BA3DA; --green: #35C79E; --amber: #F0B43C; --red: #FF6B5E; --sky: #7FC9F0;
+    --ink: #E4EBF2; --ink-2: #A3B1BF; --ink-3: #7E8C9B;
+    --ground: #0E1218; --surface: #161C25; --surface-2: #1D242F;
+    --rule: #2A333F; --rule-soft: #212A35; --code-bg: #141A22;
+  }
+}
+:root[data-theme="dark"] {
+  --blue: #4BA3DA; --green: #35C79E; --amber: #F0B43C; --red: #FF6B5E; --sky: #7FC9F0;
+  --ink: #E4EBF2; --ink-2: #A3B1BF; --ink-3: #7E8C9B;
+  --ground: #0E1218; --surface: #161C25; --surface-2: #1D242F;
+  --rule: #2A333F; --rule-soft: #212A35; --code-bg: #141A22;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  background: var(--ground);
+  color: var(--ink);
+  font-family: var(--sans);
+  font-size: 16.5px;
+  line-height: 1.62;
+  -webkit-font-smoothing: antialiased;
+}
+
+.page { max-width: 1120px; margin: 0 auto; padding: var(--s5) var(--s3) var(--s6); }
+.col { max-width: var(--measure); }
+
+/* ---- masthead ---------------------------------------------------------- */
+.masthead { border-bottom: 2px solid var(--ink); padding-bottom: var(--s3); margin-bottom: var(--s4); }
+.kicker {
+  font-family: var(--mono); font-size: 0.72rem; font-weight: 500;
+  letter-spacing: 0.13em; text-transform: uppercase; color: var(--blue);
+  display: flex; flex-wrap: wrap; gap: var(--s2) var(--s3); margin-bottom: var(--s2);
+}
+.kicker span { white-space: nowrap; }
+h1 {
+  font-family: var(--serif); font-weight: 700; font-size: clamp(2.1rem, 5.2vw, 3.3rem);
+  line-height: 1.06; letter-spacing: -0.018em; margin: 0 0 var(--s2); text-wrap: balance;
+}
+.standfirst {
+  font-family: var(--serif); font-size: clamp(1.05rem, 2.1vw, 1.24rem);
+  line-height: 1.5; color: var(--ink-2); max-width: 62ch; margin: 0;
+}
+
+/* ---- headline metric strip --------------------------------------------- */
+.strip {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  gap: 1px; background: var(--rule); border: 1px solid var(--rule);
+  margin: var(--s4) 0 var(--s5);
+}
+.metric { background: var(--ground); padding: var(--s3) var(--s3) var(--s3); }
+.metric .n {
+  font-family: var(--mono); font-size: 1.9rem; font-weight: 600; line-height: 1;
+  font-variant-numeric: tabular-nums; letter-spacing: -0.02em; display: block;
+}
+.metric .lbl {
+  font-size: 0.78rem; color: var(--ink-2); margin-top: var(--s2); display: block; line-height: 1.4;
+}
+.metric .sub {
+  font-family: var(--mono); font-size: 0.68rem; color: var(--ink-3); margin-top: var(--s1);
+  display: block; letter-spacing: 0.01em;
+}
+.m-good .n { color: var(--green); }
+.m-warn .n { color: var(--amber); }
+.m-flag .n { color: var(--red); }
+.m-neut .n { color: var(--blue); }
+
+/* ---- findings ----------------------------------------------------------- */
+section { margin-bottom: var(--s6); }
+/* Audit subsections sit UNDER the audit heading, not beside it. The rule is the
+   only thing carrying that relationship once the h2s became h3s. */
+section.sub {
+  margin-bottom: var(--s5);
+  padding-left: var(--s4);
+  border-left: 2px solid var(--rule);
+}
+section.sub .head { margin-bottom: var(--s2); }
+h3.subhead {
+  font-family: var(--serif); font-weight: 600; font-size: clamp(1.15rem, 2.3vw, 1.45rem);
+  line-height: 1.2; letter-spacing: -0.008em; margin: 0; text-wrap: balance;
+}
+@media (max-width: 620px) { section.sub { padding-left: var(--s3); } }
+.head { display: flex; align-items: baseline; gap: var(--s3); flex-wrap: wrap; margin-bottom: var(--s3); }
+h2 {
+  font-family: var(--serif); font-weight: 600; font-size: clamp(1.5rem, 3.2vw, 2rem);
+  line-height: 1.15; letter-spacing: -0.012em; margin: 0; text-wrap: balance;
+}
+h3 {
+  font-family: var(--sans); font-weight: 600; font-size: 1.02rem; letter-spacing: 0.005em;
+  margin: var(--s4) 0 var(--s2); color: var(--ink);
+}
+.chip {
+  font-family: var(--mono); font-size: 0.67rem; font-weight: 600; letter-spacing: 0.09em;
+  text-transform: uppercase; padding: 0.24em 0.62em; border: 1px solid currentColor;
+  border-radius: 2px; white-space: nowrap; align-self: center;
+}
+.c-ship { color: var(--green); }
+.c-off  { color: var(--amber); }
+.c-lab  { color: var(--blue); }
+.c-open { color: var(--red); }
+
+p { margin: 0 0 var(--s3); max-width: var(--measure); }
+p.wide { max-width: none; }
+ul, ol { margin: 0 0 var(--s3); padding-left: 1.3em; max-width: var(--measure); }
+li { margin-bottom: var(--s2); }
+strong { font-weight: 600; }
+code {
+  font-family: var(--mono); font-size: 0.86em; background: var(--code-bg);
+  border: 1px solid var(--rule-soft); border-radius: 2px; padding: 0.08em 0.32em;
+}
+a { color: var(--blue); text-decoration-thickness: 1px; text-underline-offset: 2px; }
+a:focus-visible { outline: 2px solid var(--blue); outline-offset: 2px; border-radius: 2px; }
+
+/* ---- figures ------------------------------------------------------------ */
+figure { margin: var(--s4) 0; }
+.figbox { border: 1px solid var(--rule); background: #fff; padding: var(--s2); overflow-x: auto; }
+:root[data-theme="dark"] .figbox,
+:root:not([data-theme="light"]) .figbox { background: #F7F9FB; }
+@media (prefers-color-scheme: light) { .figbox { background: #fff; } }
+figure img { display: block; width: 100%; min-width: 560px; height: auto; }
+figcaption {
+  font-size: 0.83rem; color: var(--ink-2); margin-top: var(--s2); line-height: 1.5;
+  max-width: 88ch;
+}
+figcaption b { color: var(--ink); font-weight: 600; }
+
+/* ---- tables ------------------------------------------------------------- */
+.tablewrap { overflow-x: auto; margin: var(--s3) 0 var(--s4); border: 1px solid var(--rule); }
+table { border-collapse: collapse; width: 100%; font-size: 0.87rem; min-width: 540px; }
+th, td { padding: 0.56em 0.85em; text-align: left; border-bottom: 1px solid var(--rule-soft); }
+thead th {
+  font-family: var(--mono); font-size: 0.7rem; font-weight: 600; letter-spacing: 0.06em;
+  text-transform: uppercase; color: var(--ink-2); background: var(--surface);
+  border-bottom: 1px solid var(--rule); white-space: nowrap;
+}
+tbody tr:last-child td { border-bottom: none; }
+td.num, th.num { text-align: right; font-family: var(--mono); font-variant-numeric: tabular-nums; }
+td.name { font-family: var(--mono); font-size: 0.82rem; white-space: nowrap; }
+tr.hi td { background: var(--surface-2); }
+td .z { color: var(--green); font-weight: 600; }
+td .bad { color: var(--red); font-weight: 600; }
+
+/* ---- callout ------------------------------------------------------------ */
+.callout {
+  border-left: 3px solid var(--red); padding: var(--s3) 0 var(--s3) var(--s3);
+  margin: var(--s4) 0; max-width: var(--measure);
+}
+.callout.t-blue { border-left-color: var(--blue); }
+.callout.t-green { border-left-color: var(--green); }
+.callout .t {
+  font-family: var(--mono); font-size: 0.7rem; font-weight: 600; letter-spacing: 0.09em;
+  text-transform: uppercase; color: var(--red); display: block; margin-bottom: var(--s2);
+}
+.callout.t-blue .t { color: var(--blue); }
+.callout.t-green .t { color: var(--green); }
+.callout p:last-child { margin-bottom: 0; }
+
+.eq {
+  /* white-space: pre is load-bearing -- these are hand-aligned equations in a
+     div, and without it every line collapses into one. */
+  white-space: pre;
+  font-family: var(--mono); font-size: 0.83rem; line-height: 1.75;
+  background: var(--code-bg); border: 1px solid var(--rule-soft);
+  border-left: 3px solid var(--blue); padding: var(--s3);
+  margin: var(--s3) 0; overflow-x: auto;
+}
+.eq .c { color: var(--ink-3); }
+.eq b { color: var(--blue); font-weight: 600; }
+.where { font-size: 0.84rem; color: var(--ink-2); margin: calc(-1 * var(--s2)) 0 var(--s4); }
+
+pre {
+  font-family: var(--mono); font-size: 0.8rem; line-height: 1.55; background: var(--code-bg);
+  border: 1px solid var(--rule-soft); border-left: 3px solid var(--rule);
+  padding: var(--s3); overflow-x: auto; margin: var(--s3) 0 var(--s4); max-width: var(--measure);
+}
+pre code { background: none; border: none; padding: 0; font-size: 1em; }
+
+/* ---- file ledger -------------------------------------------------------- */
+.ledger { border-top: 1px solid var(--rule); margin-top: var(--s3); }
+.ledger .row {
+  display: grid; grid-template-columns: minmax(0, 1.05fr) minmax(0, 1.6fr);
+  gap: var(--s3); padding: var(--s3) 0; border-bottom: 1px solid var(--rule-soft);
+  align-items: start;
+}
+.ledger .f { font-family: var(--mono); font-size: 0.81rem; color: var(--blue); word-break: break-all; }
+.ledger .d { font-size: 0.87rem; color: var(--ink-2); }
+@media (max-width: 620px) { .ledger .row { grid-template-columns: 1fr; gap: var(--s1); } }
+
+footer {
+  border-top: 2px solid var(--ink); padding-top: var(--s3); margin-top: var(--s5);
+  font-size: 0.82rem; color: var(--ink-3); max-width: var(--measure);
+}
+footer code { font-size: 0.9em; }
+
+@media (prefers-reduced-motion: reduce) { * { animation: none !important; transition: none !important; } }
+</style>
+
+<div class="page">
+
+  <header class="masthead">
+    <div class="kicker">
+      <span>lean-gym-rl</span>
+      <span>Reward engineering</span>
+      <span>Mathlib v4.23.0</span>
+      <span>4 Sep 2026</span>
+    </div>
+    <h1>BEq+ Reward Audit</h1>
+    <p class="standfirst">Two reward terms added, their firing rates measured on the test set — and the
+      audit of the ladder they attach to, against {{N_ALL}} human-labelled pairs.</p>
+  </header>
+
+  <div class="strip">
+    <div class="metric m-flag">
+      <span class="n">{{NR_FIRES}}</span>
+      <span class="lbl">Rollouts the <strong>proof-length</strong> term charges, of {{NR_REACH}} it
+        can reach. It ships disabled.</span>
+      <span class="sub">mean b = 1.0000</span>
+    </div>
+    <div class="metric m-warn">
+      <span class="n">{{FAITH_COVERAGE}}%</span>
+      <span class="lbl">Of the slice the <strong>faithfulness</strong> term can score at all —
+        the rest is proofs it structurally cannot read.</span>
+      <span class="sub">AUC {{FAITH_AUC}} [{{FAITH_AUC_LO}}, {{FAITH_AUC_HI}}]</span>
+    </div>
+    <div class="metric m-good">
+      <span class="n">{{FP}} / {{N_NEG}}</span>
+      <span class="lbl">False positives on <em>naturally occurring</em> wrong formalizations.
+        Several percent on adversarial ones.</span>
+      <span class="sub">95% CI [0, {{FPR_HI}}]</span>
+    </div>
+    <div class="metric m-warn">
+      <span class="n">{{RECALL}}</span>
+      <span class="lbl">Recall. The gate stays silent on nearly two thirds of correct work.</span>
+      <span class="sub">±{{RECALL_CI}} at 95%</span>
+    </div>
+    <div class="metric m-flag">
+      <span class="n">{{AUDIT_TRIVIAL_OUTCOME}}</span>
+      <span class="lbl">Paid by <code>theorem t (n : Nat) : n = n := rfl</code> — double an honest
+        unfinished proof, for formalizing nothing.</span>
+      <span class="sub">guard input known {{GUARD_KNOWN}}%</span>
+    </div>
+  </div>
+
+    <section>
+    <div class="head">
+      <h2>The reward functions</h2>
+      <span class="chip c-ship">3 arms</span>
+    </div>
+
+    <p>Every arm scores the same six outcomes and differs only in what it pays for them. The outcome
+      is decided once, in <code>outcome_for</code>; the arm is a lookup table over the result.</p>
+
+    <div class="tablewrap">
+      <table>
+        <thead><tr><th>outcome</th><th>condition</th>
+          <th class="num">outcome</th><th class="num">gated</th><th class="num">typecheck</th></tr></thead>
+        <tbody>
+          <tr><td><code>no_answer</code></td><td>nothing written, or the scorer failed</td>
+              <td class="num">0.00</td><td class="num">0.00</td><td class="num">0.00</td></tr>
+          <tr><td><code>no_elaborate</code></td><td>Lean rejects the submission</td>
+              <td class="num">0.05</td><td class="num">0.00</td><td class="num">0.00</td></tr>
+          <tr><td><code>incomplete</code></td><td>elaborates, no gold match, proof unfinished</td>
+              <td class="num">0.15</td><td class="num">0.00</td><td class="num">1.00</td></tr>
+          <tr><td><code>compiles</code></td><td>real finished proof, statement unmatched</td>
+              <td class="num">0.30</td><td class="num">0.00</td><td class="num">1.00</td></tr>
+          <tr><td><code>incomplete_faithful</code></td><td>BEq+ matches, proof unfinished</td>
+              <td class="num">0.50</td><td class="num">1.00</td><td class="num">1.00</td></tr>
+          <tr class="hi"><td><code>solved</code></td><td>BEq+ matches <em>and</em> proof is sorry-free, axiom-clean</td>
+              <td class="num">see below</td><td class="num">1.00</td><td class="num">1.00</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <p><code>gated</code> additionally pays <b>0.25</b> when BEq+ proves one direction only — a
+      partial match the table has no row for, applied as an override on <code>incomplete</code>.</p>
+
+    <h3>The shared decision — <code>outcome_for</code></h3>
+
+    <p>Every arm calls this first. It reads the columns left to right and returns a row name; the arm
+      then looks up what that row is worth.</p>
+
+    <div class="eq">
+<b>if</b>  not graded  or  not wrote_something        →  <b>no_answer</b>
+<b>if</b>  not type_correct                           →  <b>no_elaborate</b>
+    <span class="c">matches := (BEq+ verdict is True)</span>
+<b>if</b>  not proved       and  matches              →  <b>incomplete_faithful</b>
+<b>if</b>  not proved       and  not matches          →  <b>incomplete</b>
+<b>if</b>  proved           and  matches              →  <b>solved</b>
+<b>if</b>  proved, declares a theorem, not trivial    →  <b>compiles</b>
+<b>else</b>                                           →  <b>incomplete</b>   <span class="c">proved, but of nothing</span>
+    </div>
+
+    <h3>1 · <code>typecheck</code> — the exploitable baseline</h3>
+    <div class="eq">
+<b>R</b>  =  1   <b>if</b> the submission elaborates    <span class="c">`sorry` still counts — it is a warning</span>
+     0   otherwise
+    </div>
+    <p class="where">Pays for elaboration alone, never reads the gold. Kept as the ablation that
+      shows what a reward with no semantic content buys.</p>
+
+    <h3>2 · <code>gated</code> — semantics only, flat floor</h3>
+    <div class="eq">
+<b>R</b>  =  1.00   <b>if</b> BEq+ matches            <span class="c">rows incomplete_faithful + solved</span>
+     0.25   <b>if</b> exactly one direction proves   <span class="c">override on `incomplete`</span>
+     0.00   otherwise
+    </div>
+    <p class="where">The flat floor is deliberate. Under GRPO a group with no semantic signal produces
+      zero advantage and contributes no gradient — so nothing below BEq+ can be farmed. It never calls
+      <code>check_own_proof</code>, so <code>proved</code> is always false and <code>solved</code> is
+      unreachable: <code>gated</code> tops out at the BEq+ row.</p>
+
+    <h3>3 · <code>outcome</code>, as it was — the graded ladder</h3>
+    <div class="eq">
+<b>R</b>  =  0.00 / 0.05 / 0.15 / 0.30 / 0.50   <span class="c">rows 1–5, constants</span>
+     <b>0.85</b>                                 <span class="c">solved — f was never computed</span>
+
+<span class="c">type_correct  ←  BEq+'s own typecheck  (proof sorry'd away)</span>
+<span class="c">wrote_something  ←  hardcoded True</span>
+    </div>
+
+    <h3>4 · <code>outcome</code>, as it ships now</h3>
+    <div class="eq">
+<b>R</b>  =  0.00 / 0.05 / 0.15 / 0.30 / 0.50   <span class="c">rows 1–5, unchanged</span>
+     0.85  +  0.15·<b>f</b>  −  0.10·(1 − <b>b</b>)   <span class="c">solved</span>
+
+<span class="c">type_correct  ←  check_own_proof  (the submission AS WRITTEN)</span>
+<span class="c">wrote_something  ←  the submission is non-empty</span>
+<span class="c">f = faithfulness ∈ [0,1], but signals_from_score passes None → 0</span>
+<span class="c">                (not wired in-loop at all; offline metric only)</span>
+<span class="c">b = brevity ∈ [0,1] or None → 1,  BEQ_BREVITY_BAND = 0 by default</span>
+    </div>
+    <p class="where">As shipped this is <b>numerically identical</b> to arm 3 on the
+      <code>solved</code> row: brevity's band defaults to 0, and faithfulness has no in-loop wiring —
+      <code>signals_from_score</code> still passes <code>None</code>, so <code>f</code> = 0. What is <em>not</em> identical is the two signal fixes: a
+      submission whose proof body Lean rejects now scores 0.05 rather than 0.50, and an empty
+      completion scores 0.00 rather than 0.05. Those changed the reward mass distribution
+      substantially — see the subsection below.</p>
+
+    <h3>The <code>solved</code> row is the only one that is not a constant</h3>
+
+    <div class="eq">
+<b>R_solved</b>  =  (V − F) + F·<b>f</b>  −  B·(1 − <b>b</b>)
+             =  (1.00 − 0.15) + 0.15·<b>f</b>  −  0.10·(1 − <b>b</b>)
+             =  <b>0.85</b>  when f = 0 and b = 1        <span class="c">← today: f is None, b is 1</span>
+    </div>
+    <p class="where"><code>V</code> = 1.00 ceiling · <code>F</code> = 0.15 faithfulness band ·
+      <code>B</code> = 0.10 brevity band (shipped at <b>0</b>). <code>f</code> is <em>paid</em>, so an
+      unknown scores 0; <code>b</code> is <em>deducted</em>, so an unknown scores 1. Both conventions
+      exist so that an unmeasurable signal can never move a score.</p>
+
+    <h3>Brevity — <code>b</code> ∈ [0,1], deducted</h3>
+
+    <div class="eq">
+<b>d</b>  =  log( (L_pred + 60) / (L_gold + 60) )          <span class="c">← softened log-ratio</span>
+
+<b>b</b>  =  1                                    if  −log 3 ≤ d ≤ log 1.5   <span class="c">dead band</span>
+     1 − (d − log 1.5) / (log 4 − log 1.5)   if  d &gt; log 1.5          <span class="c">too long</span>
+     1 − (−d − log 3) / (log 10 − log 3)     if  d &lt; −log 3          <span class="c">too short</span>
+                                             clamped to [0, 1]
+    </div>
+    <p class="where"><code>L</code> is the proof <em>body</em> in characters, split at the first
+      bracket-balanced <code>:=</code>. The <b>+60</b> is not cosmetic: gold bodies run from 1 to
+      ~7,300 chars, and a raw ratio is degenerate at the short end — against a 5-char <code>rfl</code>
+      gold, a good <code>by simp [foo]</code> reads as a 4× overrun. The band is <b>asymmetric</b>
+      (free to 1.5× long, but to <sup>1</sup>⁄<sub>3</sub> short) because bloat is the target and
+      concision is usually a win.</p>
+
+    <h3>Faithfulness — <code>f</code> ∈ [0,1], paid</h3>
+
+    <div class="eq">
+NL proof  ──judge──▶  NL blocks ⎫
+                                ⎬──judge──▶  <b>f</b> = score ∈ [0,1]
+Lean proof ──REPL───▶  FL blocks ⎭          <span class="c">None if either side is empty</span>
+    </div>
+    <p class="where">FL blocks come from <code>allTactics</code> on the Lean REPL we already hold
+      open. Zero FL blocks returns <em>unknown</em>, never 0 — a term-mode proof has no tactics, and
+      AutoFaith's own empty-branch would return a confident 0.0.</p>
+  </section>
+
+  <section>
+    <div class="head">
+      <h2>The two new reward terms</h2>
+      <span class="chip c-open">neither fires yet</span>
+    </div>
+
+    <p>Both are gated to <code>SOLVED</code> — paying either below that row is how a policy learns
+      to farm it. That gate also sets the denominator: a firing rate is measured against the
+      <em>solved</em> subset, which on this 760-row slice is 8%.</p>
+
+    <figure>
+      <div class="figbox"><img src="figs/new_rewards.png"
+        alt="Left: two funnels. Brevity goes from 100% of the val slice to 8% reachable to 0% firing. Faithfulness goes from 100% to 56.1% tactic-mode to 38.1% scored. Right: a log-scale histogram of the brevity value b, with all rollouts in grey and the SOLVED subset in green, the green mass entirely at b equals 1."></div>
+      <figcaption><b>What each term reaches, and what brevity actually charges.</b> Brevity can only
+        charge the SOLVED rows; every one of them already sits at b&nbsp;=&nbsp;1. Faithfulness is
+        limited by a different constraint — proofs it structurally cannot read.</figcaption>
+    </figure>
+
+    <div class="tablewrap">
+      <table>
+        <thead><tr><th>term</th><th class="num">reachable</th><th class="num">fires on</th>
+                   <th class="num">mean charge</th><th>status</th></tr></thead>
+        <tbody>
+          <tr><td>brevity (proof length)</td><td class="num">{{NR_REACH}} / 760</td>
+              <td class="num"><span class="z">{{NR_FIRES}}</span></td>
+              <td class="num">{{NR_DEDUCT}}</td><td>shipped disabled</td></tr>
+          <tr><td>NL&rarr;FL faithfulness</td><td class="num">{{FAITH_REACH}} / 760</td>
+              <td class="num">{{FAITH_SCORED}}</td><td class="num">not wired</td>
+              <td>offline only</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <p><strong>Brevity fires on zero of {{NR_REACH}} reachable rollouts</strong>, mean
+      <code>b</code> = 1.0000. Not mis-tuned: 3.5% of <em>all</em> rollouts would be charged, none of
+      the solved ones. Conditioning on a proof that closes already selects for gold-length proofs, so
+      both gates select the same population.</p>
+
+    <p><strong>Faithfulness never reaches 62% of the slice</strong> — not disagreement, but proofs it
+      cannot read: AutoFaith works from <em>tactics</em>, and a term-mode proof has none.</p>
+  </section>
+
+<section>
+    <div class="head">
+      <h2>The proof-length reward</h2>
+      <span class="chip c-off">disabled on evidence</span>
+    </div>
+
+    <p>A length term anchored to the gold: discourage long-winded proofs without letting it be
+      farmed by emitting something degenerately short. Two measurements shaped it.</p>
+
+    <p><strong>Gold bodies are tiny and violently skewed</strong> — over 18,546 golds: median 67
+      chars, p90 405, p99 1452, max ~7.3k. Hence the softened ratio.</p>
+
+    <p><strong>Never split the body with <code>rfind(":=")</code>.</strong> 22.4% of golds carry a
+      <code>:=</code> inside the proof; for <strong>16.8%</strong> that undercounts the body by 40+
+      chars — worst case 7,406 lost — inventing a phantom one-line reference that marks every honest
+      proof bloated.</p>
+
+    <figure>
+      <div class="figbox"><img src="figs/gold_lengths.png"
+        alt="Left: histogram of LoCoLib gold proof-body lengths on a log axis, comparing the correct splitter against the naive one, with p50 at 67 characters and p90 at 405. Right: histogram of how many characters the naive splitter loses, worst case 7,406."></div>
+      <figcaption><b>Gold proof lengths, and what the naive splitter does to them.</b> The spike at
+        3 characters is <code>rfl</code>. <code>split_implementation</code> from
+        <code>lean_interact.utils</code> — already a dependency — finds the first bracket-balanced
+        <code>:=</code> that is not a <code>let</code>/<code>haveI</code> binder.</figcaption>
+    </figure>
+
+    <p><strong>A symmetric band penalises good proofs.</strong> The first version docked
+      <code>by omega</code> — strictly better than its 61-char gold — 0.012 for being concise. Hence
+      the asymmetry.</p>
+
+    <figure>
+      <div class="figbox"><img src="figs/brevity_response.png"
+        alt="Two panels of brevity response curves against the candidate-to-gold length ratio, one per gold length percentile. The left panel shows the shipped asymmetric dead band free from one third to 1.5 times gold; the right shows the rejected symmetric band, annotated where a better short proof is penalised."></div>
+      <figcaption><b>The response surface at the measured gold percentiles.</b> The softening is doing
+        real work: a 5-char gold is free up to 38 chars, a 1452-char gold is free from 444 to 2208.
+        The term costs at most 0.10 and only ever reaches <code>SOLVED</code>.</figcaption>
+    </figure>
+
+    <h3>And then it fired zero times</h3>
+
+    <p>Over the finished arms' actual rollouts:</p>
+
+    <div class="tablewrap">
+      <table>
+        <thead><tr><th>checkpoint</th><th class="num">pred/gold ratio (med)</th>
+                   <th class="num">b &lt; 1.0</th><th class="num">b &lt; 1.0 among SOLVED</th></tr></thead>
+        <tbody>
+          <tr><td class="name">sft…_distilledcos @128</td><td class="num">1.06</td><td class="num">15.9%</td><td class="num">—</td></tr>
+          <tr><td class="name">rl…_gated @90</td><td class="num">1.00</td><td class="num">4.7%</td><td class="num"><span class="z">0 / 57</span></td></tr>
+          <tr><td class="name">rl…_outcome @90</td><td class="num">1.00</td><td class="num">2.9%</td><td class="num"><span class="z">0 / 61</span></td></tr>
+          <tr><td class="name">rl…_typecheck @90</td><td class="num">0.93</td><td class="num">2.9%</td><td class="num"><span class="z">0 / 64</span></td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="callout">
+      <span class="t">Why it is inert, and why that is structural</span>
+      <p>Conditioning on a proof that actually closes already selects for gold-length proofs. The
+        brevity gate and the correctness gate select the same population, so the term buys nothing —
+        mean <code>b</code> = 1.0000, mean deduction 0.0000 across 182 solved rollouts.</p>
+      <p>It ships as <code>BEQ_BREVITY_BAND=0</code>. The code stays, and stays correct, because that
+        is a property of the current 128-token response cap — under which three quarters of gold
+        answers do not fit. Raise the cap and long-winded proofs become expressible for the first
+        time. That is when to set the band to 0.10 and A/B it.</p>
+    </div>
+  </section>
+
+  <section>
+    <div class="head">
+      <h2>NL&rarr;FL faithfulness</h2>
+      <span class="chip c-lab">offline, coverage-limited</span>
+    </div>
+
+    <p>The 0.15 band was reserved for a term nothing computed: does the Lean proof carry out the
+      <em>English</em> argument? <a href="https://github.com/BachHV/AutoFaith">AutoFaith</a> returns
+      exactly that, in [0,1]. Wired behind one adapter, {{FAITH_N}} rollouts per arm, local judge.
+      Two departures from upstream: FL blocks come from the REPL we already hold open, and zero
+      blocks returns <em>unknown</em>, never zero.</p>
+
+    <figure>
+      <div class="figbox"><img src="figs/faithfulness.png"
+        alt="Left: score histograms for three arms. The mismatched negative control piles up at 0.00; the matched arm spreads across 0.00, 0.25, 0.75 and 0.95; padded sits between. Right: a coverage waterfall from 100% of rollouts to 56.1% tactic-mode to 40.6% actually scored."></div>
+      <figcaption><b>Left: the negative control works. Right: it can only be applied to 40% of the
+        population.</b> Mismatched means the proof was scored against a <em>different</em> problem's
+        informal proof — the control <code>reward.py</code> requires before a judged metric may feed
+        a reward.</figcaption>
+    </figure>
+
+    <div class="callout t-green">
+      <span class="t">It discriminates, and padding does not fool it</span>
+      <p>Matched <strong>{{FAITH_MATCHED}}</strong> vs <strong>{{FAITH_MISMATCHED}}</strong> for the
+        negative control ({{FAITH_DELTA}}), with mismatched piling up at exactly 0.00. Padding a
+        correct proof with vacuous <code>have</code>s <em>lowers</em> the score by
+        {{FAITH_PAD_DELTA}} — the erosion channel is penalised, not paid.</p>
+    </div>
+
+    <div class="callout">
+      <span class="t">But the pass is not established, and coverage is fatal</span>
+      <p><strong>AUC {{FAITH_AUC}}, 95% CI [{{FAITH_AUC_LO}}, {{FAITH_AUC_HI}}]</strong> against a
+        0.80 threshold set before the run. The interval straddles it — at n={{FAITH_NPOS}} vs
+        {{FAITH_NNEG}} that is "needs more data", not a verdict.</p>
+      <p>Coverage is the harder problem. A <strong>term-mode</strong> proof (<code>:= rfl</code>) emits
+        no tactics, so AutoFaith's FL side sees nothing — <strong>{{FAITH_TERM}}% of the
+        population</strong>, verified against Mathlib. Of the rest, the judge fails to return parseable
+        JSON on ~15%. <strong>Effective coverage: {{FAITH_COVERAGE}}%.</strong></p>
+      <p>Left naive this is worse than useless: AutoFaith's <code>_empty()</code> returns a confident
+        <code>0.0</code> for zero blocks, docking half of all faithful proofs the entire band. The
+        adapter checks first. But no validity gate tolerates a 60% unknown rate, so this cannot back a
+        band until AutoFaith grows a term-mode path — judging the proof <em>term</em> directly.</p>
+    </div>
+
+    <p>One judge finding. <code>LARK-Lab/FormalRx-4b</code> — already served locally for
+      statement-alignment — <strong>echoes the prompt instead of answering</strong>, even a one-line
+      "return this JSON". The chat template is correct ChatML; it is an SFT specialist and AutoFaith's
+      12,449-char schema prompt sits far outside its format. <code>Qwen3-4B-Instruct-2507</code> fixed
+      it: {{FAITH_CALLS}} calls, <strong>0 errors</strong>, {{FAITH_SEC}}s each. The two metrics need
+      different models, and only one 4B fits on the card.</p>
+  </section>
+
+    <section>
+    <div class="head">
+      <h2>Audit: is the reward they attach to sound?</h2>
+      <span class="chip c-ship">measured</span>
+    </div>
+    <p>Neither term is worth anything if the ladder underneath is wrong. What follows validates it:
+      what the gate fires on against human labels, what the reward returns for known-answer inputs,
+      where each arm's mass sits, and how the top row moves over training.</p>
+  </section>
+
+<section class="sub">
+    <div class="head">
+      <h3 class="subhead">What BEq+ fires on</h3>
+      <span class="chip c-ship">shipped</span>
+    </div>
+
+    <p>BEq+ is the gate every arm is built on, and its error rate had never been measured.
+      <code>PAug/ProofNetVerif</code> is 3,752 (gold, prediction) pairs with a <strong>human</strong>
+      correctness label — the one place that number can come from.</p>
+
+    <p>{{N_ALL}} pairs, balanced {{N_POS_ALL}}/{{N_NEG_ALL}} on the human label, one prediction per problem before topping up.
+      A gold-elaboration gate ran first over all 361 problems: <strong>{{GATE_OK}} ({{GATE_PCT}}%)</strong> of gold
+      statements elaborate against the pinned Mathlib, and the 24 pairs whose gold does not are
+      reported separately — they are guaranteed misses for a version-drift reason that has nothing
+      to do with BEq+.</p>
+
+    <figure>
+      <div class="figbox"><img src="figs/beq_calibration.png"
+        alt="Three panels: a confusion matrix showing 70 true positives, 119 false negatives, 0 false positives and 187 true negatives; a bar chart showing precision 1.000, recall 0.370, F1 0.541, false-positive rate 0.000; and a log-scale latency comparison between 5 REPLs and 1 REPL."></div>
+      <figcaption><b>BEq+ against human labels, n={{N_CLEAN}} (gold-elaborating subset).</b> The reward is
+        conservative to a fault: it never once claimed a wrong formalization was right, and it stayed
+        silent on {{FN}} of {{N_POS}} correct ones. Latency is per-pair wall clock, shown for both the sharded
+        run and the single-REPL configuration the RL loop actually uses.</figcaption>
+    </figure>
+
+    <div class="callout t-green">
+      <span class="t">The reward-hacking surface is small</span>
+      <p>Zero in {{N_NEG}} human-labelled-wrong pairs. On <code>gated</code> every false positive is a
+        full 1.0 paid for a wrong answer, so this decides whether the reward can be farmed. Rule of
+        three puts the 95% bound at {{FPR_HI}} — small, not proven zero.</p>
+    </div>
+
+    <h3>Every hit came from one cascade rung</h3>
+
+    <p>Of {{TP}} true positives, <strong>{{RUNG2}} closed at rung 2</strong> (<code>apply &lt;gold&gt;</code>
+      plus solver tactics), {{RUNG3}} at rung 3, {{RUNG4}} at rung 4. Rung 1 (<code>exact?</code>, the
+      only rung setting <code>beql</code>) fired zero times. Rung 4 produced no false positives — but
+      rungs 3–4 still <em>run</em> on every miss, which is most of the cost asymmetry below.</p>
+
+    <div class="tablewrap">
+      <table>
+        <thead><tr><th>Single-REPL latency by outcome</th><th class="num">mean</th><th>why</th></tr></thead>
+        <tbody>
+          <tr><td>prediction fails to elaborate</td><td class="num">1.5 s</td><td><code>BEQ_SKIP_CASCADE_ON_TYPECHECK_FAIL</code> short-circuits the whole cascade</td></tr>
+          <tr><td>BEq+ fires</td><td class="num">7.3 s</td><td>exits early at its rung, almost always rung 2</td></tr>
+          <tr class="hi"><td>BEq+ silent, prediction elaborated</td><td class="num">20.9 s</td><td>pays every rung, finds nothing</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <p><strong>A miss costs 3× a hit.</strong> The cascade is most expensive exactly when it fails,
+      so early training — where misses dominate — is the expensive phase, and the reward gets cheaper
+      as the policy improves.</p>
+
+    <p>At n=400 rungs 3 and 4 looked negligible — 6 true positives between them — and truncating the
+      cascade after rung 2 looked like a free latency win. <strong>At n={{N_ALL}} they contribute
+      {{RUNG34}} of {{TP}} true positives ({{RUNG34_PCT}}%), and that idea is off the table.</strong>
+      The scale-up inverted the conclusion, which is the argument for having run it.</p>
+
+    <p>One more thing worth retiring: the <code>gated</code> arm pays 0.25 for a one-direction-only
+      match. That fires on {{ONEDIR_POS}}% of correct pairs and {{ONEDIR_NEG}}% of wrong ones — real but very weak
+      discrimination for a step worth a quarter of the reward.</p>
+  </section>
+
+  <section class="sub">
+    <div class="head">
+      <h3 class="subhead">What the reward returns for answers we already know</h3>
+      <span class="chip c-open">2 defects fixed, 1 open</span>
+    </div>
+
+    <p>Aggregates over rollouts cannot answer two questions. <strong>Ceiling</strong>: does the
+      reward pay the top of its ladder for the reference answer itself? <strong>Separation</strong>:
+      does it order deliberate perturbations the way the table says? A reward can be perfect at the
+      ceiling and flat in the middle, and a flat region contributes zero GRPO advantage.</p>
+
+    <p>{{AUDIT_GOLDS}} golds fed back as their own predictions, plus six perturbations each, scored
+      through the real <code>compute_score_*</code> entry points on real Lean — the wiring between
+      table and scorer is the thing under test.</p>
+
+    <figure>
+      <div class="figbox"><img src="figs/reward_audit.png"
+        alt="Left: grouped bars showing what the outcome, gated and typecheck arms pay for each of seven known inputs, from an empty submission through to the gold itself. Right: horizontal bars showing what percentage of each case lands on the outcome reward.py's table specifies, with the two triviality hacks at zero."></div>
+      <figcaption><b>Every arm against seven inputs whose correct scoring is known in advance.</b>
+        Shaded columns are the two documented hacks — they compile, they are sorry-free and
+        axiom-clean, and they formalize nothing. The right panel is the audit proper: green means
+        the reward landed on the row the table specifies.</figcaption>
+    </figure>
+
+    <h3>The ceiling is clean</h3>
+
+    <p>The gold scores <strong>{{AUDIT_GOLD_OUTCOME}}</strong> on <code>outcome</code> — the maximum
+      without a faithfulness metric — and <strong>{{AUDIT_GOLD_GATED}}</strong> on <code>gated</code>.
+      BEq+ fires on {{AUDIT_GOLD_BEQ}}%, <code>proved</code> on {{AUDIT_GOLD_PROVED}}%. No hidden
+      ceiling.</p>
+
+    <h3>Two defects, both fixed</h3>
+
+    <div class="callout">
+      <span class="t">Column 2 was reading the wrong elaboration</span>
+      <p><code>signals_from_score</code> took <code>type_correct</code> from BEq+'s own
+        <code>typecheck</code> — which <em>sorries the proof away</em> and so answers "does the
+        statement elaborate", not the table's "<code>lean file.lean</code> exited 0". On the
+        proof-pair task those differ. A submission whose proof body Lean rejects outright
+        (<code>:= by exact?_no_such_tactic</code>) passed column 2, and with a matching statement
+        scored <code>incomplete_faithful</code> — <strong>0.50, identical to an honest
+        <code>sorry</code></strong>. It hit 100% of that perturbation.</p>
+      <p>Fixed: when a <code>check_own_proof</code> result exists it wins, because it elaborates the
+        submission as written. That case now scores 0.05. <code>BEQ_TYPECHECK_FROM_OWN_PROOF=0</code>
+        restores the old wiring for comparison — this changes what a run scores, so numbers either
+        side of it are not directly comparable.</p>
+    </div>
+
+    <div class="callout">
+      <span class="t">Row 1 was unreachable</span>
+      <p><code>wrote_something</code> was hardcoded <code>True</code>, so an empty completion scored
+        <code>no_elaborate</code> (0.05) rather than <code>no_answer</code> (0.00) — "wrote nothing"
+        and "wrote broken Lean" were the same reward. Small, and it creates no within-group variance
+        on its own, but the table's floor is 0.00 and it should be reachable. Now wired from the
+        actual submission; an empty answer scores 0.00 on every arm.</p>
+    </div>
+
+    <h3>One left open, and it is the exploitable one</h3>
+
+    <p>The two documented hacks — <code>theorem t (n : Nat) : n = n := rfl</code> and
+      <code>theorem t : True := trivial</code> — both land on <code>compiles</code> and collect
+      <strong>{{AUDIT_TRIVIAL_OUTCOME}} on the outcome arm</strong>, {{AUDIT_TRIVIAL_MATCH}}% agreement
+      with the table. That is <em>double</em> the 0.15 an honest unfinished proof earns, for
+      formalizing nothing.</p>
+
+    <p><code>reward.py</code> already has the guard: row 4 admits a candidate only when
+      <code>statement_is_trivial is not True</code>. The guard cannot fire, because its input is
+      BEq+'s <code>provable_alone</code> — a side effect of cascade rung 3, which only runs when the
+      earlier rungs did not close. Measured over real rollouts, it is known
+      {{GUARD_KNOWN}}% of the time.</p>
+
+    <p>The file anticipates exactly this: <em>"a high unknown rate should trip a validity gate
+      instead."</em> No such gate exists. Two ways out, and the choice is a judgement call rather
+      than a bug fix, so I have not made it:</p>
+
+    <ul>
+      <li><strong>Require positive evidence.</strong> Admit row 4 only when
+        <code>statement_is_trivial is False</code>. One character, no new Lean calls — but it demotes
+        every <em>honest</em> proved-not-matched rollout from 0.30 to 0.15 too, since their evidence
+        is equally unknown.</li>
+      <li><strong>Measure it directly.</strong> Try to close the candidate statement with the solver
+        tactics alone, no reference to the gold. Correct, and costs one extra Lean call per rollout
+        on the rung-4 population only.</li>
+    </ul>
+
+    <p>Worth noting <code>gated</code> is largely unaffected — it pays {{AUDIT_TRIVIAL_GATED}} for
+      the two hacks. It is <code>outcome</code>, the arm with the graded ladder, that is exposed. And
+      on <code>gated</code> a broken proof body still earns the full 1.0, which is by design (it is a
+      statement metric and never calls <code>check_own_proof</code>) but is worth stating plainly.</p>
+
+    <div class="callout">
+      <span class="t">The 0-false-positive number is not a safety guarantee</span>
+      <p>On {{AUDIT_TRIVIAL_SOLVED}} of the trivial submissions BEq+ <em>fired</em>, taking the hack
+        all the way to <strong>0.85</strong>. Inspected, the cause is not a cascade error: the gold
+        for that row is <code>theorem ωUnit_coe (p : ℕ) : (ωUnit p : X (q p)) = ω := rfl</code> —
+        itself closed by <code>rfl</code>, so a trivial theorem genuinely <em>is</em> equivalent to it
+        under the metric.</p>
+      <p>Which is the point. The calibration above measured BEq+ against <em>naturally occurring</em>
+        wrong answers and found zero false positives in 187. Against a deliberately adversarial input
+        the rate is several percent — and a policy optimising this reward is an adversarial input
+        generator by construction. Read the 0/187 as "the metric is not accidentally loose", never as
+        "the metric cannot be gamed".</p>
+    </div>
+
+    <h3>And one the audit found by accident</h3>
+
+    <p>The single gold that could not reach <code>solved</code> ({{AUDIT_GOLD_MATCH}}% agreement, not
+      100) turned out not to be a bad gold. Its context ends
+      <code>open scoped Classical in</code> — a modifier that applies to the <em>next declaration</em>.
+      <code>split_header_and_theorem</code> cuts between them, so the header is elaborated as one
+      command and the theorem as another, and the theorem loses <code>Classical</code>. Its proof
+      uses <code>Classical.by_contradiction</code>, so it fails.</p>
+
+    <p><strong>{{DANGLING_PCT}}% of the 760-row val slice ends in such a modifier</strong>
+      ({{DANGLING_OPEN}}&times; <code>open … in</code>, {{DANGLING_VAR}}&times;
+      <code>variable … in</code>, {{DANGLING_INC}}&times; <code>include … in</code>). Every one is
+      scored in a context missing something the declaration was written to have — gold and prediction
+      alike. That is a systematic cap on <code>typecheck_rate</code> and on everything downstream of
+      it, and it is invisible in any aggregate because it looks exactly like the model being wrong.</p>
+
+    <p>The fix is contained — keep trailing <code>… in</code> lines with the theorem rather than the
+      header — but it changes every BEq+ verdict in the repo, so it is not a change to make quietly.</p>
+  </section>
+
+  <section class="sub">
+    <div class="head">
+      <h3 class="subhead">Where each reward's mass actually sits</h3>
+      <span class="chip c-open">the fix has a cost</span>
+    </div>
+
+    <p>Calibration says whether a reward is <em>right</em>, not whether it carries <em>signal</em>.
+      Under GRPO the advantage is reward minus group mean, so a rollout at the same value as its
+      group contributes nothing. A reward can be perfectly calibrated and nearly useless.</p>
+
+    <p>One fixed policy, {{RATES_N}} rollouts, all three rewards — so any difference between rows is
+      the reward, not the model.</p>
+
+    <figure>
+      <div class="figbox"><img src="figs/reward_rates.png"
+        alt="Left: four stacked horizontal bars, one per reward arm, showing what fraction of the benchmark set receives each reward value. The shipped outcome arm uses only two values, 0.05 for 75% and 0.85 for 24%. The pre-fix outcome wiring spreads across four values. Right: which ladder row each rollout lands on, shipped versus pre-fix."></div>
+      <figcaption><b>How often each reward pays each value.</b> The widest segment in a row is mass
+        with no within-group gradient. The two <code>outcome</code> rows are the same rollouts under
+        the shipped column-2 wiring and under the wiring it replaced.</figcaption>
+    </figure>
+
+    <div class="callout">
+      <span class="t">Fixing column 2 collapsed the graded ladder</span>
+      <p>The <code>outcome</code> arm exists because it pays a graded reward below BEq+ — that is the
+        whole stated reason to run it against <code>gated</code>, whose flat floor deliberately gives
+        up within-group gradient. Before the fix it used <strong>four</strong> distinct values with
+        {{RATES_PRE_MODAL}}% in the largest. After, it uses <strong>two</strong>, with
+        {{RATES_POST_MODAL}}% at a single value — the same shape as the <code>typecheck</code> arm it
+        is supposed to be an improvement on.</p>
+      <p>The cause is that column 2 conflates two genuinely different states: <em>Lean rejects the
+        submission outright</em>, and <em>the statement is fine but the proof body is broken</em>. The
+        old wiring sent the second to 0.50, indistinguishable from an honest <code>sorry</code> — too
+        generous. The new one sends it to 0.05, indistinguishable from unparseable prose — too harsh.
+        {{RATES_MOVED}}% of the benchmark set moved the whole distance between those two.</p>
+      <p>Neither is right, and the answer is not a wiring choice: it is a missing row. A matched
+        statement with a failed proof attempt is real partial progress and belongs between
+        <code>incomplete</code> (0.15) and <code>incomplete_faithful</code> (0.50). That is a change to
+        the table — the file calls the table the specification — so it is not one to make quietly.
+        Until then, <code>BEQ_TYPECHECK_FROM_OWN_PROOF=0</code> buys back the graded signal at the cost
+        of restoring the mis-calibration.</p>
+    </div>
+
+    <p>Two smaller things the same view shows. <code>gated</code> is the best-conditioned of the three
+      here — {{RATES_GATED_TOP}}% at 1.00 against {{RATES_GATED_BOT}}% at 0.00 is close to the
+      even split that maximises within-group variance — and its 0.25 one-direction step carries
+      {{RATES_GATED_MID}}% of the mass, consistent with the weak discrimination measured against the
+      human labels. And <code>typecheck</code>, the deliberately exploitable baseline, now has
+      <em>the same</em> two-value shape as the shipped <code>outcome</code> arm, which is the clearest
+      possible statement of what the fix cost.</p>
+  </section>
+
+  <section class="sub">
+    <div class="head">
+      <h3 class="subhead">The rung nothing was measuring</h3>
+      <span class="chip c-open">was invisible</span>
+    </div>
+
+    <p><code>evaluate_checkpoints.py</code> reports <code>typecheck_rate</code> — the <em>statement</em>
+      elaborates, with the proof sorry'd away — and <code>beq_plus_rate</code>. Neither says whether the
+      model's own proof closes. That is <code>proved</code>, the gate between
+      <code>incomplete_faithful</code> (0.50) and <code>solved</code> (0.85): the entire top of the
+      ladder, and the only row the faithfulness and proof-length bands can reach.</p>
+
+    <p>Measured over the raw generations the evals already wrote — one elaboration per example,
+      no regeneration:</p>
+
+    <div class="tablewrap">
+      <table>
+        <thead>
+          <tr><th>checkpoint</th><th class="num">budget</th><th class="num">med tok</th>
+              <th class="num">BEq+</th><th class="num">proved</th><th class="num">SOLVED</th></tr>
+        </thead>
+        <tbody>
+          <tr><td class="name">sft…_distilled @150</td><td class="num">1536</td><td class="num">155</td><td class="num">0.500</td><td class="num"><span class="bad">0.000</span></td><td class="num">0.000</td></tr>
+          <tr><td class="name">sft…_distilledcos @128</td><td class="num">1536</td><td class="num">155</td><td class="num">0.512</td><td class="num"><span class="bad">0.004</span></td><td class="num">0.004</td></tr>
+          <tr><td class="name">sft3blocolib_proof @114</td><td class="num">128</td><td class="num">53</td><td class="num">0.424</td><td class="num">0.244</td><td class="num">0.180</td></tr>
+          <tr><td class="name">sft…_uncapped @160</td><td class="num">128</td><td class="num">54</td><td class="num">0.588</td><td class="num">0.224</td><td class="num">0.220</td></tr>
+          <tr class="hi"><td class="name">rl…lr6_gated @90</td><td class="num">128</td><td class="num">52</td><td class="num">0.572</td><td class="num">0.232</td><td class="num">0.228</td></tr>
+          <tr class="hi"><td class="name">rl…lr6_outcome @90</td><td class="num">128</td><td class="num">52</td><td class="num">0.576</td><td class="num">0.248</td><td class="num">0.244</td></tr>
+          <tr class="hi"><td class="name">rl…lr6_typecheck @90</td><td class="num">128</td><td class="num">52</td><td class="num">0.552</td><td class="num">0.276</td><td class="num">0.256</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <p><code>typecheck_rate</code> and <code>beq_plus_rate</code> are flat to within noise across all
+      90 steps <em>and</em> all three arms — which is exactly why the arms looked indistinguishable.
+      <code>proved</code> separates them by 4.4 pp. <code>sorry</code> was used by 0 of 250 rollouts
+      in every checkpoint, so <code>proved</code> and "own proof elaborates" coincide throughout.</p>
+
+    <div class="callout t-blue">
+      <span class="t">Quote the RL gain against a named init</span>
+      <p>Against its own init at a matched budget, RL adds +13–15 pp BEq+ and +5–8 pp SOLVED. But a
+        pure SFT variant — <code>sft3blocolib_proof_uncapped @160</code> — reaches BEq+ 0.588 and
+        SOLVED 0.220 with no RL at all, inside the RL arms' range on both. Different SFT corpus, so
+        not apples-to-apples; it does mean "RL beats SFT" is not a claim this data supports without
+        naming which SFT.</p>
+    </div>
+  </section>
+
+  <section class="sub">
+    <div class="head">
+      <h3 class="subhead">The top of the ladder, over training</h3>
+      <span class="chip c-open">flat</span>
+    </div>
+
+    <p>With <code>proved</code> measurable, the obvious question is what it does across a run.
+      Nine checkpoints &times; three arms, n=250 each.</p>
+
+    <figure>
+      <div class="figbox"><img src="figs/proved_trajectory.png"
+        alt="Two line charts on a shared vertical axis. Left, BEq+ rate across RL steps 10 to 90 for the gated, outcome and typecheck arms, all near 55 percent and flat. Right, SOLVED rate for the same arms, all near 23 percent and flat."></div>
+      <figcaption><b>Neither metric moves.</b> Both panels share a vertical range, so the flatness is
+        not an artefact of a zoomed axis. n=250 per point.</figcaption>
+    </figure>
+
+    <p>Across 90 steps <code>SOLVED</code> moves +0.000 (gated), +0.012 (outcome) and +0.032
+      (typecheck). Whatever RL contributes on this task happens before step 10 and then plateaus —
+      so the earlier reading that the arms were "flat on the reported metrics but separated on
+      <code>proved</code>" only holds at a single checkpoint, not as a trend.</p>
+
+    <p>The uncomfortable detail is which arm moves most. <code>typecheck</code> — the deliberately
+      exploitable baseline, the one that pays 1.0 for anything that elaborates — has the largest
+      <code>SOLVED</code> gain while its BEq+ rate <em>falls</em>. That is the shape of a policy
+      getting better at closing proofs and no better at formalising the right theorem.</p>
+  </section>
+
+  <section>
+    <div class="head">
+      <h2>Proof-trajectory alignment</h2>
+      <span class="chip c-lab">offline only</span>
+    </div>
+
+    <p><code>faithful_score.py</code> rebuilds each tactic state as a standalone theorem and BEq+'s
+      every checkpoint pair. Three things changed before it could be used.</p>
+
+    <p><strong>It is not the metric it was slotted against.</strong> <code>proof_follows_argument</code>
+      is NL→FL; this is FL↔FL structure against a reference Lean proof and never reads English. Renamed
+      <code>proof_follows_reference</code>; the NL→FL slot stays <code>None</code>.</p>
+
+    <p><strong>The raw DP total is monotone in checkpoint count.</strong> The candidate picks its own
+      checkpoints and the DP maximises over alignments, so padding buys score — the erosion channel,
+      mechanically incentivised. F1 over the two trajectories removes it.</p>
+
+    <figure>
+      <div class="figbox"><img src="figs/alignment_padding.png"
+        alt="Line chart: as the candidate emits more checkpoints against a five-checkpoint gold, the raw DP total rises monotonically from 1.3 to 4.9 while the F1 peaks near the gold length and falls away to 0.28."></div>
+      <figcaption><b>Padding buys raw score; F1 removes the incentive.</b> Simulated against a
+        5-checkpoint gold where each candidate checkpoint independently matches with p=0.25. Precision
+        divides by the candidate's own checkpoint count, so padding costs exactly what it buys.</figcaption>
+    </figure>
+
+    <p><strong>Pantograph is not needed.</strong> <code>lean_interact</code> — already a dependency —
+      returns the same goal-before-tactic states from <code>Command(…, all_tactics=True)</code>. That
+      drops a second Lean driver, the async requirement, and the need to write the proof into a built
+      Lean project.</p>
+
+    <p>Validated end to end on real Lean: an identical proof scores F1 = 1.00, the same proof padded
+      with three vacuous <code>have</code>s scores 0.57, and a one-shot <code>simp</code> alternative
+      scores 0.67. That last number is the metric's honest cost — a valid different proof is not
+      rewarded.</p>
+
+    <p>Out of the loop on cost: 18.9 s for a 2×2 matrix, 60.0 s for 5×2 — ~6 s per cell against a
+      64-rollout GRPO step. It belongs at checkpoint boundaries on the val split.</p>
+  </section>
+
+  <section>
+    <div class="head">
+      <h2>The 128-token budget</h2>
+      <span class="chip c-open">unresolved</span>
+    </div>
+
+    <p>Every RL arm and its SFT init were <em>evaluated</em> at 128 tokens — the
+      <code>--max-new-tokens</code> default, matching <code>run_grpo.sh</code>'s
+      <code>MAX_RESPONSE_LENGTH=128</code>. The CoT-distilled comparison used 1536. Across that
+      boundary:</p>
+
+    <pre><code>1536-token budget, ~155-token proofs (gold median is 160)  ->  proved 0.000
+ 128-token budget,  ~53-token proofs                       ->  proved 0.244</code></pre>
+
+    <p>That is a striking association and I cannot attribute it to the budget: the two groups differ
+      in <em>training corpus</em> as well, and the checkpoints are not local to re-run. Independent of
+      the confound — <strong>6.1% of gold answers exceed 128 tokens</strong>, and 5.3% of eval
+      completions are cut mid-expression at exactly 128 (<code>← mul_assoc, ← mul</code>,
+      <code>Quotient.field_of_injective (Qu</code>). The gold <em>answer</em> is the theorem
+      and proof only — p50 54, p90 115, max 275 Qwen tokens — because the context is supplied
+      in the prompt, so 384 tokens covers every reference answer in the slice.</p>
+
+    <div class="callout">
+      <span class="t">One eval settles it</span>
+      <p>Run <code>sft3blocolib_proof</code> at 128 and at 1536 — same checkpoint, two budgets — and
+        measure <code>proved</code> both times. That is the experiment I would run ahead of anything
+        else here, because it decides whether the response cap is protecting the ladder or capping it.</p>
+    </div>
+  </section>
+
+  <section>
+    <div class="head"><h2>What changed</h2></div>
+    <div class="ledger">
+      <div class="row"><div class="f">scripts/eval/beq_calibration.py</div>
+        <div class="d">New. BEq+ against ProofNetVerif's human labels: confusion matrix, per-rung false-positive breakdown, latency. Gold-elaboration gate first, shardable, resumable, with a merge step keyed on <code>sha1(id + prediction)</code>.</div></div>
+      <div class="row"><div class="f">scripts/eval/proved_rate.py</div>
+        <div class="d">New. The <code>proved</code> column nothing else reports, read from an eval's existing <code>gen_*.jsonl</code> at ~0.01 s per example.</div></div>
+      <div class="row"><div class="f">scripts/eval/proof_alignment.py</div>
+        <div class="d">New. Trajectory alignment, renamed, F1-normalised, re-based on <code>lean_interact</code>.</div></div>
+      <div class="row"><div class="f">reward/reward.py</div>
+        <div class="d"><code>brevity_for</code>, the <code>Signals.brevity</code> field, and a <code>SOLVED</code>-only deduction written as <code>top − band·(1−b)</code> so <code>b = 1</code> leaves every recorded number exactly as it was. Plus a stdlib-only <code>__main__</code> that asserts the whole ladder.</div></div>
+      <div class="row"><div class="f">reward/reward_fn.py</div>
+        <div class="d"><code>_proof_body_len</code>, four new diagnostics, and <code>BEQ_BREVITY_BAND</code> — defaulting to 0.</div></div>
+      <div class="row"><div class="f">scripts/figures/fig_reward_design.py</div>
+        <div class="d">New. Every panel on this page, regenerable from measured data.</div></div>
+      <div class="row"><div class="f">reward/beq_plus.py</div>
+        <div class="d">Docstring said Mathlib v4.8.0-rc1; the pin has been v4.23.0 since the move to LoCoLib. Corrected — dataset/Mathlib compatibility is exactly what the gold gate measures.</div></div>
+    </div>
+  </section>
+
+  <footer>
+    <p>Every number here is measured, not estimated. Calibration: {{N_ALL}} pairs, {{SHARDS}} REPL shards, {{WALL}} min
+      wall each, {{ERRS}} scorer errors. <code>proved</code> rates: n=250 per checkpoint, seed 0. Length
+      statistics: all 18,546 LoCoLib golds carrying a real proof body.</p>
+    <p>Two corrections made along the way, both from over-reading a metric before measuring it. I
+      called the RL arms flat from <code>beq_plus_rate</code> alone — they are not, on the column
+      nobody was reporting. I then inferred <code>proved ≈ 0</code> from the training reward mean;
+      measurement says 24.8%, and the arithmetic had ignored that training runs at a 128-token cap
+      while those evals ran at 1536.</p>
+    <p>Regenerate: <code>python3 scripts/eval/beq_calibration.py --merge --out results/beq_calibration</code>
+      then <code>python3 scripts/figures/fig_reward_design.py</code>.</p>
+  </footer>
+
+</div>

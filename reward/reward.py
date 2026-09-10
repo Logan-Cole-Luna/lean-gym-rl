@@ -343,10 +343,21 @@ def proof_follows_argument(informal_proof: str | None, lean_proof: str | None) -
     Returns f in [0,1]: 0.0 for a proof that ignores the argument (a `grind`, or an `exact?`
     that just retrieves the Mathlib lemma), 1.0 for one that follows it.
 
-    RETURNS 1.0 UNCONDITIONALLY FOR NOW, which makes the top outcome score exactly
-    `rewards[SOLVED]` and leaves every already-recorded number unchanged. Swapping in a real
+    RETURNS 1.0 UNCONDITIONALLY, but NOTHING CALLS IT: `signals_from_score` sets
+    `proof_follows_argument=None` explicitly, so the top outcome currently scores 0.85, not
+    `rewards[SOLVED]`. Both of those are deliberate and they disagree -- read the wiring, not
+    this function, for what a SOLVED rollout is actually worth today. Swapping in a real
     metric therefore CHANGES PAST NUMBERS, so for harness evolution it must go through
     `evolve.py rescore --into <dir>` rather than being edited in place.
+
+    NOT SATISFIED BY `scripts/eval/proof_alignment.py`, and the distinction is the whole
+    reason this stays None. That script compares the candidate's intermediate GOAL STATES
+    against a reference LEAN proof's -- FL <-> FL proof structure. This column is NL -> FL:
+    the Lean proof against the ENGLISH argument, and per the module header it is "the only
+    place the English enters the score". Feeding the alignment metric in here would quietly
+    redefine a documented column and, worse, would pay for agreement with the gold's proof
+    STRATEGY -- scoring a shorter, better proof at zero. It is reported alongside the reward
+    instead, never inside it.
 
     When the real one lands, three things come with it and none are optional:
 
