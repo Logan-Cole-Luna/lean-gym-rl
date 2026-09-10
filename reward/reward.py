@@ -7,33 +7,37 @@ Used in two places and deliberately owned by neither:
     RL fine-tuning      this is the per-rollout reward
 
 Adopted from the harness-evolution project. The table below is unchanged; what
-this repo adds is `signals_from_score` and the `compute_score_outcome` verl entry
-point at the bottom, which build `Signals` from a BEqPlusScorer verdict.
+this repo adds is `signals_from_score`, which builds `Signals` from a
+BEqPlusScorer verdict.
+
+WHERE THE REST LIVES. This file owns the six outcomes and the ladder over them,
+and nothing else. To change what an arm is made of, edit the table in
+`reward/arms.py`, not this file; its header maps the rest of the package.
 
 Stdlib only, no config, no record shapes, no Lean. Fill in `Signals` from whatever a rollout
 looks like in your pipeline and call `reward_for`. That is the whole interface.
 
 THE TABLE. This is the specification; everything else in this file only implements it.
 
- wrote       type-correct        proof finished  FL statement matches  FL proof follows the
- something?  (Lean compiles it)  (no `sorry`)?   FL reference (BEq+)?  NL proof (faithfulness)?  reward
- ----------  ------------------  --------------  --------------------  ------------------------  -------------
- no          --                  --              --                    --                        0.00
- yes         no                  --              --                    --                        0.05
- yes         yes                 no              not verified          --                        0.15
- yes         yes                 YES             not verified          --                        0.30
- yes         yes                 no              VERIFIED              --                        0.50
- yes         yes                 YES             VERIFIED              f in [0,1]                0.85 + 0.15*f
+                                                 FL statement       FL proof follows  FL proof LENGTH
+ wrote       type-correct        proof finished  matches the FL     the NL proof      near the reference
+ something?  (Lean compiles it)  (no `sorry`)?   reference (BEq+)?  (faithfulness)?   (brevity)?          reward
+ ----------  ------------------  --------------  -----------------  ----------------  ------------------  --------------------------
+ no          --                  --              --                 --                --                  0.00
+ yes         no                  --              --                 --                --                  0.05
+ yes         yes                 no              not verified       --                --                  0.15
+ yes         yes                 YES             not verified       --                --                  0.30
+ yes         yes                 no              VERIFIED           --                --                  0.50
+ yes         yes                 YES             VERIFIED           f in [0,1]        b in (0,1]          0.85 + 0.15*f - 0.10*(1-b)
 
- ROW 6 ONLY carries one further term, a DEDUCTION rather than a payment:
+ f AND b ARE THE ONLY NON-CONSTANT ENTRIES, and both live on ROW 6 alone. An unmeasured f
+ scores 0, so the faithfulness band goes unpaid; an unmeasured or in-tolerance b is 1, so
+ the length term deducts nothing. ROW 6 with neither measured is therefore a flat 0.85, and
+ every row above it is EXACTLY the number it was before either term existed.
 
- brevity     how close the candidate's proof body is in LENGTH to the reference proof's,
-             as b in (0,1] from `brevity_for`   ->  reward -= 0.10 * (1 - b)
-
- b == 1 (in tolerance, or unmeasurable) subtracts nothing, so the five rows above and a
- concise ROW 6 are all EXACTLY the numbers they were before brevity existed. Only ROW 6 is
- reachable, which is what stops the degenerate exploit: a two-token non-proof scores 0.15 on
- ROW 3 and never reaches the term.
+ THAT ROW 6 GATE, not the shape of either term, is what stops the degenerate exploit: a
+ two-token non-proof lands on ROW 3 (0.15) and never reaches them. `reward/terms/` holds
+ both terms; this file only decides which row a rollout is on.
 
 A crash, a timeout or a missing verdict is also 0.00 AND stays in the denominator, so a
 policy can never gain by failing to produce a result.
@@ -78,8 +82,10 @@ proof that follows the argument perfectly still proves whatever the statement sa
 """
 from __future__ import annotations
 
-import math
 from dataclasses import dataclass
+
+from reward.terms.brevity import BREVITY_BAND, apply_brevity, brevity_for
+from reward.terms.faithfulness import FAITHFULNESS_BAND, apply_faithfulness
 
 # ---------------------------------------------------------------------------
 # The six outcomes.
@@ -123,82 +129,6 @@ DEFAULT_REWARDS = {
     MATCHED_NOT_PROVED: 0.50,
     SOLVED:             1.00,   # the CEILING of the top band, not a flat value; see below
 }
-
-# Of the top reward, how much is paid for the proof following the informal argument rather
-# than merely being a proof Lean accepted. Kept small on purpose: a large bonus rewards proofs
-# that MIMIC the argument's shape -- a `have` chain restating each informal step, each closed
-# by `grind` -- without doing its work, which is an erosion channel the statement-level
-# monitors cannot see. f == 1 gives 0.85 + 0.15 == 1.00, i.e. exactly the pre-faithfulness
-# score, so turning this on moves no existing number.
-FAITHFULNESS_BAND = 0.15
-
-# ---------------------------------------------------------------------------
-# BREVITY. How close the candidate's proof is in LENGTH to the reference proof.
-#
-# A DEDUCTION FROM THE TOP ROW, NOT A PAYMENT. Every other signal here is paid
-# for, so an unknown must never RAISE a score. This one is subtracted, so an
-# unknown must never LOWER one: `brevity=None` means b == 1.0 means no change,
-# and every already-recorded SOLVED number survives turning this on.
-#
-# IT APPLIES TO `SOLVED` ONLY, and that gate -- not the ratio -- is what stops
-# the obvious exploit. A three-token proof that does not prove lands on
-# UNFINISHED (0.15) and never reaches this term at all. Tying the target to the
-# gold length is what stops the OTHER direction: a policy that has learned to
-# solve cannot then farm the band by emitting something degenerately short,
-# because short is scored against the gold's own length, not against zero.
-#
-# MEASURED, over the 18,550 LoCoLib golds carrying a real proof body: median 67
-# chars, p75 170, p90 405, p99 1452, max ~7.3k. That range is why the ratio is
-# SOFTENED. `python -m reward.reward` prints b per gold percentile.
-#
-# SYMMETRIC in the softened log ratio: exp(-lam * |ln((L+s)/(L*+s))|). There is
-# no dead band, so the term carries gradient everywhere except at L == L*.
-#
-# WHAT THAT COSTS, measured over the certified population rather than assumed:
-# 55% of proofs are shorter than their reference and 26% are under half its
-# length, so most of the charge falls on the short side (mean 0.025 of the band
-# against 0.013 long). A shorter proof of a matched statement is usually the
-# better artifact, the reference being one author's draft rather than an
-# optimum, so the term should be read as "distance from reference length", not
-# as "bloat". Watch `pred_proof_chars` against `gold_proof_chars` directly
-# rather than inferring the direction from the reward.
-BREVITY_BAND = 0.10           # most this can ever cost a SOLVED rollout
-BREVITY_SOFTEN = 60.0         # chars added to BOTH sides before the ratio
-BREVITY_LAMBDA = 1.0          # decay per unit of |log ratio|; 1.0 == min(r, 1/r)
-
-
-def brevity_for(pred_len: int | None, gold_len: int | None,
-                *, soften: float = BREVITY_SOFTEN,
-                lam: float = BREVITY_LAMBDA) -> float | None:
-    """Length agreement with the reference proof, in (0,1]. 1.0 == no penalty.
-
-        b = exp(-lam * |ln((pred + s) / (gold + s))|)
-
-    Exponential decay in the SOFTENED log ratio, so tolerance is multiplicative
-    and the term is smooth everywhere, with no interval of zero gradient. At
-    lam == 1 this is exactly min(r, 1/r) for r the softened ratio.
-
-    SOFTENED BY `s`, and that is what the constant is for. A raw pred/gold is
-    degenerate at the short end: MEASURED over this corpus, the reference proof
-    body is p10 3 / p25 16 / p50 40 chars, and 30% are under 20, so against a
-    5-char `rfl` a perfectly good `by simp [foo]` reads as a fourfold overrun.
-    Adding a constant to both sides makes the tolerance absolute where the gold
-    is tiny and relative where it is large.
-
-    SYMMETRIC in the log ratio: a proof at 2x the reference length and one at
-    half of it are charged equally. Note this is a choice about what the term
-    measures, not a claim that the two failure modes are equally bad. Over the
-    certified population, 55% of proofs are SHORTER than their reference and
-    26% are under half its length, so the short side carries most of the charge:
-    mean 0.025 of the band against 0.013 on the long side.
-
-    None means there is no reference length (the gold carries no proof body --
-    1.1% of LoCoLib -- or the candidate could not be parsed), and MUST be
-    treated as 1.0 by the caller.
-    """
-    if not gold_len or not pred_len:
-        return None
-    return math.exp(-lam * abs(math.log((pred_len + soften) / (gold_len + soften))))
 
 
 @dataclass(frozen=True)
@@ -279,48 +209,25 @@ def reward_for_outcome(outcome: str, rewards: dict | None = None,
                        *, band: float = FAITHFULNESS_BAND,
                        brevity: float | None = None,
                        brevity_band: float = BREVITY_BAND) -> float:
-    """Outcome -> scalar. Only the top outcome reads `faithfulness`.
+    """Outcome -> scalar. Only the top outcome reads either term.
 
-    An unmeasured f scores as 0.0, the same convention every other unknown here follows: an
-    unknown must never RAISE a score. That is exactly why the placeholder in
-    `proof_follows_argument` returns 1.0 rather than None -- "not implemented yet" must not
-    silently dock every solved rollout by the whole band.
+    ROWS 1-5 ARE CONSTANTS, straight from the table: 0.00 / 0.05 / 0.15 / 0.30 /
+    0.50. Neither term reaches them, and that gate -- not the shape of either
+    term -- is the whole anti-exploit story: a degenerately short answer that
+    does not prove lands on ROW 3 and never gets here.
+
+    ROW 6 is the only one that is not a constant. `rewards[SOLVED]` is the
+    CEILING of the faithfulness band, so with the defaults (1.00, band 0.15) the
+    row pays `0.85 + 0.15 * f`, less up to `brevity_band * (1 - b)`. Both terms
+    are no-ops when unmeasured, so an arm that measures neither scores a flat
+    0.85 here and every already-recorded number survives.
     """
     rewards = rewards or DEFAULT_REWARDS
     value = rewards[outcome]
-
-    # ROWS 1-5 are constants, straight from the table: 0.00 / 0.05 / 0.15 / 0.30 / 0.50.
-    # Brevity does not reach them either, and that gate is the whole anti-exploit
-    # story: a degenerately short answer that does not prove never gets here.
     if outcome != SOLVED:
         return value
-    if not band:
-        return _apply_brevity(value, brevity, brevity_band)
-
-    # ROW 6 is the only one that is not a constant. `value` is the CEILING of the band, so
-    # with the defaults (value = 1.00, band = 0.15) the line below IS the table's entry:
-    #
-    #       (1.00 - 0.15) + 0.15 * f   ==   0.85 + 0.15 * f
-    #
-    #       f == 0    -> 0.85   a proof Lean accepted that ignores the given argument
-    #       f == 1    -> 1.00   and this is exactly the pre-faithfulness score, which is why
-    #                           turning faithfulness on moves no already-recorded number
-    #       f is None -> 0.85   unmeasured scores as 0, like every other unknown here
-    f = 0.0 if faithfulness is None else min(1.0, max(0.0, float(faithfulness)))
-    return _apply_brevity((value - band) + band * f, brevity, brevity_band)
-
-
-def _apply_brevity(top: float, brevity: float | None, brevity_band: float) -> float:
-    """Subtract the length penalty from an already-computed ROW 6 reward.
-
-    Written as `top - band*(1-b)` rather than as a second band carved off the
-    ceiling so that b == 1 -- in tolerance, or unmeasurable -- returns `top`
-    EXACTLY. That keeps every already-recorded SOLVED number intact and leaves
-    the table's documented step sizes (0.50 -> 0.85, and the 0.35 that finishing
-    a proof is worth) unchanged for a concise proof.
-    """
-    b = 1.0 if brevity is None else min(1.0, max(0.0, float(brevity)))
-    return top - brevity_band * (1.0 - b)
+    return apply_brevity(apply_faithfulness(value, faithfulness, band),
+                         brevity, brevity_band)
 
 
 def reward_for(s: Signals, rewards: dict | None = None,
@@ -335,29 +242,6 @@ def reward_for(s: Signals, rewards: dict | None = None,
     """
     return reward_for_outcome(outcome_for(s), rewards, s.proof_follows_argument,
                               band=band, brevity=s.brevity, brevity_band=brevity_band)
-
-
-def proof_follows_argument(informal_proof: str | None, lean_proof: str | None) -> float | None:
-    """PLACEHOLDER. Does the Lean proof formalize the informal proof it was handed?
-
-    Returns f in [0,1]: 0.0 for a proof that ignores the argument (a `grind`, or an `exact?`
-    that just retrieves the Mathlib lemma), 1.0 for one that follows it.
-
-    RETURNS 1.0 UNCONDITIONALLY FOR NOW, which makes the top outcome score exactly
-    `rewards[SOLVED]` and leaves every already-recorded number unchanged. Swapping in a real
-    metric therefore CHANGES PAST NUMBERS, so for harness evolution it must go through
-    `evolve.py rescore --into <dir>` rather than being edited in place.
-
-    When the real one lands, three things come with it and none are optional:
-
-      * an UNKNOWN return of None, so a judge that fails does not silently award the band;
-      * a validity gate on the unknown rate, so a broken judge invalidates the batch instead
-        of quietly capping everything at the band's floor;
-      * a NEGATIVE CONTROL -- score a proof against a DIFFERENT problem's informal proof and
-        confirm the metric says no. Unlike BEq+ this will be judged rather than derived, and
-        is therefore gameable by exactly the policy being trained.
-    """
-    return 1.0
 
 
 # ---------------------------------------------------------------------------
@@ -456,46 +340,6 @@ def signals_from_typecheck(ok: bool, error_kind: str | None = None) -> Signals:
         statement_matches_reference=None,
         proof_follows_argument=None,
     )
-
-
-# The arms, as reward tables over the same six outcomes. Each is the `rewards`
-# argument `reward_for_outcome` already takes, so the arms differ only in what
-# they pay, never in how an outcome is decided.
-TYPECHECK_REWARDS = {
-    NOTHING_WRITTEN: 0.0, DOES_NOT_COMPILE: 0.0,
-    UNFINISHED: 1.0, PROVED_NOT_MATCHED: 1.0,
-    MATCHED_NOT_PROVED: 1.0, SOLVED: 1.0,
-}
-
-# Pays only for semantic equivalence; everything below it shares one flat floor.
-# Under GRPO the advantage is the reward minus the group mean, so a group with no
-# semantic signal contributes no gradient at all. Any term that varies within
-# such a group becomes the only climbable signal there.
-GATED_REWARDS = {
-    NOTHING_WRITTEN: 0.0, DOES_NOT_COMPILE: 0.0,
-    UNFINISHED: 0.0, PROVED_NOT_MATCHED: 0.0,
-    MATCHED_NOT_PROVED: 1.0, SOLVED: 1.0,
-}
-
-# BEq+ proves in one direction but not both. The table has no row for it: its
-# `statement_matches_reference` is a boolean, so a partial match is simply not a
-# match. The gated arm pays a step for it, applied as an override on the
-# UNFINISHED row rather than by inventing a seventh outcome.
-GATED_ONE_DIRECTION = 0.25
-
-
-def gated_reward(r: dict, one_direction: float = GATED_ONE_DIRECTION) -> float:
-    """The gated arm: 1.0 for BEq+, `one_direction` for a single direction, else 0."""
-    outcome = outcome_for(signals_from_score(r))
-    if outcome == UNFINISHED and int(r.get("semantic_signal", 0) or 0) >= 1:
-        return one_direction
-    return reward_for_outcome(outcome, GATED_REWARDS)
-
-
-def typecheck_reward(ok: bool, error_kind: str | None = None) -> float:
-    """The type-check arm: 1.0 if the statement elaborates, else 0."""
-    return reward_for_outcome(outcome_for(signals_from_typecheck(ok, error_kind)),
-                              TYPECHECK_REWARDS)
 
 
 if __name__ == "__main__":
