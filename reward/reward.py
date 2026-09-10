@@ -28,7 +28,7 @@ THE TABLE. This is the specification; everything else in this file only implemen
  ROW 6 ONLY carries one further term, a DEDUCTION rather than a payment:
 
  brevity     how close the candidate's proof body is in LENGTH to the reference proof's,
-             as b in [0,1] from `brevity_for`   ->  reward -= 0.10 * (1 - b)
+             as b in (0,1] from `brevity_for`   ->  reward -= 0.10 * (1 - b)
 
  b == 1 (in tolerance, or unmeasurable) subtracts nothing, so the five rows above and a
  concise ROW 6 are all EXACTLY the numbers they were before brevity existed. Only ROW 6 is
@@ -149,59 +149,56 @@ FAITHFULNESS_BAND = 0.15
 #
 # MEASURED, over the 18,550 LoCoLib golds carrying a real proof body: median 67
 # chars, p75 170, p90 405, p99 1452, max ~7.3k. That range is why the ratio is
-# SOFTENED. A raw len_pred/len_gold is degenerate at the short end -- against a
-# 5-char `rfl` gold, a perfectly good `by simp [foo]` reads as a 4x overrun --
-# and adding a constant to both sides makes the tolerance absolute where the
-# gold is tiny and relative where it is large. With soften=60 a 5-char gold is
-# free anywhere up to 38 chars, while a 1452-char gold is free from 444 to 2208.
-# (444, not 948: the short edge is (1452+60)/3 - 60. The free ratios differ per
-# side -- 1.5x long, 3x short -- and this line used to quote the long one twice.
-# `python -m reward.reward` prints the real window per gold percentile.)
+# SOFTENED. `python -m reward.reward` prints b per gold percentile.
 #
-# THE DEAD BAND IS ASYMMETRIC, and deliberately so. Bloat is the failure mode
-# this term exists to catch, so it is charged from 1.5x. Being SHORTER than the
-# gold is usually a WIN -- the reference proof is one human's first draft, not an
-# optimum -- so it is free down to gold/3 and only charged past that, purely as a
-# guard against BEq+ proxy exploitation (an extremely short proof of a "matched"
-# statement is the shape a cascade false positive takes).
+# SYMMETRIC in the softened log ratio: exp(-lam * |ln((L+s)/(L*+s))|). There is
+# no dead band, so the term carries gradient everywhere except at L == L*.
 #
-# A symmetric band was tried first and rejected on evidence: against a 61-char
-# gold (`induction ... | zero => simp | succ n ih => omega`), the one-word proof
-# `by omega` -- strictly better, and `proved` sorry-free and axiom-clean -- scored
-# b=0.88 and lost 0.012 of reward for being good. That is the wrong sign.
+# WHAT THAT COSTS, measured over the certified population rather than assumed:
+# 55% of proofs are shorter than their reference and 26% are under half its
+# length, so most of the charge falls on the short side (mean 0.025 of the band
+# against 0.013 long). A shorter proof of a matched statement is usually the
+# better artifact, the reference being one author's draft rather than an
+# optimum, so the term should be read as "distance from reference length", not
+# as "bloat". Watch `pred_proof_chars` against `gold_proof_chars` directly
+# rather than inferring the direction from the reward.
 BREVITY_BAND = 0.10           # most this can ever cost a SOLVED rollout
 BREVITY_SOFTEN = 60.0         # chars added to BOTH sides before the ratio
-BREVITY_FREE_LONG = math.log(1.5)     # free up to 1.5x gold
-BREVITY_ZERO_LONG = math.log(4.0)     # b reaches 0 at ~4x gold
-BREVITY_FREE_SHORT = math.log(3.0)    # free down to gold/3
-BREVITY_ZERO_SHORT = math.log(10.0)   # b reaches 0 at ~gold/10
+BREVITY_LAMBDA = 1.0          # decay per unit of |log ratio|; 1.0 == min(r, 1/r)
 
 
 def brevity_for(pred_len: int | None, gold_len: int | None,
-                *, soften: float = BREVITY_SOFTEN) -> float | None:
-    """Length agreement with the reference proof, in [0,1]. 1.0 == no penalty.
+                *, soften: float = BREVITY_SOFTEN,
+                lam: float = BREVITY_LAMBDA) -> float | None:
+    """Length agreement with the reference proof, in (0,1]. 1.0 == no penalty.
 
-    Computed in LOG space, so the tolerance is multiplicative, with an
-    ASYMMETRIC dead band (free to 1.5x long, gold/3 short) inside which the term
-    has exactly zero gradient and cannot distort the main objective. None means
-    there is no reference length (the gold carries no proof body -- 1.1% of
-    LoCoLib -- or the candidate could not be parsed), and MUST be treated as 1.0
-    by the caller.
+        b = exp(-lam * |ln((pred + s) / (gold + s))|)
 
-    The short side is a guard-rail, not a claim that short proofs are bad. A
-    verified, axiom-clean proof shorter than the gold is a genuine win, and is
-    charged nothing until gold/3 and nothing in full until gold/10 -- the guard
-    exists only because BEq+ is a proxy, and an extremely short proof of a
-    "matched" statement is the shape a cascade false positive would take.
+    Exponential decay in the SOFTENED log ratio, so tolerance is multiplicative
+    and the term is smooth everywhere, with no interval of zero gradient. At
+    lam == 1 this is exactly min(r, 1/r) for r the softened ratio.
+
+    SOFTENED BY `s`, and that is what the constant is for. A raw pred/gold is
+    degenerate at the short end: MEASURED over this corpus, the reference proof
+    body is p10 3 / p25 16 / p50 40 chars, and 30% are under 20, so against a
+    5-char `rfl` a perfectly good `by simp [foo]` reads as a fourfold overrun.
+    Adding a constant to both sides makes the tolerance absolute where the gold
+    is tiny and relative where it is large.
+
+    SYMMETRIC in the log ratio: a proof at 2x the reference length and one at
+    half of it are charged equally. Note this is a choice about what the term
+    measures, not a claim that the two failure modes are equally bad. Over the
+    certified population, 55% of proofs are SHORTER than their reference and
+    26% are under half its length, so the short side carries most of the charge:
+    mean 0.025 of the band against 0.013 on the long side.
+
+    None means there is no reference length (the gold carries no proof body --
+    1.1% of LoCoLib -- or the candidate could not be parsed), and MUST be
+    treated as 1.0 by the caller.
     """
     if not gold_len or not pred_len:
         return None
-    d = math.log((pred_len + soften) / (gold_len + soften))
-    over, free, zero = (d, BREVITY_FREE_LONG, BREVITY_ZERO_LONG) if d > 0 else \
-                       (-d, BREVITY_FREE_SHORT, BREVITY_ZERO_SHORT)
-    if over <= free:
-        return 1.0
-    return max(0.0, 1.0 - (over - free) / (zero - free))
+    return math.exp(-lam * abs(math.log((pred_len + soften) / (gold_len + soften))))
 
 
 @dataclass(frozen=True)
@@ -552,14 +549,19 @@ if __name__ == "__main__":
     print("  ok")
 
     print("\nbrevity_for, against the measured LoCoLib gold percentiles")
-    print(f"  {'gold':>6} {'free window (chars)':>24}   b(3x)  b(10x)  b(1/10x)")
+    print(f"  {'gold':>6}  b(1.5x)  b(2x)   b(4x)  b(gold/2)  b(gold/4)")
     for lg in (5, 28, 67, 170, 405, 1452):
-        lo = (lg + BREVITY_SOFTEN) / 3.0 - BREVITY_SOFTEN
-        hi = (lg + BREVITY_SOFTEN) * 1.5 - BREVITY_SOFTEN
-        print(f"  {lg:>6} {f'[{max(0, lo):.0f}, {hi:.0f}]':>24}   "
-              f"{brevity_for(3 * lg, lg):.2f}   {brevity_for(10 * lg, lg):.2f}   "
-              f"{brevity_for(max(1, lg // 10), lg):.2f}")
-
-    assert brevity_for(0, 67) is None and brevity_for(67, 0) is None
+        print(f"  {lg:>6}   {brevity_for(round(1.5 * lg), lg):.3f}   "
+              f"{brevity_for(2 * lg, lg):.3f}   {brevity_for(4 * lg, lg):.3f}   "
+              f"{brevity_for(max(1, lg // 2), lg):.3f}      "
+              f"{brevity_for(max(1, lg // 4), lg):.3f}")
+    # Symmetry, stated as the identity it actually is: |ln(u/v)| == |ln(v/u)|,
+    # so swapping candidate and reference cannot change the value.
+    for a, b in ((10, 67), (67, 10), (5, 1452), (170, 170), (1, 7300)):
+        assert abs(brevity_for(a, b) - brevity_for(b, a)) < 1e-12, (a, b)
     assert brevity_for(67, 67) == 1.0
+    assert brevity_for(0, 67) is None and brevity_for(67, 0) is None
+    assert 0.0 < brevity_for(7300, 1) < 1e-2
+    print("  symmetric, bounded in (0,1], and unmeasurable stays None: ok")
+
     print("\nall invariants hold")

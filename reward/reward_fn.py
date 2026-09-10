@@ -347,18 +347,16 @@ W_GATED_ONE_DIR = float(os.environ.get("BEQ_W_GATED_ONE_DIR", "0.25"))
 # How much of a SOLVED rollout's reward the proof-length term can take, for the
 # arms that turn it on. `compute_score_outcome` passes 0.0 and is unaffected.
 #
-# THIS TERM ONLY MEANS ANYTHING ABOVE A ~384-TOKEN RESPONSE CAP. Recomputed over
-# the finished HPC arms' raw rollouts (results/hpc_ablation/), it fires on ZERO
-# of the 182 SOLVED rollouts across gated/outcome/typecheck at step 90: median
-# pred/gold proof length is 1.00, and mean b is 1.0000. That is not evidence
-# that proof length does not matter -- it is a property of the 128-token
-# `max_response_length` those arms ran under. MEASURED on the 760-row proof val
-# slice, the gold ANSWER (theorem+proof; the context is in the prompt) is p50 54
-# / p90 115 / max 275 Qwen tokens, so a 128-token cap truncates 6.1% of
-# reference-length answers and thereby bounds the top of the length
-# distribution: nothing in the reachable population was ever long enough to
-# penalise. `configs/run_grpo.sh` now defaults to 512, which is what makes the
-# term expressible and this arm worth running.
+# THE TERM NEEDS A RESPONSE CAP THAT DOES NOT BOUND THE LENGTH DISTRIBUTION.
+# Under the old 128-token `max_response_length` it was unreachable: 0 of 182
+# SOLVED rollouts across gated/outcome/typecheck at step 90 were long enough to
+# charge, because the cap already truncated the top of the distribution. Gold
+# ANSWERS (theorem+proof; the context is in the prompt) are p50 54 / p90 115 /
+# max 275 Qwen tokens on the 760-row proof val slice, so 128 truncates 6.1% of
+# reference-length answers. `configs/run_grpo.sh` defaults to 512.
+#
+# MEASURED at 512 over the certified population: mean b 0.834, mean charge
+# 0.017 of the band, against 0.001 under the earlier dead-band formulation.
 W_BREVITY_BAND_ARM = float(os.environ.get("BEQ_BREVITY_BAND", str(BREVITY_BAND)))
 
 # Column 2 of reward.py's table ("Lean compiles it") now reads the SUBMISSION AS
@@ -541,8 +539,8 @@ def compute_score_outcome_brevity(data_source, solution_str, ground_truth,
     """`compute_score_outcome` plus the proof-LENGTH deduction. Nothing else.
 
     A SOLVED rollout is charged up to `W_BREVITY_BAND_ARM` for a proof body far
-    from the gold's length, on an asymmetric log-space dead band (free to 1.5x
-    long, free down to gold/3) -- see `reward.reward.brevity_for`. Rows 1-5 are
+    from the gold's length, as `exp(-|ln((L+s)/(L*+s))|)` with s=60, symmetric
+    in the softened log ratio -- see `reward.reward.brevity_for`. Rows 1-5 are
     untouched, which is the anti-exploit: a degenerately short non-proof lands
     on `incomplete` (0.15) and never reaches the term.
 
